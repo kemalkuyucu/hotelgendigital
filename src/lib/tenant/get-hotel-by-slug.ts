@@ -5,7 +5,6 @@ export interface HotelRow {
   slug: string;
   name: string;
   status: string;
-  telegram_manager_chat_id: number | null;
 }
 
 let centralClient: ReturnType<typeof createClient> | null = null;
@@ -24,7 +23,7 @@ function getCentralClient() {
 export async function getHotelBySlug(slug: string): Promise<HotelRow | null> {
   const { data, error } = await getCentralClient()
     .from('hotels')
-    .select('id, slug, name, status, telegram_manager_chat_id')
+    .select('id, slug, name, status')
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw new Error(`getHotelBySlug error: ${error.message}`);
