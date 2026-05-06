@@ -33,7 +33,7 @@ export async function POST(
   if (!hotel) {
     return NextResponse.json({ ok: false, error: 'hotel not found' }, { status: 404 });
   }
-  if (hotel.status !== 'active') {
+  if (hotel.status === 'suspended' || hotel.status === 'cancelled') {
     // Telegram için 200 dön, retry'lamasın
     return NextResponse.json({ ok: true, info: 'hotel inactive' });
   }
@@ -198,7 +198,7 @@ async function saveMessage(args: {
   const text = msg.text ?? msg.caption ?? '';
   const messageType = msg.voice ? 'voice' : msg.photo ? 'photo' : 'text';
 
-  const { error } = await supa.from('messages').insert({
+  const { error } = await supa.from('bot_messages').insert({
     conversation_id: conversationId,
     direction,
     content: text,
@@ -210,5 +210,5 @@ async function saveMessage(args: {
       ...(msg.photo ? { photo_file_ids: msg.photo.map((p) => p.file_id) } : {}),
     },
   });
-  if (error) throw new Error(`message insert: ${error.message}`);
+  if (error) throw new Error(`bot_message insert: ${error.message}`);
 }
