@@ -1,8 +1,8 @@
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 import { createHotelAction } from '@/app/admin/actions/hotels'
 
 export default async function NewHotelPage() {
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   const { data: packages } = await supabase
     .from('packages')
     .select('id, code, display_name')

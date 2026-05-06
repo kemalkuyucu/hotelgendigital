@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 import { createVipManagerAction, deleteVipManagerAction } from '@/app/admin/actions/vip-managers'
 
 interface VipManager {
@@ -17,7 +17,7 @@ interface VipManager {
 
 export default async function VipManagersPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
 
   const [{ data: hotel }, { data: vipManagers }] = await Promise.all([
     supabase.from('hotels').select('id, name').eq('id', id).single(),

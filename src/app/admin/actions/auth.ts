@@ -1,7 +1,7 @@
 'use server'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 import { verifyPassword } from '@/lib/auth/password'
 import { createSession, destroySession, getSessionAdmin } from '@/lib/auth/session'
 import { logAudit } from '@/lib/auth/audit'
@@ -11,7 +11,7 @@ export async function loginAction(formData: FormData) {
   const password = String(formData.get('password') ?? '')
   if (!username || !password) redirect('/admin/login?error=missing')
 
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   const { data: admin } = await supabase
     .from('master_admins')
     .select('id, username, password_hash, is_active, failed_login_attempts, locked_until')

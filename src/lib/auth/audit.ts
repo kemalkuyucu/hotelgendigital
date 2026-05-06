@@ -1,4 +1,4 @@
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 
 export async function logAudit(params: {
   actorId: string
@@ -11,7 +11,7 @@ export async function logAudit(params: {
   ip?: string
   userAgent?: string
 }) {
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   await supabase.from('audit_log').insert({
     actor_type: 'master_admin',
     actor_id: params.actorId,

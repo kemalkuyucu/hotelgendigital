@@ -1,7 +1,7 @@
 'use server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 import { getSessionAdmin } from '@/lib/auth/session'
 import { logAudit } from '@/lib/auth/audit'
 
@@ -9,7 +9,7 @@ export async function createHotelAction(formData: FormData) {
   const admin = await getSessionAdmin()
   if (!admin) redirect('/admin/login')
 
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   const payload = {
     name: String(formData.get('name')),
     slug: String(formData.get('slug')),
@@ -55,7 +55,7 @@ export async function updateHotelAction(id: string, formData: FormData) {
   const admin = await getSessionAdmin()
   if (!admin) redirect('/admin/login')
 
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   const payload = {
     name: String(formData.get('name')),
     slug: String(formData.get('slug')),

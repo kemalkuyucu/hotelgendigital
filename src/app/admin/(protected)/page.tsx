@@ -1,4 +1,4 @@
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 
 interface AuditLogRow {
   action: string
@@ -8,7 +8,7 @@ interface AuditLogRow {
 }
 
 export default async function DashboardPage() {
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
 
   const [{ count: hotelCount }, { data: recentLogs }] = await Promise.all([
     supabase.from('hotels').select('*', { count: 'exact', head: true }),

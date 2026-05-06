@@ -1,7 +1,7 @@
 'use server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 import { getSessionAdmin } from '@/lib/auth/session'
 import { logAudit } from '@/lib/auth/audit'
 import { encryptCredential } from '@/lib/encryption'
@@ -36,7 +36,7 @@ export async function saveCredentialsAction(hotelId: string, formData: FormData)
   if (manychat) update.manychat_api_key_encrypted = manychat
   if (telegram) update.telegram_bot_token_encrypted = telegram
 
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   await supabase.from('bridge_credentials').update(update).eq('hotel_id', hotelId)
 
   await logAudit({

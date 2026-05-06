@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 import { updateHotelAction } from '@/app/admin/actions/hotels'
 
 interface Hotel {
@@ -23,7 +23,7 @@ interface Package {
 
 export default async function EditHotelPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
 
   const [{ data: hotel }, { data: packages }] = await Promise.all([
     supabase

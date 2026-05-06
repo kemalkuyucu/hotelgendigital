@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 
 type PackageRef = { display_name: string }
 
@@ -22,7 +22,7 @@ function getPackageName(packages: unknown): string | null {
 }
 
 export default async function HotelsListPage() {
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   const { data: hotels } = await supabase
     .from('hotels')
     .select('id, name, slug, status, is_demo, package_id, packages(display_name)')

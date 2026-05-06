@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import crypto from 'crypto'
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 
 const COOKIE_NAME = 'hg_admin_session'
 const SESSION_HOURS = 12
@@ -10,7 +10,7 @@ export async function createSession(adminId: string, ip: string, ua: string) {
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 60 * 60 * 1000)
 
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   await supabase.from('master_admin_sessions').insert({
     admin_id: adminId,
     token_hash: tokenHash,
@@ -35,7 +35,7 @@ export async function getSessionAdmin() {
   if (!token) return null
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
 
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   const { data: session } = await supabase
     .from('master_admin_sessions')
     .select('admin_id, expires_at')
@@ -66,7 +66,7 @@ export async function destroySession() {
   const token = cookieStore.get(COOKIE_NAME)?.value
   if (token) {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
-    const supabase = await getCentralServerClient()
+    const supabase = getCentralSupabase()
     await supabase.from('master_admin_sessions').delete().eq('token_hash', tokenHash)
   }
   cookieStore.delete(COOKIE_NAME)

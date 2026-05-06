@@ -1,7 +1,7 @@
 'use server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { getCentralServerClient } from '@/lib/supabase/central-server'
+import { getCentralSupabase } from '@/lib/supabase-client'
 import { getSessionAdmin } from '@/lib/auth/session'
 import { logAudit } from '@/lib/auth/audit'
 
@@ -9,7 +9,7 @@ export async function createVipManagerAction(hotelId: string, formData: FormData
   const admin = await getSessionAdmin()
   if (!admin) redirect('/admin/login')
 
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   await supabase.from('vip_managers').insert({
     hotel_id: hotelId,
     full_name: String(formData.get('full_name')),
@@ -37,7 +37,7 @@ export async function deleteVipManagerAction(hotelId: string, vipId: string) {
   const admin = await getSessionAdmin()
   if (!admin) redirect('/admin/login')
 
-  const supabase = await getCentralServerClient()
+  const supabase = getCentralSupabase()
   await supabase.from('vip_managers').delete().eq('id', vipId)
 
   await logAudit({
