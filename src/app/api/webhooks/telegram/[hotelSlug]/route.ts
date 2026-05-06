@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { TelegramClient } from '@/lib/telegram/client';
 import { verifyTelegramSecret } from '@/lib/telegram/verify';
 import type { TelegramUpdate, TelegramMessage } from '@/lib/telegram/types';
 import { getHotelBySlug } from '@/lib/tenant/get-hotel-by-slug';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,6 +13,23 @@ export const dynamic = 'force-dynamic';
 function getBotTokenForHotel(slug: string): string | null {
   if (slug === 'demo-hotel') return process.env.TELEGRAM_BOT_TOKEN_DEMO ?? null;
   return null;
+}
+
+// Demo hotel için bridge_credentials bypass — direkt env var'dan Supabase client.
+// Modül 5'te tüm hoteller bridge_credentials'a taşınacak.
+function getDemoHotelClient(): SupabaseClient | null {
+  const url = process.env.DEMO_HOTEL_SUPABASE_URL;
+  const key = process.env.DEMO_HOTEL_SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+async function getSupaClientForSlug(
+  slug: string,
+  hotelId: string,
+): Promise<SupabaseClient | null> {
+  if (slug === 'demo-hotel') return getDemoHotelClient();
+  return getHotelClient(hotelId);
 }
 
 export async function POST(
@@ -46,10 +63,10 @@ export async function POST(
   }
   const tg = new TelegramClient(botToken);
 
-  // 4) Hotel DB client (hotel.id ile — getHotelClient UUID alır)
-  const supa = await getHotelClient(hotel.id);
+  // 4) Hotel DB client
+  const supa = await getSupaClientForSlug(hotelSlug, hotel.id);
   if (!supa) {
-    console.error(`[telegram] hotel client alınamadı: ${hotel.id}`);
+    console.error(`[telegram] hotel client alınamadı: ${hotelSlug} / ${hotel.id}`);
     return NextResponse.json({ ok: true, info: 'no db client' });
   }
 
