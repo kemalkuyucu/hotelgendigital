@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation'
 import { getCentralSupabase } from '@/lib/supabase-client'
 import { updateHotelAction } from '@/app/admin/actions/hotels'
+import { TelegramSection } from './_components/telegram-section'
+import { getTelegramWebhookInfo } from './actions'
 
 interface Hotel {
   id: string
@@ -13,6 +15,7 @@ interface Hotel {
   contact_email: string | null
   contact_phone: string | null
   address: string | null
+  telegram_manager_chat_id: number | null
 }
 
 interface Package {
@@ -28,7 +31,7 @@ export default async function EditHotelPage({ params }: { params: Promise<{ id: 
   const [{ data: hotel }, { data: packages }] = await Promise.all([
     supabase
       .from('hotels')
-      .select('id, name, slug, status, is_demo, package_id, contact_name, contact_email, contact_phone, address')
+      .select('id, name, slug, status, is_demo, package_id, contact_name, contact_email, contact_phone, address, telegram_manager_chat_id')
       .eq('id', id)
       .single(),
     supabase.from('packages').select('id, code, display_name').eq('is_active', true).order('monthly_price_usd'),
@@ -37,6 +40,9 @@ export default async function EditHotelPage({ params }: { params: Promise<{ id: 
   if (!hotel) notFound()
 
   const h = hotel as Hotel
+
+  // Telegram webhook info (hata olursa null döner, sayfa yine açılır)
+  const webhookInfo = await getTelegramWebhookInfo(h.slug).catch(() => null)
 
   // Bind the id into the action
   const updateAction = updateHotelAction.bind(null, id)
@@ -151,6 +157,15 @@ export default async function EditHotelPage({ params }: { params: Promise<{ id: 
             </a>
           </div>
         </form>
+      </div>
+
+      <div className="mt-8 max-w-2xl">
+        <TelegramSection
+          hotelId={h.id}
+          hotelSlug={h.slug}
+          managerChatId={h.telegram_manager_chat_id}
+          webhookInfo={webhookInfo}
+        />
       </div>
     </div>
   )
