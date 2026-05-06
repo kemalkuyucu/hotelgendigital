@@ -28,6 +28,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           >
             <span>🏨</span> Oteller
           </Link>
+          <Link
+            href="/admin/system-health"
+            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 text-gray-300 hover:text-white transition-colors text-sm"
+          >
+            <span>💚</span> Sistem Sağlığı
+          </Link>
+          <Link
+            href="/admin/audit-log"
+            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 text-gray-300 hover:text-white transition-colors text-sm"
+          >
+            <span>📋</span> Audit Log
+          </Link>
         </nav>
 
         <div className="p-4 border-t border-gray-800">

@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { getCentralSupabase } from '@/lib/supabase-client'
 import { getSessionAdmin } from '@/lib/auth/session'
 import { logAudit } from '@/lib/auth/audit'
+import { sendEmail } from '@/lib/email/client'
+import { hotelWelcomeEmail } from '@/lib/email/templates/hotel-welcome'
 
 export async function createHotelAction(formData: FormData) {
   const admin = await getSessionAdmin()
@@ -48,6 +50,25 @@ export async function createHotelAction(formData: FormData) {
   })
 
   revalidatePath('/admin/hotels')
+
+  // Yeni otel oluşturulunca contact_email varsa hoşgeldin maili gönder
+  if (payload.contact_email) {
+    const { html, text } = hotelWelcomeEmail({
+      hotelName: payload.name,
+      contactName: payload.contact_name ?? null,
+      adminUrl: process.env.NEXT_PUBLIC_APP_URL
+        ? `${process.env.NEXT_PUBLIC_APP_URL}/admin`
+        : 'https://hotelgen-v2.vercel.app/admin',
+    })
+    // Fire-and-forget — email gönderim hatası otel oluşturmayı engellemesin
+    sendEmail({
+      to: payload.contact_email,
+      subject: `${payload.name} — HotelGen sistemine eklendi`,
+      html,
+      text,
+    }).catch((err) => console.error('[email] hotel welcome failed', err))
+  }
+
   redirect(`/admin/hotels/${hotel.id}`)
 }
 

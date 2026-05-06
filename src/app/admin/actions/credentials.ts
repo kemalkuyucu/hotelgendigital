@@ -5,6 +5,7 @@ import { getCentralSupabase } from '@/lib/supabase-client'
 import { getSessionAdmin } from '@/lib/auth/session'
 import { logAudit } from '@/lib/auth/audit'
 import { encryptCredential } from '@/lib/encryption'
+import { clearHotelClientCache } from '@/lib/tenant/get-hotel-client'
 
 export async function saveCredentialsAction(hotelId: string, formData: FormData) {
   const admin = await getSessionAdmin()
@@ -38,6 +39,9 @@ export async function saveCredentialsAction(hotelId: string, formData: FormData)
 
   const supabase = getCentralSupabase()
   await supabase.from('bridge_credentials').update(update).eq('hotel_id', hotelId)
+
+  // Cache'i temizle — yeni credential'lar bir sonraki istekte kullanılsın
+  clearHotelClientCache(hotelId)
 
   await logAudit({
     actorId: admin.id,
