@@ -43,12 +43,14 @@ next-env.d.ts
 *.local
 .local/
 
-# Backup files & secrets
+# Backup files & secrets — NOT TypeScript source files
 **/credentials/
-**/*-credentials.*
+**/*-credentials.json
+**/*-credentials.env
+**/*-credentials.yaml
+**/*-credentials.yml
 **/secrets/
 *.key
-*.pem
 *.cert
 
 # Logs
