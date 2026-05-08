@@ -1,5 +1,6 @@
 import { getAnthropicClient, DEFAULT_MODEL, DEFAULT_MAX_TOKENS } from './anthropic-client';
 import { buildOrchestratorSystemPrompt, DepartmentInfo } from './system-prompts';
+import { getCachedSummary } from '@/lib/knowledge/cache';
 
 export interface ConversationContextMessage {
   direction: 'inbound' | 'outbound';
@@ -8,6 +9,7 @@ export interface ConversationContextMessage {
 }
 
 export interface ClassifyAndRespondInput {
+  hotelId: string;           // knowledge cache invalidation için zorunlu
   hotelName: string;
   departments: DepartmentInfo[];
   guestMessage: string;
@@ -31,7 +33,9 @@ export async function classifyAndRespond(
   input: ClassifyAndRespondInput
 ): Promise<ClassifyAndRespondOutput> {
   const client = getAnthropicClient();
-  const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments);
+  // Knowledge summary'yi cache'den getir (5dk TTL) ve sisteme inject et
+  const knowledgeSummary = await getCachedSummary(input.hotelId);
+  const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments, knowledgeSummary);
 
   // Context mesajlarını Anthropic message formatına çevir
   const messages = input.context.map((m) => ({

@@ -160,6 +160,18 @@ export default async function EditHotelPage({ params }: { params: Promise<{ id: 
       </div>
 
       <div className="mt-8 max-w-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-800">Hızlı Erişim</h2>
+        </div>
+        <a
+          href={`/admin/hotels/${h.id}/knowledge`}
+          className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-5 py-3 text-sm font-medium text-indigo-700 hover:bg-indigo-100 transition-colors mb-6"
+        >
+          📚 Bilgi Bankası
+        </a>
+      </div>
+
+      <div className="mt-2 max-w-2xl">
         <TelegramSection
           hotelId={h.id}
           hotelSlug={h.slug}

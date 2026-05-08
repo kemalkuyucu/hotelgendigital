@@ -96,3 +96,24 @@ Modülü tamamlarken takıldığında bana mesaj at:
 ---
 
 **Hazırsın. `docs/MODUL_01_SENIN_ICIN.md` ile başla. 💪**
+
+---
+
+## 🌱 Modül 7 — Demo Hotel Knowledge Seed
+
+Migration (`supabase/migrations/hotel/20260508_001_knowledge.sql`) çalıştırıldıktan sonra Demo Hotel'e varsayılan bilgileri yüklemek için:
+
+```bash
+npm install          # tsx'i yükler (ilk seferinde)
+npm run seed:demo-knowledge
+```
+
+**Gerekli env değişkenleri** (`.env.local` içinde olmalı):
+- `DEMO_HOTEL_SUPABASE_URL`
+- `DEMO_HOTEL_SUPABASE_SERVICE_ROLE_KEY`
+
+**Doğrulama** (Supabase Demo Hotel SQL Editor'de):
+```sql
+SELECT count(*) FROM hotel_facts;        -- 12 olmalı
+SELECT count(*) FROM knowledge_sections; -- 2 olmalı
+```

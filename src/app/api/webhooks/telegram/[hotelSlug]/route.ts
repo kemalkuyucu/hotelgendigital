@@ -103,7 +103,7 @@ async function handleMessage(args: {
   msg: TelegramMessage;
   tg: TelegramClient;
 }) {
-  const { supa, hotelName, msg, tg } = args;
+  const { supa, hotelId, hotelName, msg, tg } = args;
   const text = msg.text ?? msg.caption ?? '';
   const chatId = msg.chat.id;
   const userId = msg.from?.id;
@@ -205,6 +205,7 @@ async function handleMessage(args: {
 
   try {
     aiResult = await classifyAndRespond({
+      hotelId: args.hotelId,
       hotelName,
       departments: deptInfoForAI,
       guestMessage: text,
