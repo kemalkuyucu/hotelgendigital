@@ -268,6 +268,15 @@ async function handleMessage(args: {
       console.log(
         `[telegram] forward OK → dept=${routingResult.targetDept} chat=${routingResult.targetChatId} rerouted=${routingResult.wasRerouted}`,
       );
+
+      // conversations tablosunu rapor kolonlarıyla güncelle
+      await supa
+        .from('conversations')
+        .update({
+          last_intent: routingResult.targetDept,
+          last_forwarded_at: new Date().toISOString(),
+        })
+        .eq('id', conversationId);
     } catch (fwdErr) {
       console.error('[telegram] forwardToDepartment error:', fwdErr);
     }
