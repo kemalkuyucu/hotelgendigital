@@ -35,11 +35,35 @@ export async function handleRapor(hotelClient: SupabaseClient): Promise<string> 
           .map(([k, v]) => `  • ${k}: ${v}`)
           .join('\n');
 
+  // Forward özeti (Modül 6.1)
+  const { count: fwdSentCount } = await hotelClient
+    .from('forwarded_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'sent')
+    .gte('created_at', isoStart);
+
+  const { count: fwdOffHoursCount } = await hotelClient
+    .from('forwarded_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_off_hours', true)
+    .gte('created_at', isoStart);
+
+  const { count: fwdFailedCount } = await hotelClient
+    .from('forwarded_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'failed')
+    .gte('created_at', isoStart);
+
   return `📊 *Son 24 Saat Raporu*
 
 📥 Gelen mesaj: *${inboundCount ?? 0}*
 📤 Giden mesaj: *${outboundCount ?? 0}*
 
 🏷 Intent dağılımı:
-${distLines}`;
+${distLines}
+
+📨 *Forward Özeti*
+✅ Gönderilen: *${fwdSentCount ?? 0}*
+🌙 Off-hours: *${fwdOffHoursCount ?? 0}*
+❌ Başarısız: *${fwdFailedCount ?? 0}*`;
 }

@@ -257,9 +257,12 @@ async function handleMessage(args: {
         hotelSupa: supa,
         tg,
         aiIntentId: aiIntentId ?? null,
+        classifiedDepartment: aiResult?.department ?? null,
         targetDept: routingResult.targetDept,
         targetChatId: routingResult.targetChatId,
         wasRerouted: routingResult.wasRerouted,
+        // isOffHours: sınıflandırma yapıldı ama mesai dışı olduğu için yönlendirildi
+        isOffHours: routingResult.wasRerouted && (aiResult?.department ?? null) !== null,
         guestName,
         guestMessage: text,
         aiResponse: responseText,

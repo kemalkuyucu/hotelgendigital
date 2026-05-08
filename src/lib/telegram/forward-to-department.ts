@@ -5,12 +5,14 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { TelegramClient } from './client';
 
 export interface ForwardInput {
-  hotelSupa: SupabaseClient;   // Demo Hotel DB client
-  tg: TelegramClient;          // Misafir bot TelegramClient (token'a sahip)
+  hotelSupa: SupabaseClient;     // Demo Hotel DB client
+  tg: TelegramClient;            // Misafir bot TelegramClient (token'a sahip)
   aiIntentId: string | null;
+  classifiedDepartment: string | null; // AI'ın sınıfladığı asıl departman (off-hours öncesi)
   targetDept: string;
   targetChatId: number;
-  wasRerouted: boolean;
+  wasRerouted: boolean;          // off-hours sebebiyle yönlendirildiyse true
+  isOffHours: boolean;           // O an off-hours muydu
   guestName: string;
   guestMessage: string;
   aiResponse: string;
@@ -28,9 +30,11 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     hotelSupa,
     tg,
     aiIntentId,
+    classifiedDepartment,
     targetDept,
     targetChatId,
     wasRerouted,
+    isOffHours,
     guestName,
     guestMessage,
     aiResponse,
@@ -43,15 +47,17 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
   const dateStr = trDate.toISOString().replace('T', ' ').substring(0, 16) + ' (TR)';
 
   const confidencePercent = Math.round(confidence * 100);
-  const reroutedNote = wasRerouted ? '\n⚠️ _Off-hours veya sınıflandırılamadı — resepsiyona yönlendirildi_' : '';
+  const reroutedNote = wasRerouted
+    ? '\n⚠️ <i>Off-hours veya sınıflandırılamadı — resepsiyona yönlendirildi</i>'
+    : '';
 
   const msgText = [
-    `🆕 *Misafir Talebi*`,
+    `🆕 <b>Misafir Talebi</b>`,
     ``,
-    `👤 Misafir: ${escapeMarkdown(guestName)}`,
-    `📝 Mesaj: ${escapeMarkdown(guestMessage)}`,
-    `🤖 AI Cevabı: ${escapeMarkdown(aiResponse)}`,
-    `📊 Departman: \`${targetDept}\` | Güven: %${confidencePercent}`,
+    `👤 Misafir: ${escapeHtml(guestName)}`,
+    `📝 Mesaj: ${escapeHtml(guestMessage)}`,
+    `🤖 AI Cevabı: ${escapeHtml(aiResponse)}`,
+    `📊 Departman: <code>${targetDept}</code> | Güven: %${confidencePercent}`,
     `🕐 ${dateStr}`,
     reroutedNote,
   ]
@@ -63,8 +69,10 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     .from('forwarded_messages')
     .insert({
       ai_intent_id: aiIntentId ?? null,
+      source_department: classifiedDepartment ?? null,
       target_department: targetDept,
       target_chat_id: targetChatId,
+      is_off_hours: isOffHours,
       status: 'pending',
     })
     .select('id')
@@ -84,7 +92,7 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     const sent = await tg.sendMessage({
       chat_id: targetChatId,
       text: msgText,
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       disable_web_page_preview: true,
     });
     telegramMessageId = sent.message_id;
@@ -111,7 +119,12 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
   return { status: 'sent', telegramMessageId };
 }
 
-/** Markdown MarkdownV1 özel karakterleri kaçır (sadece * ve _ ) */
-function escapeMarkdown(text: string): string {
-  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, (c) => `\\${c}`);
+/** HTML özel karakterleri kaçır (&, <, >, ", ') */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
