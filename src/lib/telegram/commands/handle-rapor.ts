@@ -1,9 +1,8 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 
 export async function handleRapor(hotelClient: SupabaseClient): Promise<string> {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const isoStart = todayStart.toISOString();
+  // Son 24 saat — UTC güvenli (setHours lokal saat bazlıydı, UTC'de hatalıydı)
+  const isoStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const { count: inboundCount } = await hotelClient
     .from('bot_messages')
@@ -36,7 +35,7 @@ export async function handleRapor(hotelClient: SupabaseClient): Promise<string> 
           .map(([k, v]) => `  • ${k}: ${v}`)
           .join('\n');
 
-  return `📊 *Bugünkü Rapor*
+  return `📊 *Son 24 Saat Raporu*
 
 📥 Gelen mesaj: *${inboundCount ?? 0}*
 📤 Giden mesaj: *${outboundCount ?? 0}*

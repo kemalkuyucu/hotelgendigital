@@ -7,11 +7,13 @@ import { getHotelBySlug } from '@/lib/tenant/get-hotel-by-slug';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
 import { classifyAndRespond } from '@/lib/ai/classify-and-respond';
 import type { ConversationContextMessage } from '@/lib/ai/classify-and-respond';
+import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-hours';
+import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Bot token resolver — şimdilik sadece demo. Modül 6'da bridge_credentials'tan çekilecek.
+// Bot token resolver — şimdilik sadece demo. Modül 7'de bridge_credentials'tan çekilecek.
 function getBotTokenForHotel(slug: string): string | null {
   if (slug === 'demo-hotel') return process.env.TELEGRAM_BOT_TOKEN_DEMO ?? null;
   return null;
@@ -106,7 +108,7 @@ async function handleMessage(args: {
   const chatId = msg.chat.id;
   const userId = msg.from?.id;
 
-  // Sadece bire bir sohbetleri işle (grup mesajları Modül 6+'da)
+  // Sadece bire bir sohbetleri işle (grup mesajları Modül 7+'da)
   if (msg.chat.type !== 'private') {
     console.log(`[telegram] grup mesajı atlandı: chat ${chatId} (${msg.chat.type})`);
     return;
@@ -132,7 +134,7 @@ async function handleMessage(args: {
   }
 
   // Normal mesaj akışı
-  const { conversationId } = await upsertGuestAndConversation({ supa, msg });
+  const { guestName, conversationId } = await upsertGuestAndConversation({ supa, msg });
 
   // Inbound mesajı kaydet
   const { data: inboundData, error: inboundError } = await supa
@@ -177,15 +179,24 @@ async function handleMessage(args: {
       created_at: r.created_at as string,
     }));
 
-  // Aktif departmanları çek
+  // Aktif departmanları çek — Modül 6: telegram_chat_id ve routing kolonları da dahil
   const { data: deptRows } = await supa
     .from('departments')
-    .select('code, display_name')
+    .select('code, display_name, telegram_chat_id, working_hours, off_hours_behavior')
     .eq('is_enabled', true);
 
   const departments = (deptRows ?? []).map((d) => ({
     code: d.code as string,
     display_name: d.display_name as string,
+    telegram_chat_id: (d.telegram_chat_id as number | null) ?? null,
+    working_hours: (d.working_hours as string | null) ?? null,
+    off_hours_behavior: (d.off_hours_behavior as string | null) ?? null,
+  }));
+
+  // AI için sadece code + display_name
+  const deptInfoForAI = departments.map((d) => ({
+    code: d.code,
+    display_name: d.display_name,
   }));
 
   // Claude AI çağrısı
@@ -195,7 +206,7 @@ async function handleMessage(args: {
   try {
     aiResult = await classifyAndRespond({
       hotelName,
-      departments,
+      departments: deptInfoForAI,
       guestMessage: text,
       context,
     });
@@ -210,23 +221,60 @@ async function handleMessage(args: {
     'Mesajınız alındı, en kısa sürede ilgili departmandan dönüş yapılacaktır.';
 
   // ai_intents kaydı
-  const { error: intentError } = await supa.from('ai_intents').insert({
-    conversation_id: conversationId,
-    bot_message_id: inboundMsgId ?? null,
-    classified_department: aiResult?.department ?? null,
-    confidence: aiResult?.confidence ?? null,
-    reasoning: aiResult?.reasoning ?? null,
-    ai_response: responseText,
-    model: aiResult?.model ?? 'claude-sonnet-4-6',
-    prompt_tokens: aiResult?.prompt_tokens ?? null,
-    completion_tokens: aiResult?.completion_tokens ?? null,
-    latency_ms: aiResult?.latency_ms ?? null,
-    error: aiError,
-  });
+  const { data: intentData, error: intentError } = await supa
+    .from('ai_intents')
+    .insert({
+      conversation_id: conversationId,
+      bot_message_id: inboundMsgId ?? null,
+      classified_department: aiResult?.department ?? null,
+      confidence: aiResult?.confidence ?? null,
+      reasoning: aiResult?.reasoning ?? null,
+      ai_response: responseText,
+      model: aiResult?.model ?? 'claude-sonnet-4-6',
+      prompt_tokens: aiResult?.prompt_tokens ?? null,
+      completion_tokens: aiResult?.completion_tokens ?? null,
+      latency_ms: aiResult?.latency_ms ?? null,
+      error: aiError,
+    })
+    .select('id')
+    .single();
 
   if (intentError) {
     console.error('[telegram] ai_intents insert error:', intentError.message);
   }
+
+  const aiIntentId = intentData?.id as string | undefined;
+
+  // ── Modül 6: Departman grubuna forward ─────────────────────────────────────
+  const routingResult = resolveTargetDepartment(
+    aiResult?.department ?? null,
+    departments as DeptRouteInfo[],
+  );
+
+  if (routingResult) {
+    try {
+      await forwardToDepartment({
+        hotelSupa: supa,
+        tg,
+        aiIntentId: aiIntentId ?? null,
+        targetDept: routingResult.targetDept,
+        targetChatId: routingResult.targetChatId,
+        wasRerouted: routingResult.wasRerouted,
+        guestName,
+        guestMessage: text,
+        aiResponse: responseText,
+        confidence: aiResult?.confidence ?? 0,
+      });
+      console.log(
+        `[telegram] forward OK → dept=${routingResult.targetDept} chat=${routingResult.targetChatId} rerouted=${routingResult.wasRerouted}`,
+      );
+    } catch (fwdErr) {
+      console.error('[telegram] forwardToDepartment error:', fwdErr);
+    }
+  } else {
+    console.warn('[telegram] routing result null — forward atlandı (dept chat_id yok?)');
+  }
+  // ───────────────────────────────────────────────────────────────────────────
 
   // Outbound mesajı kaydet
   await supa.from('bot_messages').insert({
@@ -246,7 +294,7 @@ async function handleMessage(args: {
 async function upsertGuestAndConversation(args: {
   supa: SupabaseClient;
   msg: TelegramMessage;
-}): Promise<{ guestId: string; conversationId: string }> {
+}): Promise<{ guestId: string; guestName: string; conversationId: string }> {
   const { supa, msg } = args;
   const userId = msg.from!.id;
   const chatId = msg.chat.id;
@@ -312,5 +360,5 @@ async function upsertGuestAndConversation(args: {
     conversationId = newConv!.id as string;
   }
 
-  return { guestId, conversationId };
+  return { guestId, guestName: fullName, conversationId };
 }
