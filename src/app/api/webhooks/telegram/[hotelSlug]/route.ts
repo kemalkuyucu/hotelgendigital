@@ -11,6 +11,20 @@ import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 
 export const runtime = 'nodejs';
+
+/**
+ * Modül 7.2: Misafir mesajlarından Markdown leak'i temizle.
+ * Sadece misafir bot mesajlarına uygulanır — yönetici botu etkilenmez.
+ */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')   // **bold** → bold
+    .replace(/\*(.+?)\*/g, '$1')       // *italic* → italic
+    .replace(/__(.+?)__/g, '$1')       // __bold__ → bold
+    .replace(/_(.+?)_/g, '$1')         // _italic_ → italic
+    .replace(/`(.+?)`/g, '$1')         // `code` → code
+    .replace(/^#+\s/gm, '');           // # heading → heading
+}
 export const dynamic = 'force-dynamic';
 
 // Bot token resolver — şimdilik sadece demo. Modül 7'de bridge_credentials'tan çekilecek.
@@ -217,9 +231,12 @@ async function handleMessage(args: {
   }
 
   // AI fallback cevap (AI patladıysa)
-  const responseText =
+  const rawResponseText =
     aiResult?.response_to_guest ??
     'Mesajınız alındı, en kısa sürede ilgili departmandan dönüş yapılacaktır.';
+
+  // Modül 7.2: Markdown leak savunma katmanı — misafir mesajı gönderilmeden önce temizle
+  const responseText = stripMarkdown(rawResponseText);
 
   // ai_intents kaydı
   const { data: intentData, error: intentError } = await supa
@@ -305,7 +322,7 @@ async function handleMessage(args: {
     // ──────────────────────────────────────────────────────────────────────────
   }
 
-  // Outbound mesajı kaydet
+  // Outbound mesajı kaydet (temizlenmiş metin)
   await supa.from('bot_messages').insert({
     conversation_id: conversationId,
     direction: 'outbound',
@@ -313,7 +330,7 @@ async function handleMessage(args: {
     message_type: 'text',
   });
 
-  // Telegram'a cevap gönder
+  // Telegram'a cevap gönder — parse_mode yok (düz metin, Markdown/HTML parse etme)
   await tg.sendMessage({
     chat_id: chatId,
     text: responseText,
