@@ -8,7 +8,7 @@ export async function handleDurum(
   // En son 5 health-check kaydı
   const { data: healthRows } = await centralClient
     .from('system_health')
-    .select('check_type, status, latency_ms, checked_at')
+    .select('check_type, status, details, checked_at')
     .eq('hotel_id', hotelId)
     .order('checked_at', { ascending: false })
     .limit(5);
@@ -20,7 +20,8 @@ export async function handleDurum(
   const lines = healthRows.map((r) => {
     const status = r.status as string;
     const icon = status === 'healthy' ? '✅' : status === 'degraded' ? '⚠️' : '❌';
-    return `${icon} ${r.check_type}: ${status} (${r.latency_ms ?? '-'}ms) — ${new Date(r.checked_at as string).toLocaleString('tr-TR')}`;
+    const latency = (r.details as Record<string, unknown> | null)?.latencyMs ?? '-';
+    return `${icon} ${r.check_type}: ${status} (${latency}ms) — ${new Date(r.checked_at as string).toLocaleString('tr-TR')}`;
   });
 
   return `🩺 *Sistem Durumu* (son 5 kontrol)\n\n${lines.join('\n')}`;
