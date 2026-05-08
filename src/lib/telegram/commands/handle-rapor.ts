@@ -1,5 +1,13 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 
+/** HTML özel karakterleri kaçır (&, <, >) */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export async function handleRapor(hotelClient: SupabaseClient): Promise<string> {
   // Son 24 saat — UTC güvenli (setHours lokal saat bazlıydı, UTC'de hatalıydı)
   const isoStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -27,12 +35,13 @@ export async function handleRapor(hotelClient: SupabaseClient): Promise<string> 
     distMap.set(key, (distMap.get(key) ?? 0) + 1);
   }
 
+  // Modül 7.1: Intent key'leri <code> ile sar — underscore italik render bug fix
   const distLines =
     distMap.size === 0
-      ? '_(bugün intent yok)_'
+      ? '<i>(bugün intent yok)</i>'
       : Array.from(distMap.entries())
           .sort((a, b) => b[1] - a[1])
-          .map(([k, v]) => `  • ${k}: ${v}`)
+          .map(([k, v]) => `  • <code>${escapeHtml(k)}</code>: ${v}`)
           .join('\n');
 
   // Forward özeti (Modül 6.1)
@@ -54,16 +63,25 @@ export async function handleRapor(hotelClient: SupabaseClient): Promise<string> 
     .eq('status', 'failed')
     .gte('created_at', isoStart);
 
-  return `📊 *Son 24 Saat Raporu*
+  // Modül 7.1: KB'den cevaplanan soru sayısı
+  const { count: kbAnsweredCount } = await hotelClient
+    .from('knowledge_answers')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', isoStart);
 
-📥 Gelen mesaj: *${inboundCount ?? 0}*
-📤 Giden mesaj: *${outboundCount ?? 0}*
+  return `📊 <b>Son 24 Saat Raporu</b>
+
+📥 Gelen mesaj: <b>${inboundCount ?? 0}</b>
+📤 Giden mesaj: <b>${outboundCount ?? 0}</b>
 
 🏷 Intent dağılımı:
 ${distLines}
 
-📨 *Forward Özeti*
-✅ Gönderilen: *${fwdSentCount ?? 0}*
-🌙 Off-hours: *${fwdOffHoursCount ?? 0}*
-❌ Başarısız: *${fwdFailedCount ?? 0}*`;
+🧠 <b>Bilgi Bankası</b>
+  ✅ KB'den cevaplanan: <b>${kbAnsweredCount ?? 0}</b>
+
+📨 <b>Forward Özeti</b>
+  ✅ Gönderilen: <b>${fwdSentCount ?? 0}</b>
+  🌙 Off-hours: <b>${fwdOffHoursCount ?? 0}</b>
+  ❌ Başarısız: <b>${fwdFailedCount ?? 0}</b>`;
 }

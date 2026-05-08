@@ -246,48 +246,64 @@ async function handleMessage(args: {
 
   const aiIntentId = intentData?.id as string | undefined;
 
-  // ── Modül 6: Departman grubuna forward ─────────────────────────────────────
-  const routingResult = resolveTargetDepartment(
-    aiResult?.department ?? null,
-    departments as DeptRouteInfo[],
-  );
+  // ── Modül 7.1: KB cevabı varsa forward yapma, sadece logla ─────────────────
+  const answeredFromKnowledge = aiResult?.answered_from_knowledge ?? false;
 
-  if (routingResult) {
-    try {
-      await forwardToDepartment({
-        hotelSupa: supa,
-        tg,
-        aiIntentId: aiIntentId ?? null,
-        classifiedDepartment: aiResult?.department ?? null,
-        targetDept: routingResult.targetDept,
-        targetChatId: routingResult.targetChatId,
-        wasRerouted: routingResult.wasRerouted,
-        // isOffHours: sınıflandırma yapıldı ama mesai dışı olduğu için yönlendirildi
-        isOffHours: routingResult.wasRerouted && (aiResult?.department ?? null) !== null,
-        guestName,
-        guestMessage: text,
-        aiResponse: responseText,
-        confidence: aiResult?.confidence ?? 0,
-      });
-      console.log(
-        `[telegram] forward OK → dept=${routingResult.targetDept} chat=${routingResult.targetChatId} rerouted=${routingResult.wasRerouted}`,
-      );
-
-      // conversations tablosunu rapor kolonlarıyla güncelle
-      await supa
-        .from('conversations')
-        .update({
-          last_intent: routingResult.targetDept,
-          last_forwarded_at: new Date().toISOString(),
-        })
-        .eq('id', conversationId);
-    } catch (fwdErr) {
-      console.error('[telegram] forwardToDepartment error:', fwdErr);
-    }
+  if (answeredFromKnowledge) {
+    // KB'den cevap verildi — departmana forward YAPMA, sadece istatistik logla
+    console.log(
+      `[telegram] KB cevap → forward atlandı. predicted_intent=${aiResult?.department ?? 'unknown'}`,
+    );
+    await logKnowledgeAnswer(supa, {
+      conversationId,
+      predictedIntent: aiResult?.department ?? null,
+      questionText: text,
+      answerText: responseText,
+    });
   } else {
-    console.warn('[telegram] routing result null — forward atlandı (dept chat_id yok?)');
+    // ── Modül 6: Departman grubuna forward ──────────────────────────────────
+    const routingResult = resolveTargetDepartment(
+      aiResult?.department ?? null,
+      departments as DeptRouteInfo[],
+    );
+
+    if (routingResult) {
+      try {
+        await forwardToDepartment({
+          hotelSupa: supa,
+          tg,
+          aiIntentId: aiIntentId ?? null,
+          classifiedDepartment: aiResult?.department ?? null,
+          targetDept: routingResult.targetDept,
+          targetChatId: routingResult.targetChatId,
+          wasRerouted: routingResult.wasRerouted,
+          // isOffHours: sınıflandırma yapıldı ama mesai dışı olduğu için yönlendirildi
+          isOffHours: routingResult.wasRerouted && (aiResult?.department ?? null) !== null,
+          guestName,
+          guestMessage: text,
+          aiResponse: responseText,
+          confidence: aiResult?.confidence ?? 0,
+        });
+        console.log(
+          `[telegram] forward OK → dept=${routingResult.targetDept} chat=${routingResult.targetChatId} rerouted=${routingResult.wasRerouted}`,
+        );
+
+        // conversations tablosunu rapor kolonlarıyla güncelle
+        await supa
+          .from('conversations')
+          .update({
+            last_intent: routingResult.targetDept,
+            last_forwarded_at: new Date().toISOString(),
+          })
+          .eq('id', conversationId);
+      } catch (fwdErr) {
+        console.error('[telegram] forwardToDepartment error:', fwdErr);
+      }
+    } else {
+      console.warn('[telegram] routing result null — forward atlandı (dept chat_id yok?)');
+    }
+    // ──────────────────────────────────────────────────────────────────────────
   }
-  // ───────────────────────────────────────────────────────────────────────────
 
   // Outbound mesajı kaydet
   await supa.from('bot_messages').insert({
@@ -375,3 +391,26 @@ async function upsertGuestAndConversation(args: {
 
   return { guestId, guestName: fullName, conversationId };
 }
+
+/** Modül 7.1: KB'den cevaplanan soruları knowledge_answers tablosuna logla */
+async function logKnowledgeAnswer(
+  supa: SupabaseClient,
+  args: {
+    conversationId: string;
+    predictedIntent: string | null;
+    questionText: string;
+    answerText: string;
+  },
+): Promise<void> {
+  const { error } = await supa.from('knowledge_answers').insert({
+    conversation_id: args.conversationId,
+    predicted_intent: args.predictedIntent ?? null,
+    question_text: args.questionText,
+    answer_text: args.answerText,
+  });
+  if (error) {
+    // Tablo henüz oluşturulmamış olabilir (migration bekliyor) — sessizce log
+    console.error('[kb] knowledge_answers insert error:', error.message);
+  }
+}
+

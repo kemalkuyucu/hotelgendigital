@@ -116,7 +116,8 @@ export async function POST(
           break;
         case '/rapor':
           response = await handleRapor(hotelClient);
-          break;
+          await sendManagerMessage({ chatId: incomingChatId, text: response, parseMode: 'HTML' });
+          return NextResponse.json({ ok: true });
         case '/durum':
           response = await handleDurum(hotelClient, hotelRow.id, central);
           break;
