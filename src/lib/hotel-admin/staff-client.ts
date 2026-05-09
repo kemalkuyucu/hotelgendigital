@@ -102,6 +102,35 @@ export async function deleteStaff(hotelSupa: SupabaseClient, id: string): Promis
 // ---------------------------------------------------------------------------
 
 /**
+ * O anki Türkiye saatini (Europe/Istanbul) Intl.DateTimeFormat ile güvenilir şekilde döner.
+ * toLocaleString + new Date() trick'i Vercel serverless'ta tutarsız davranabilir.
+ */
+function getCurrentTRTime(): { currentMinutes: number; todayKey: string } {
+  const now = new Date();
+  const trFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Istanbul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    weekday: 'short',
+  });
+  const parts = trFormatter.formatToParts(now);
+  const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+  const minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+  const weekday = parts.find(p => p.type === 'weekday')?.value ?? 'Mon';
+
+  const dayMap: Record<string, string> = {
+    'Mon': 'mon', 'Tue': 'tue', 'Wed': 'wed', 'Thu': 'thu',
+    'Fri': 'fri', 'Sat': 'sat', 'Sun': 'sun',
+  };
+
+  return {
+    currentMinutes: hour * 60 + minute,
+    todayKey: dayMap[weekday] ?? 'mon',
+  };
+}
+
+/**
  * O anki Türkiye saatine (Europe/Istanbul) göre vardiyadaki aktif personeli döner.
  * 
  * Kurallar:
@@ -115,14 +144,8 @@ export async function getActiveStaffNow(
   hotelSupa: SupabaseClient,
   departmentKey: DepartmentKey
 ): Promise<Staff[]> {
-  // Türkiye saati
-  const nowTr = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-
-  const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  const todayKey = dayNames[nowTr.getDay()]; // 'mon', 'tue', ...
-
-  // Saat dakikaya çevir (00:00 = 0, 23:59 = 1439)
-  const currentMinutes = nowTr.getHours() * 60 + nowTr.getMinutes();
+  // Türkiye saati — Intl.DateTimeFormat ile güvenilir
+  const { currentMinutes, todayKey } = getCurrentTRTime();
 
   // Tüm aktif personeli çek
   const { data, error } = await hotelSupa
