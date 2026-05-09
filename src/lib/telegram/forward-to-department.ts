@@ -143,11 +143,14 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
 
   const deptKey = targetDept as DepartmentKey;
 
+  // 8.2 DIAGNOSTIC: targetDept değerini ve validDepts sonucunu her zaman logla
+  console.log(`[forward] DM check → targetDept='${targetDept}' validDepts=${JSON.stringify(validDepts)} isValid=${validDepts.includes(deptKey)}`);
+
   if (validDepts.includes(deptKey)) {
-    console.log(`[forward] checking active staff for dept=${targetDept}...`);
+    console.log(`[forward] checking active staff for ${targetDept}`);
     try {
       const activeStaff = await getActiveStaffNow(hotelSupa, deptKey);
-      console.log(`[forward] found ${activeStaff.length} active staff for ${targetDept}`);
+      console.log(`[forward] found ${activeStaff.length} active staff`);
 
       for (const staff of activeStaff) {
         if (!staff.telegram_user_id) {
@@ -172,7 +175,7 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
           continue;
         }
 
-        console.log(`[forward] sending DM to ${staff.full_name} (${staff.telegram_user_id})...`);
+        console.log(`[forward] sending DM to ${staff.full_name} (${staff.telegram_user_id})`);
         try {
           const dmSent = await tg.sendMessage({
             chat_id: dmChatId,
@@ -215,9 +218,11 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
         }
       }
     } catch (staffErr) {
-      // Vardiya hesabı başarısız → sadece logla, asıl forward etkilenmesin
-      console.error('[forward] getActiveStaffNow error:', staffErr instanceof Error ? staffErr.message : staffErr);
+      // Vardiya hesabı başarısız → full error logla (yutma)
+      console.error('[forward] getActiveStaffNow FAILED:', staffErr instanceof Error ? staffErr.stack ?? staffErr.message : String(staffErr));
     }
+  } else {
+    console.log(`[forward] DM skipped — targetDept '${targetDept}' not in validDepts`);
   }
 
   // ─── 3. RESEPSIYON CC — Operasyonel departmanlarda Demo_OnBuro haberdar edilir ──
