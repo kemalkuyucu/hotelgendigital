@@ -163,12 +163,20 @@ export default async function EditHotelPage({ params }: { params: Promise<{ id: 
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-800">Hızlı Erişim</h2>
         </div>
-        <a
-          href={`/admin/hotels/${h.id}/knowledge`}
-          className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-5 py-3 text-sm font-medium text-indigo-700 hover:bg-indigo-100 transition-colors mb-6"
-        >
-          📚 Bilgi Bankası
-        </a>
+        <div className="flex gap-3 flex-wrap">
+          <a
+            href={`/admin/hotels/${h.id}/knowledge`}
+            className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-5 py-3 text-sm font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+          >
+            📚 Bilgi Bankası
+          </a>
+          <a
+            href={`/admin/hotels/${h.id}/admin-users`}
+            className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-5 py-3 text-sm font-medium text-violet-700 hover:bg-violet-100 transition-colors"
+          >
+            👤 Yöneticiler
+          </a>
+        </div>
       </div>
 
       <div className="mt-2 max-w-2xl">

@@ -1,8 +1,10 @@
 // Modül 6 — Departman grubuna mesaj forward
-// Misafir mesajını formatlayıp ilgili Telegram grubuna gönderir ve forwarded_messages'a kaydeder.
+// Modül 8 ile güncellendi: grup mesajı + vardiyadaki aktif personele bireysel DM
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { TelegramClient } from './client';
+import { getActiveStaffNow } from '@/lib/hotel-admin/staff-client';
+import type { DepartmentKey } from '@/lib/hotel-admin/types';
 
 export interface ForwardInput {
   hotelSupa: SupabaseClient;     // Demo Hotel DB client
@@ -64,7 +66,9 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     .filter((l) => l !== undefined)
     .join('\n');
 
-  // forwarded_messages tablosuna pending kaydı oluştur
+  // ─── 1. GRUP MESAJI ──────────────────────────────────────────────────────
+
+  // forwarded_messages tablosuna pending kaydı oluştur (grup)
   const { data: fwdRow, error: insertError } = await hotelSupa
     .from('forwarded_messages')
     .insert({
@@ -74,6 +78,7 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
       target_chat_id: targetChatId,
       is_off_hours: isOffHours,
       status: 'pending',
+      target_type: 'group',
     })
     .select('id')
     .single();
@@ -98,7 +103,7 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     telegramMessageId = sent.message_id;
   } catch (err) {
     sendError = err instanceof Error ? err.message : 'unknown send error';
-    console.error('[forward] Telegram send error:', sendError);
+    console.error('[forward] Telegram group send error:', sendError);
   }
 
   // forwarded_messages kaydını güncelle
@@ -112,6 +117,69 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
       })
       .eq('id', fwdId);
   }
+
+  // ─── 2. BİREYSEL DM — Vardiyadaki aktif personele ────────────────────────
+
+  // targetDept valid DepartmentKey mi kontrol et
+  const validDepts: DepartmentKey[] = [
+    'front_office', 'housekeeping', 'technical', 'fb',
+    'guest_relation', 'spa', 'animation',
+  ];
+
+  const deptKey = targetDept as DepartmentKey;
+
+  if (validDepts.includes(deptKey)) {
+    try {
+      const activeStaff = await getActiveStaffNow(hotelSupa, deptKey);
+
+      for (const staff of activeStaff) {
+        if (!staff.telegram_user_id) continue;
+
+        const dmText = [
+          `📣 <b>Vardiya Bildirimi</b>`,
+          ``,
+          `👤 Misafir: ${escapeHtml(guestName)}`,
+          `📝 Talep: ${escapeHtml(guestMessage)}`,
+          `📊 Departman: <code>${targetDept}</code>`,
+          `🕐 ${dateStr}`,
+        ].join('\n');
+
+        try {
+          const dmSent = await tg.sendMessage({
+            chat_id: parseInt(staff.telegram_user_id, 10),
+            text: dmText,
+            parse_mode: 'HTML',
+            disable_web_page_preview: true,
+          });
+
+          // Log the DM
+          await hotelSupa
+            .from('forwarded_messages')
+            .insert({
+              ai_intent_id: aiIntentId ?? null,
+              source_department: classifiedDepartment ?? null,
+              target_department: targetDept,
+              target_chat_id: parseInt(staff.telegram_user_id, 10),
+              is_off_hours: isOffHours,
+              status: 'sent',
+              target_type: 'staff_dm',
+              telegram_message_id: dmSent.message_id,
+            });
+        } catch (dmErr) {
+          // DM başarısız (kullanıcı bot'u block etmiş olabilir) → sessizce logla, devam et
+          console.error(
+            `[forward] Staff DM failed for ${staff.full_name} (${staff.telegram_user_id}):`,
+            dmErr instanceof Error ? dmErr.message : dmErr
+          );
+        }
+      }
+    } catch (staffErr) {
+      // Vardiya hesabı başarısız → sadece logla, asıl forward etkilenmesin
+      console.error('[forward] getActiveStaffNow error:', staffErr instanceof Error ? staffErr.message : staffErr);
+    }
+  }
+
+  // ─── SONUÇ ────────────────────────────────────────────────────────────────
 
   if (sendError) {
     return { status: 'failed', error: sendError };
