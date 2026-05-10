@@ -135,94 +135,80 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
 
   // ─── 2. BİREYSEL DM — Vardiyadaki aktif personele ────────────────────────
 
-  // targetDept valid DepartmentKey mi kontrol et
-  const validDepts: DepartmentKey[] = [
-    'front_office', 'housekeeping', 'technical', 'fb',
-    'guest_relation', 'spa', 'animation',
-  ];
-
   const deptKey = targetDept as DepartmentKey;
 
-  // 8.2 DIAGNOSTIC: targetDept değerini ve validDepts sonucunu her zaman logla
-  console.log(`[forward] DM check → targetDept='${targetDept}' validDepts=${JSON.stringify(validDepts)} isValid=${validDepts.includes(deptKey)}`);
+  console.log(`[fwd] DM start dept=${targetDept}`);
+  try {
+    const activeStaff = await getActiveStaffNow(hotelSupa, deptKey);
+    console.log(`[fwd] staff_count=${activeStaff.length}`);
 
-  if (validDepts.includes(deptKey)) {
-    console.log(`[forward] checking active staff for ${targetDept}`);
-    try {
-      const activeStaff = await getActiveStaffNow(hotelSupa, deptKey);
-      console.log(`[forward] found ${activeStaff.length} active staff`);
+    for (const staff of activeStaff) {
+      if (!staff.telegram_user_id) {
+        console.log(`[fwd] DM skip ${staff.full_name} — no telegram_user_id`);
+        continue;
+      }
 
-      for (const staff of activeStaff) {
-        if (!staff.telegram_user_id) {
-          console.log(`[forward] skipping ${staff.full_name} — no telegram_user_id`);
-          continue;
-        }
+      const dmText = formatStaffDmMessage({
+        staffFullName: staff.full_name,
+        guestName,
+        guestMessage,
+        deptDisplayLabel,
+        trDateStr,
+      });
 
-        const dmText = formatStaffDmMessage({
-          staffFullName: staff.full_name,
-          guestName,
-          guestMessage,
-          deptDisplayLabel,
-          trDateStr,
+      // BigInt cast — telegram_user_id text olarak saklanıyor
+      let dmChatId: number;
+      try {
+        dmChatId = Number(BigInt(staff.telegram_user_id));
+      } catch {
+        console.error(`[fwd] DM error: invalid telegram_user_id for ${staff.full_name}: ${staff.telegram_user_id}`);
+        continue;
+      }
+
+      try {
+        const dmSent = await tg.sendMessage({
+          chat_id: dmChatId,
+          text: dmText,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true,
         });
 
-        // BigInt cast — DB target_chat_id bigint, telegram_user_id text olarak saklanıyor
-        let dmChatId: number;
-        try {
-          dmChatId = Number(BigInt(staff.telegram_user_id));
-        } catch {
-          console.error(`[forward] invalid telegram_user_id for ${staff.full_name}: ${staff.telegram_user_id}`);
-          continue;
-        }
-
-        console.log(`[forward] sending DM to ${staff.full_name} (${staff.telegram_user_id})`);
-        try {
-          const dmSent = await tg.sendMessage({
-            chat_id: dmChatId,
-            text: dmText,
-            parse_mode: 'HTML',
-            disable_web_page_preview: true,
+        await hotelSupa
+          .from('forwarded_messages')
+          .insert({
+            ai_intent_id: aiIntentId ?? null,
+            source_department: classifiedDepartment ?? null,
+            target_department: targetDept,
+            target_chat_id: dmChatId,
+            is_off_hours: isOffHours,
+            status: 'sent',
+            target_type: 'staff_dm',
+            telegram_message_id: dmSent.message_id,
           });
 
-          await hotelSupa
-            .from('forwarded_messages')
-            .insert({
-              ai_intent_id: aiIntentId ?? null,
-              source_department: classifiedDepartment ?? null,
-              target_department: targetDept,
-              target_chat_id: dmChatId,
-              is_off_hours: isOffHours,
-              status: 'sent',
-              target_type: 'staff_dm',
-              telegram_message_id: dmSent.message_id,
-            });
+        console.log(`[fwd] DM sent to ${dmChatId}`);
+      } catch (dmErr) {
+        // DM başarısız (kullanıcı bot'u block etmiş olabilir) → logla ve DB'ye yaz, devam et
+        const dmErrMsg = dmErr instanceof Error ? dmErr.message : String(dmErr);
+        console.error(`[fwd] DM error: ${dmErrMsg}`);
 
-          console.log(`[forward] DM sent to ${staff.full_name} → messageId=${dmSent.message_id}`);
-        } catch (dmErr) {
-          // DM başarısız (kullanıcı bot'u block etmiş olabilir) → logla ve DB'ye yaz, devam et
-          const dmErrMsg = dmErr instanceof Error ? dmErr.message : String(dmErr);
-          console.error(`[forward] DM failed for ${staff.full_name} (${staff.telegram_user_id}):`, dmErrMsg);
-
-          await hotelSupa
-            .from('forwarded_messages')
-            .insert({
-              ai_intent_id: aiIntentId ?? null,
-              source_department: classifiedDepartment ?? null,
-              target_department: targetDept,
-              target_chat_id: dmChatId,
-              is_off_hours: isOffHours,
-              status: 'failed',
-              target_type: 'staff_dm',
-              error: dmErrMsg.slice(0, 500),
-            });
-        }
+        await hotelSupa
+          .from('forwarded_messages')
+          .insert({
+            ai_intent_id: aiIntentId ?? null,
+            source_department: classifiedDepartment ?? null,
+            target_department: targetDept,
+            target_chat_id: dmChatId,
+            is_off_hours: isOffHours,
+            status: 'failed',
+            target_type: 'staff_dm',
+            error: dmErrMsg.slice(0, 500),
+          });
       }
-    } catch (staffErr) {
-      // Vardiya hesabı başarısız → full error logla (yutma)
-      console.error('[forward] getActiveStaffNow FAILED:', staffErr instanceof Error ? staffErr.stack ?? staffErr.message : String(staffErr));
     }
-  } else {
-    console.log(`[forward] DM skipped — targetDept '${targetDept}' not in validDepts`);
+  } catch (staffErr) {
+    // Vardiya hesabı başarısız → full error logla (yutma)
+    console.error(`[fwd] DM error: getActiveStaffNow FAILED: ${staffErr instanceof Error ? staffErr.stack ?? staffErr.message : String(staffErr)}`);
   }
 
   // ─── 3. RESEPSIYON CC — Operasyonel departmanlarda Demo_OnBuro haberdar edilir ──

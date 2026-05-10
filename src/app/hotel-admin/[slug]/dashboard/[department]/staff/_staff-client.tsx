@@ -467,7 +467,7 @@ export default function StaffPageClient({ slug, department, departmentLabel, ini
               {/* Vardiya */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={labelStyle}>Vardiya Başlangıç (boş = 7/24)</label>
+                  <label style={labelStyle}>Vardiya Başlangıç</label>
                   <input
                     type="time"
                     style={inputStyle}
@@ -485,6 +485,20 @@ export default function StaffPageClient({ slug, department, departmentLabel, ini
                   />
                 </div>
               </div>
+              <div
+                style={{
+                  background: 'rgba(99,102,241,0.07)',
+                  border: '1px solid rgba(99,102,241,0.18)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  color: '#4338ca',
+                  lineHeight: 1.5,
+                }}
+              >
+                💡 Vardiya saatlerini <strong>boş bırakırsan</strong> bu personel <strong>7/24 yedek sorumlu</strong> olarak işaretlenir — vardiyalı personel bulunamadığında otomatik devreye girer.
+              </div>
+
 
               {/* İzin Günleri */}
               <div>

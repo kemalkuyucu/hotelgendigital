@@ -157,22 +157,18 @@ export async function getActiveStaffNow(
   if (error) throw new Error(`getActiveStaffNow error: ${error.message}`);
   const allStaff = (data ?? []) as Staff[];
 
-  return allStaff.filter((staff) => {
+  // "HH:MM:SS" formatını dakikaya çevir
+  const parseTime = (t: string): number => {
+    const parts = t.split(':');
+    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  };
+
+  // ─── A: Shift DOLU + aktif vardiyada + bugün izinde değil ─────────────────
+  const shiftedStaff = allStaff.filter((staff) => {
     // İzin günü kontrolü
-    if (staff.days_off && staff.days_off.includes(todayKey)) {
-      return false; // bugün izinli
-    }
-
-    // Shift NULL → 7/24 aktif
-    if (staff.shift_start === null || staff.shift_end === null) {
-      return true;
-    }
-
-    // "HH:MM:SS" formatını dakikaya çevir
-    const parseTime = (t: string): number => {
-      const parts = t.split(':');
-      return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-    };
+    if (staff.days_off && staff.days_off.includes(todayKey)) return false;
+    // Shift NULL → bu katmana dahil etme
+    if (staff.shift_start === null || staff.shift_end === null) return false;
 
     const startMin = parseTime(staff.shift_start);
     const endMin = parseTime(staff.shift_end);
@@ -185,4 +181,16 @@ export async function getActiveStaffNow(
       return currentMinutes >= startMin || currentMinutes < endMin;
     }
   });
+
+  // Aktif vardiyalı personel varsa onu döndür
+  if (shiftedStaff.length > 0) return shiftedStaff;
+
+  // ─── B: Yedek sorumlu — shift_start ve shift_end NULL (7/24) ──────────────
+  // Vardiyalı personel yoksa, shift tanımlı olmayan 7/24 yedek sorumluları dön.
+  const fallbackStaff = allStaff.filter((staff) => {
+    if (staff.days_off && staff.days_off.includes(todayKey)) return false;
+    return staff.shift_start === null && staff.shift_end === null;
+  });
+
+  return fallbackStaff;
 }
