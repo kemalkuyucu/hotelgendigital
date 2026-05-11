@@ -9,31 +9,28 @@ import { classifyAndRespond } from '@/lib/ai/classify-and-respond';
 import type { ConversationContextMessage } from '@/lib/ai/classify-and-respond';
 import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-hours';
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
+import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
+import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/verification/verify-guest';
 
 export const runtime = 'nodejs';
 
-/**
- * Modül 7.2: Misafir mesajlarından Markdown leak'i temizle.
- * Sadece misafir bot mesajlarına uygulanır — yönetici botu etkilenmez.
- */
 function stripMarkdown(text: string): string {
   return text
-    .replace(/\*\*(.+?)\*\*/g, '$1')   // **bold** → bold
-    .replace(/\*(.+?)\*/g, '$1')       // *italic* → italic
-    .replace(/__(.+?)__/g, '$1')       // __bold__ → bold
-    .replace(/_(.+?)_/g, '$1')         // _italic_ → italic
-    .replace(/`(.+?)`/g, '$1')         // `code` → code
-    .replace(/^#+\s/gm, '');           // # heading → heading
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/^#+\s/gm, '');
 }
+
 export const dynamic = 'force-dynamic';
 
-// Bot token resolver — şimdilik sadece demo. Modül 7'de bridge_credentials'tan çekilecek.
 function getBotTokenForHotel(slug: string): string | null {
   if (slug === 'demo-hotel') return process.env.TELEGRAM_BOT_TOKEN_DEMO ?? null;
   return null;
 }
 
-// Demo hotel için bridge_credentials bypass — direkt env var'dan Supabase client.
 function getDemoHotelClient(): SupabaseClient | null {
   const url = process.env.DEMO_HOTEL_SUPABASE_URL;
   const key = process.env.DEMO_HOTEL_SUPABASE_SERVICE_ROLE_KEY;
@@ -55,14 +52,12 @@ export async function POST(
 ) {
   const { hotelSlug } = await params;
 
-  // 1) Secret doğrulama
   const headerSecret = req.headers.get('x-telegram-bot-api-secret-token');
   const expected = process.env.TELEGRAM_WEBHOOK_SECRET ?? '';
   if (!verifyTelegramSecret(headerSecret, expected)) {
     return NextResponse.json({ ok: false, error: 'invalid secret' }, { status: 401 });
   }
 
-  // 2) Hotel resolve
   const hotel = await getHotelBySlug(hotelSlug);
   if (!hotel) {
     return NextResponse.json({ ok: false, error: 'hotel not found' }, { status: 404 });
@@ -71,7 +66,6 @@ export async function POST(
     return NextResponse.json({ ok: true, info: 'hotel inactive' });
   }
 
-  // 3) Bot token
   const botToken = getBotTokenForHotel(hotelSlug);
   if (!botToken) {
     console.error(`[telegram] bot token yok: ${hotelSlug}`);
@@ -79,14 +73,12 @@ export async function POST(
   }
   const tg = new TelegramClient(botToken);
 
-  // 4) Hotel DB client
   const supa = await getSupaClientForSlug(hotelSlug, hotel.id);
   if (!supa) {
     console.error(`[telegram] hotel client alınamadı: ${hotelSlug} / ${hotel.id}`);
     return NextResponse.json({ ok: true, info: 'no db client' });
   }
 
-  // 5) Update parse
   let update: TelegramUpdate;
   try {
     update = (await req.json()) as TelegramUpdate;
@@ -99,16 +91,218 @@ export async function POST(
     return NextResponse.json({ ok: true, info: 'no message' });
   }
 
-  // 6) Mesajı işle
   try {
     await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, msg, tg });
   } catch (err) {
     console.error('[telegram] handleMessage error:', err);
-    // Telegram'a 200 dön — retry'lamasın, biz log'larız
   }
 
   return NextResponse.json({ ok: true });
 }
+
+// ── Verification mesaj şablonları ─────────────────────────────────────────────
+
+function getVerificationAskMsg(lang: string): string {
+  const msgs: Record<string, string> = {
+    tr: 'Talebinizi iletmek için lütfen oda numaranızı ve soyadınızı paylaşır mısınız? Örnek: 215 Yılmaz',
+    en: 'To process your request, could you share your room number and last name? Example: 215 Smith',
+    de: 'Bitte teilen Sie uns Ihre Zimmernummer und Ihren Nachnamen mit. Beispiel: 215 Müller',
+    ru: 'Пожалуйста, укажите номер вашей комнаты и фамилию. Пример: 215 Иванов',
+    ar: 'يرجى مشاركة رقم غرفتك واسم العائلة. مثال: 215 محمد',
+  };
+  return msgs[lang] ?? msgs['tr'];
+}
+
+function getVerificationFailMsg(lang: string): string {
+  const msgs: Record<string, string> = {
+    tr: 'Oda numarası ve soyad eşleşmedi. Lütfen tekrar deneyin veya ön büromuza ulaşın.',
+    en: 'Room number and last name did not match. Please try again or contact our front desk.',
+    de: 'Zimmernummer und Nachname stimmen nicht überein. Bitte versuchen Sie es erneut oder wenden Sie sich an die Rezeption.',
+    ru: 'Номер комнаты и фамилия не совпадают. Пожалуйста, попробуйте ещё раз или обратитесь на стойку регистрации.',
+    ar: 'رقم الغرفة واسم العائلة غير متطابقين. يرجى المحاولة مرة أخرى أو التواصل مع مكتب الاستقبال.',
+  };
+  return msgs[lang] ?? msgs['tr'];
+}
+
+function getVerificationLockedMsg(lang: string): string {
+  const msgs: Record<string, string> = {
+    tr: 'Doğrulama başarısız oldu. Lütfen ön büromuza ulaşın.',
+    en: 'Verification failed. Please contact our front desk.',
+    de: 'Verifizierung fehlgeschlagen. Bitte wenden Sie sich an die Rezeption.',
+    ru: 'Верификация не удалась. Пожалуйста, обратитесь на стойку регистрации.',
+    ar: 'فشل التحقق. يرجى التواصل مع مكتب الاستقبال.',
+  };
+  return msgs[lang] ?? msgs['tr'];
+}
+
+function getVerificationSuccessMsg(lang: string, firstName: string | undefined): string {
+  const name = firstName ?? '';
+  const msgs: Record<string, string> = {
+    tr: `Bilgileriniz doğrulandı${name ? `, ${name} Bey/Hanım` : ''}. Talebinizi iletiyorum.`,
+    en: `Your details have been verified${name ? `, ${name}` : ''}. I'm forwarding your request now.`,
+    de: `Ihre Daten wurden verifiziert${name ? `, ${name}` : ''}. Ich leite Ihre Anfrage weiter.`,
+    ru: `Ваши данные подтверждены${name ? `, ${name}` : ''}. Перенаправляю ваш запрос.`,
+    ar: `تم التحقق من بياناتك${name ? `، ${name}` : ''}. جاري إحالة طلبك.`,
+  };
+  return msgs[lang] ?? msgs['tr'];
+}
+
+// ── Dil tespiti (basit — misafirin Telegram language_code veya önceki mesaj dili) ──
+
+function detectLanguage(msg: TelegramMessage): string {
+  const code = msg.from?.language_code ?? 'tr';
+  if (code.startsWith('tr')) return 'tr';
+  if (code.startsWith('en')) return 'en';
+  if (code.startsWith('de')) return 'de';
+  if (code.startsWith('ru')) return 'ru';
+  if (code.startsWith('ar')) return 'ar';
+  return 'tr';
+}
+
+// ── Doğrulama akışı ────────────────────────────────────────────────────────────
+
+interface ConversationState {
+  id: string;
+  verified_inhouse_guest_id: string | null;
+  verified_at: string | null;
+  verification_pending_intent: string | null;
+  verification_attempts: number;
+}
+
+interface VerificationFlowResult {
+  shouldShortCircuit: boolean;
+  replyText: string;
+  verifiedGuestId: string | null;
+  effectiveIntent: string;
+}
+
+async function handleVerificationFlow(args: {
+  supa: SupabaseClient;
+  conversationId: string;
+  conversation: ConversationState;
+  guestMessageText: string;
+  aiIntent: string;
+  aiReplyText: string;
+  language: string;
+}): Promise<VerificationFlowResult> {
+  const { supa, conversationId, conversation, guestMessageText, aiIntent, language } = args;
+
+  // 1. Zaten doğrulanmış ve TTL geçerli → normal akışa devam
+  if (
+    conversation.verified_inhouse_guest_id &&
+    isVerificationValid(conversation.verified_at)
+  ) {
+    console.log(`[verification] Zaten doğrulanmış guest_id=${conversation.verified_inhouse_guest_id}`);
+    return {
+      shouldShortCircuit: false,
+      replyText: args.aiReplyText,
+      verifiedGuestId: conversation.verified_inhouse_guest_id,
+      effectiveIntent: aiIntent,
+    };
+  }
+
+  // 2. Kilitlenmiş mi? (attempts >= MAX ve hâlâ doğrulanmamış)
+  if (conversation.verification_attempts >= MAX_VERIFICATION_ATTEMPTS) {
+    console.log(`[verification] Kilitli — attempts=${conversation.verification_attempts}`);
+    const lockedMsg = getVerificationLockedMsg(language);
+    return {
+      shouldShortCircuit: true,
+      replyText: lockedMsg,
+      verifiedGuestId: null,
+      effectiveIntent: 'front_office',
+    };
+  }
+
+  // 3. Mesajda doğrulama bilgisi var mı?
+  const { roomNo, lastName } = parseVerificationInput(guestMessageText);
+  const hasCredentials = roomNo !== null && lastName !== null;
+
+  if (!hasCredentials) {
+    // Doğrulama bilgisi yok — pending_intent set et, cevap iste
+    const pendingIntent = conversation.verification_pending_intent ?? aiIntent;
+    await supa
+      .from('conversations')
+      .update({ verification_pending_intent: pendingIntent })
+      .eq('id', conversationId);
+
+    const askMsg = getVerificationAskMsg(language);
+    return {
+      shouldShortCircuit: true,
+      replyText: askMsg,
+      verifiedGuestId: null,
+      effectiveIntent: aiIntent,
+    };
+  }
+
+  // 4. Doğrulama bilgisi var — verifyGuest çağır
+  console.log(`[verification] Deneniyor: room=${roomNo} lastName=${lastName}`);
+  const result = await verifyGuest(supa, roomNo!, lastName!);
+
+  void supa.from('verification_attempts').insert({
+    conversation_id: conversationId,
+    attempted_room_no: roomNo,
+    attempted_last_name: lastName,
+    result: result.matched ? 'success' : 'no_match',
+    matched_guest_id: result.matched ? result.guestId : null,
+    intent_at_attempt: conversation.verification_pending_intent ?? aiIntent,
+  });
+
+  if (result.matched) {
+    // ✅ Doğrulama başarılı
+    const effectiveIntent = conversation.verification_pending_intent ?? aiIntent;
+    await supa
+      .from('conversations')
+      .update({
+        verified_inhouse_guest_id: result.guestId,
+        verified_at: new Date().toISOString(),
+        verification_pending_intent: null,
+        verification_attempts: 0,
+        verification_last_attempt_at: new Date().toISOString(),
+      })
+      .eq('id', conversationId);
+
+    const successMsg = getVerificationSuccessMsg(language, result.guestFirstName);
+    console.log(`[verification] Başarılı — guest_id=${result.guestId} effectiveIntent=${effectiveIntent}`);
+    return {
+      shouldShortCircuit: false,
+      replyText: successMsg,
+      verifiedGuestId: result.guestId ?? null,
+      effectiveIntent,
+    };
+  } else {
+    // ❌ Eşleşme yok — attempts artır
+    const newAttempts = conversation.verification_attempts + 1;
+    await supa
+      .from('conversations')
+      .update({
+        verification_attempts: newAttempts,
+        verification_last_attempt_at: new Date().toISOString(),
+      })
+      .eq('id', conversationId);
+
+    if (newAttempts >= MAX_VERIFICATION_ATTEMPTS) {
+      // Kilitlendi
+      console.log(`[verification] Kilitlendi — attempts=${newAttempts}`);
+      const lockedMsg = getVerificationLockedMsg(language);
+      return {
+        shouldShortCircuit: true,
+        replyText: lockedMsg,
+        verifiedGuestId: null,
+        effectiveIntent: 'front_office',
+      };
+    }
+
+    const failMsg = getVerificationFailMsg(language);
+    return {
+      shouldShortCircuit: true,
+      replyText: failMsg,
+      verifiedGuestId: null,
+      effectiveIntent: aiIntent,
+    };
+  }
+}
+
+// ── Ana mesaj işleyici ────────────────────────────────────────────────────────
 
 async function handleMessage(args: {
   supa: SupabaseClient;
@@ -122,7 +316,6 @@ async function handleMessage(args: {
   const chatId = msg.chat.id;
   const userId = msg.from?.id;
 
-  // Sadece bire bir sohbetleri işle (grup mesajları Modül 7+'da)
   if (msg.chat.type !== 'private') {
     console.log(`[telegram] grup mesajı atlandı: chat ${chatId} (${msg.chat.type})`);
     return;
@@ -130,7 +323,6 @@ async function handleMessage(args: {
 
   if (!userId) return;
 
-  // /start ve /help komutları — AI çağrısı yapma, direkt cevapla
   if (text.startsWith('/start')) {
     await tg.sendMessage({
       chat_id: chatId,
@@ -147,8 +339,8 @@ async function handleMessage(args: {
     return;
   }
 
-  // Normal mesaj akışı
-  const { guestName, conversationId } = await upsertGuestAndConversation({ supa, msg });
+  const { guestName, conversationId, conversation } = await upsertGuestAndConversation({ supa, msg });
+  const language = detectLanguage(msg);
 
   // Inbound mesajı kaydet
   const { data: inboundData, error: inboundError } = await supa
@@ -174,7 +366,7 @@ async function handleMessage(args: {
 
   const inboundMsgId = inboundData?.id as string | undefined;
 
-  // Son 10 mesajı context olarak çek (eski → yeni sırada)
+  // Son 10 mesajı context olarak çek
   const { data: contextRows } = await supa
     .from('bot_messages')
     .select('direction, text, created_at')
@@ -182,18 +374,17 @@ async function handleMessage(args: {
     .order('created_at', { ascending: false })
     .limit(10);
 
-  // Eski → yeni sırala ve son mesajı (henüz eklenmiş olanı) context'e dahil etme
   const rawContext = (contextRows ?? []).reverse();
   const context: ConversationContextMessage[] = rawContext
-    .filter((r) => r.text && r.text !== text) // son gelen mesajı context'e ekleme
-    .slice(-9) // max 9 önceki mesaj
+    .filter((r) => r.text && r.text !== text)
+    .slice(-9)
     .map((r) => ({
       direction: r.direction as 'inbound' | 'outbound',
       text: (r.text as string) ?? '',
       created_at: r.created_at as string,
     }));
 
-  // Aktif departmanları çek — Modül 6: telegram_chat_id ve routing kolonları da dahil
+  // Aktif departmanları çek
   const { data: deptRows } = await supa
     .from('departments')
     .select('code, display_name, telegram_chat_id, working_hours, off_hours_behavior')
@@ -207,7 +398,6 @@ async function handleMessage(args: {
     off_hours_behavior: (d.off_hours_behavior as string | null) ?? null,
   }));
 
-  // AI için sadece code + display_name
   const deptInfoForAI = departments.map((d) => ({
     code: d.code,
     display_name: d.display_name,
@@ -230,13 +420,49 @@ async function handleMessage(args: {
     console.error('[telegram] AI hatası:', aiError);
   }
 
-  // AI fallback cevap (AI patladıysa)
   const rawResponseText =
     aiResult?.response_to_guest ??
     'Mesajınız alındı, en kısa sürede ilgili departmandan dönüş yapılacaktır.';
 
-  // Modül 7.2: Markdown leak savunma katmanı — misafir mesajı gönderilmeden önce temizle
-  const responseText = stripMarkdown(rawResponseText);
+  const aiReplyText = stripMarkdown(rawResponseText);
+  const aiIntent = aiResult?.department ?? null;
+
+  // ── Modül 10: Doğrulama Gate ──────────────────────────────────────────────
+  let finalResponseText = aiReplyText;
+  let finalIntent = aiIntent;
+  let skipForward = aiResult?.answered_from_knowledge ?? false;
+
+  if (requiresVerification(aiIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at))) {
+    // Verification gerekiyor veya pending var
+    const effectiveIntent = requiresVerification(aiIntent) ? aiIntent! : (conversation.verification_pending_intent ?? aiIntent ?? 'unknown');
+
+    const vResult = await handleVerificationFlow({
+      supa,
+      conversationId,
+      conversation,
+      guestMessageText: text,
+      aiIntent: effectiveIntent,
+      aiReplyText,
+      language,
+    });
+
+    if (vResult.shouldShortCircuit) {
+      finalResponseText = vResult.replyText;
+      finalIntent = vResult.effectiveIntent;
+      skipForward = true;
+      // Kilitlendi ve front_office → forward gerekiyor
+      if (vResult.effectiveIntent === 'front_office' && vResult.verifiedGuestId === null && conversation.verification_attempts + 1 >= MAX_VERIFICATION_ATTEMPTS) {
+        skipForward = false;
+      }
+    } else {
+      // Doğrulandı — success mesajı + orijinal akış
+      finalResponseText = vResult.replyText;
+      finalIntent = vResult.effectiveIntent;
+      // Doğrulandıktan sonra forward yapılır (skipForward = false)
+      skipForward = false;
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // ai_intents kaydı
   const { data: intentData, error: intentError } = await supa
@@ -244,10 +470,10 @@ async function handleMessage(args: {
     .insert({
       conversation_id: conversationId,
       bot_message_id: inboundMsgId ?? null,
-      classified_department: aiResult?.department ?? null,
+      classified_department: finalIntent ?? null,
       confidence: aiResult?.confidence ?? null,
       reasoning: aiResult?.reasoning ?? null,
-      ai_response: responseText,
+      ai_response: finalResponseText,
       model: aiResult?.model ?? 'claude-sonnet-4-6',
       prompt_tokens: aiResult?.prompt_tokens ?? null,
       completion_tokens: aiResult?.completion_tokens ?? null,
@@ -263,24 +489,21 @@ async function handleMessage(args: {
 
   const aiIntentId = intentData?.id as string | undefined;
 
-  // ── Modül 7.1: KB cevabı varsa forward yapma, sadece logla ─────────────────
-  const answeredFromKnowledge = aiResult?.answered_from_knowledge ?? false;
-
-  if (answeredFromKnowledge) {
-    // KB'den cevap verildi — departmana forward YAPMA, sadece istatistik logla
-    console.log(
-      `[telegram] KB cevap → forward atlandı. predicted_intent=${aiResult?.department ?? 'unknown'}`,
-    );
-    await logKnowledgeAnswer(supa, {
-      conversationId,
-      predictedIntent: aiResult?.department ?? null,
-      questionText: text,
-      answerText: responseText,
-    });
+  // ── KB cevabı veya doğrulama short-circuit → forward yapma ───────────────
+  if (skipForward) {
+    console.log(`[telegram] Forward atlandı (KB veya verification gate). intent=${finalIntent}`);
+    if (aiResult?.answered_from_knowledge) {
+      await logKnowledgeAnswer(supa, {
+        conversationId,
+        predictedIntent: finalIntent ?? null,
+        questionText: text,
+        answerText: finalResponseText,
+      });
+    }
   } else {
-    // ── Modül 6: Departman grubuna forward ──────────────────────────────────
+    // ── Departman forward ─────────────────────────────────────────────────
     const routingResult = resolveTargetDepartment(
-      aiResult?.department ?? null,
+      finalIntent ?? null,
       departments as DeptRouteInfo[],
     );
 
@@ -290,22 +513,20 @@ async function handleMessage(args: {
           hotelSupa: supa,
           tg,
           aiIntentId: aiIntentId ?? null,
-          classifiedDepartment: aiResult?.department ?? null,
+          classifiedDepartment: finalIntent ?? null,
           targetDept: routingResult.targetDept,
           targetChatId: routingResult.targetChatId,
           wasRerouted: routingResult.wasRerouted,
-          // isOffHours: sınıflandırma yapıldı ama mesai dışı olduğu için yönlendirildi
-          isOffHours: routingResult.wasRerouted && (aiResult?.department ?? null) !== null,
+          isOffHours: routingResult.wasRerouted && (finalIntent ?? null) !== null,
           guestName,
           guestMessage: text,
-          aiResponse: responseText,
+          aiResponse: finalResponseText,
           confidence: aiResult?.confidence ?? 0,
         });
         console.log(
           `[telegram] forward OK → dept=${routingResult.targetDept} chat=${routingResult.targetChatId} rerouted=${routingResult.wasRerouted}`,
         );
 
-        // conversations tablosunu rapor kolonlarıyla güncelle
         await supa
           .from('conversations')
           .update({
@@ -319,28 +540,27 @@ async function handleMessage(args: {
     } else {
       console.warn('[telegram] routing result null — forward atlandı (dept chat_id yok?)');
     }
-    // ──────────────────────────────────────────────────────────────────────────
   }
 
-  // Outbound mesajı kaydet (temizlenmiş metin)
+  // Outbound mesajı kaydet
   await supa.from('bot_messages').insert({
     conversation_id: conversationId,
     direction: 'outbound',
-    text: responseText,
+    text: finalResponseText,
     message_type: 'text',
   });
 
-  // Telegram'a cevap gönder — parse_mode yok (düz metin, Markdown/HTML parse etme)
+  // Telegram'a cevap gönder
   await tg.sendMessage({
     chat_id: chatId,
-    text: responseText,
+    text: finalResponseText,
   });
 }
 
 async function upsertGuestAndConversation(args: {
   supa: SupabaseClient;
   msg: TelegramMessage;
-}): Promise<{ guestId: string; guestName: string; conversationId: string }> {
+}): Promise<{ guestId: string; guestName: string; conversationId: string; conversation: ConversationState }> {
   const { supa, msg } = args;
   const userId = msg.from!.id;
   const chatId = msg.chat.id;
@@ -376,17 +596,25 @@ async function upsertGuestAndConversation(args: {
     guestId = newGuest!.id as string;
   }
 
-  // Conversation upsert
+  // Conversation upsert — doğrulama state sütunlarını da çek
   const { data: existingConv } = await supa
     .from('conversations')
-    .select('id')
+    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts')
     .eq('telegram_chat_id', chatId)
     .maybeSingle();
 
   let conversationId: string;
+  let conversation: ConversationState;
+
   if (existingConv) {
     conversationId = existingConv.id as string;
-    // last_message_at güncelle
+    conversation = {
+      id: conversationId,
+      verified_inhouse_guest_id: (existingConv.verified_inhouse_guest_id as string | null) ?? null,
+      verified_at: (existingConv.verified_at as string | null) ?? null,
+      verification_pending_intent: (existingConv.verification_pending_intent as string | null) ?? null,
+      verification_attempts: (existingConv.verification_attempts as number) ?? 0,
+    };
     await supa
       .from('conversations')
       .update({ last_message_at: new Date().toISOString() })
@@ -400,16 +628,22 @@ async function upsertGuestAndConversation(args: {
         telegram_chat_id: chatId,
         last_message_at: new Date().toISOString(),
       })
-      .select('id')
+      .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts')
       .single();
     if (error) throw new Error(`conversation insert: ${error.message}`);
     conversationId = newConv!.id as string;
+    conversation = {
+      id: conversationId,
+      verified_inhouse_guest_id: null,
+      verified_at: null,
+      verification_pending_intent: null,
+      verification_attempts: 0,
+    };
   }
 
-  return { guestId, guestName: fullName, conversationId };
+  return { guestId, guestName: fullName, conversationId, conversation };
 }
 
-/** Modül 7.1: KB'den cevaplanan soruları knowledge_answers tablosuna logla */
 async function logKnowledgeAnswer(
   supa: SupabaseClient,
   args: {
@@ -426,8 +660,6 @@ async function logKnowledgeAnswer(
     answer_text: args.answerText,
   });
   if (error) {
-    // Tablo henüz oluşturulmamış olabilir (migration bekliyor) — sessizce log
     console.error('[kb] knowledge_answers insert error:', error.message);
   }
 }
-

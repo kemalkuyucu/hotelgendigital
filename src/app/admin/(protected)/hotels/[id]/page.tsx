@@ -176,6 +176,12 @@ export default async function EditHotelPage({ params }: { params: Promise<{ id: 
           >
             👤 Yöneticiler
           </a>
+          <a
+            href={`/admin/hotels/${h.id}/guests`}
+            className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+          >
+            🛎️ Misafirler
+          </a>
         </div>
       </div>
 

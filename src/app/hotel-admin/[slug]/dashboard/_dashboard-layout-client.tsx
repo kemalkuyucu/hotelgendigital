@@ -14,7 +14,7 @@ interface Props {
 }
 
 interface NavItem {
-  key: DepartmentKey | 'dashboard'
+  key: DepartmentKey | 'dashboard' | 'guests'
   label: string
   href: string
 }
@@ -28,6 +28,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
 
   const navItems: NavItem[] = [
     { key: 'dashboard', label: '📊 Dashboard', href: `/hotel-admin/${slug}/dashboard` },
+    { key: 'guests', label: '🛎️ Misafirler', href: `/hotel-admin/${slug}/guests` },
     ...allowedDepts.map((dept) => ({
       key: dept,
       label: deptLabel(dept),
@@ -109,6 +110,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
               item.key === 'dashboard'
                 ? pathname === item.href
                 : pathname.startsWith(item.href)
+
 
             return (
               <Link
