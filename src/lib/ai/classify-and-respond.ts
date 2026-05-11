@@ -94,7 +94,15 @@ export async function classifyAndRespond(
 
   // Yeni format öncelikli, legacy fallback
   const responseToGuest = parsed.reply_text ?? parsed.response_to_guest ?? '';
-  const department = parsed.intent ?? parsed.department ?? null;
+  let department = parsed.intent ?? parsed.department ?? null;
+  let confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
+
+  // Şikayet intent'i her zaman guest_relation'a gider — confidence düşse bile.
+  // Devir notu kuralı: complaint → GR, CC YOK.
+  if (department === 'complaint') {
+    department = 'guest_relation';
+    confidence = Math.max(confidence, 0.85); // GR routing'i için minimum güven
+  }
 
   // Validasyon
   if (typeof responseToGuest !== 'string' || responseToGuest.length === 0) {
@@ -109,7 +117,7 @@ export async function classifyAndRespond(
 
   return {
     department,
-    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0,
+    confidence,
     reasoning: parsed.reasoning ?? '',
     response_to_guest: responseToGuest,
     answered_from_knowledge: answeredFromKnowledge,

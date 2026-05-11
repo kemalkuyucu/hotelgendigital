@@ -56,7 +56,7 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {};
 
     // Scalar güncellenebilir alanlar
-    const scalarFields = ['room_number', 'first_name', 'last_name', 'phone', 'email', 'language', 'package', 'check_in_date', 'check_out_date', 'notes'];
+    const scalarFields = ['room_number', 'first_name', 'last_name', 'phone', 'email', 'language', 'gender', 'package', 'check_in_date', 'check_out_date', 'notes'];
     for (const key of scalarFields) {
       if (key in body) updateData[key] = body[key];
     }

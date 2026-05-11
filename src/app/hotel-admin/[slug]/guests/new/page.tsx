@@ -46,6 +46,7 @@ export default function NewGuestPage({ params }: { params: Promise<{ slug: strin
       phone: fd.get('phone') || null,
       email: fd.get('email') || null,
       language: fd.get('language'),
+      gender: fd.get('gender') || null,
       package: fd.get('package') || null,
       check_in_date: fd.get('check_in_date'),
       check_out_date: fd.get('check_out_date'),
@@ -123,6 +124,14 @@ export default function NewGuestPage({ params }: { params: Promise<{ slug: strin
               <option value="ar">العربية (ar)</option>
               <option value="fr">Français (fr)</option>
               <option value="it">Italiano (it)</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Cinsiyet</label>
+            <select name="gender" style={inputStyle}>
+              <option value="">— Belirtilmedi —</option>
+              <option value="male">Erkek</option>
+              <option value="female">Kadın</option>
             </select>
           </div>
           <div>

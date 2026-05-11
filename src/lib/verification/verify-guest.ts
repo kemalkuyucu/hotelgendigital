@@ -6,45 +6,143 @@ export interface VerifyResult {
   guestId?: string;
   guestFullName?: string;
   guestFirstName?: string;
+  guestLastName?: string;
+  guestLanguage?: string;
+  guestGender?: 'male' | 'female' | null;
   roomNo?: string;
   reason?: 'no_match' | 'format_error' | 'multiple_match';
 }
 
 /**
- * Misafir mesajından oda no + soyad çıkarmaya çalış.
- * Örüntüler:
- *  - "215 yılmaz"
- *  - "Oda 215, Yılmaz"
- *  - "215, soyadım Yılmaz"
- *  - "room 412 smith"
+ * Misafirin gönderdiği mesajdan oda numarası ve soyad çıkarır.
+ *
+ * Stratejisi:
+ *  1. Oda numarasını regex ile bul: "Oda 215", "room 312", "номер 408", "215" → 2-4 haneli sayı
+ *  2. "soyadım X" / "soyad: X" / "lastname X" gibi keyword sonrası geleni öncelikle soyad al
+ *  3. Yoksa: oda numarasından sonra kalan kelimelerden stop word'leri at, KALANLAR'ın
+ *     SON harf-only kelimesini soyad olarak al
+ *  4. roomNumber + lastName ikisi de varsa parse başarılı
+ *
+ * Ayrıca: mesajda talep cümlesi gömülü olabilir (ör. "Oda 312 Kuyucu, klimam çalışmıyor").
+ * Bu durumda hasEmbeddedRequest=true döner ve embeddedRequest alanında talep metni gelir
+ * (oda no + soyad + diğer kimlik kelimeleri çıkarıldıktan sonra geriye kalan).
  */
-export function parseVerificationInput(text: string): {
-  roomNo: string | null;
+
+export interface ParsedVerification {
+  roomNumber: string | null;
   lastName: string | null;
-} {
-  const lower = text.trim().toLowerCase();
+  hasEmbeddedRequest: boolean;
+  embeddedRequest: string | null;
+}
 
-  // Oda no: ilk 2-4 haneli sayı (tek hane kabul edilmez)
-  const roomMatch = lower.match(/\b(\d{2,4})\b/);
-  const roomNo = roomMatch?.[1] ?? null;
+// Türkçe/İngilizce/Almanca/Rusça/Arapça sık kullanılan stop word'ler
+// (talep cümlelerinde geçen kelimeler — soyad olarak alınmamalı)
+const STOP_WORDS = new Set([
+  // Mekan/keyword
+  'oda', 'room', 'zimmer', 'номер', 'غرفة', 'no', 'numara', 'number',
+  'soyad', 'soyadım', 'soyadı', 'lastname', 'surname', 'familyname',
+  'ben', 'benim', 'ismim', 'adım', 'ad', 'name',
 
-  // Soyad: sayı sonrası kalan kısmı temizle
-  let rest = lower;
+  // Bağlaçlar/zarflar
+  've', 'ile', 'için', 'ama', 'fakat', 'lütfen', 'rica', 'ricam',
+  'and', 'with', 'for', 'please', 'just', 'now', 'also',
+  'und', 'mit', 'für', 'bitte',
+
+  // Talep fiilleri/sıfatları
+  'lazım', 'gerek', 'var', 'yok', 'istiyorum', 'olur',
+  'çalışmıyor', 'bozuk', 'kırık', 'eksik', 'kirli', 'temiz',
+  'soğuk', 'sıcak', 'aldım', 'verdim', 'kullandım', 'gördüm',
+
+  // F&B / HK / Technical kelimeleri (talep parse'ında geçer)
+  'klima', 'klimam', 'kliması', 'klimanın',
+  'tv', 'televizyon', 'televizyonum',
+  'duş', 'duşum', 'banyo', 'banyom', 'tuvalet',
+  'su', 'suyu', 'sıcaksu', 'sıcaksuyu',
+  'havlu', 'havlum', 'bornoz', 'bornozum',
+  'çarşaf', 'yastık', 'yastığım', 'battaniye', 'battaniyem',
+  'minibar', 'minibarda', 'minibardaki',
+  'bira', 'şarap', 'kahve', 'çay',
+  'kahvaltı', 'öğle', 'akşam', 'yemek', 'yemeği',
+  'roomservice',
+  'wifi', 'internet', 'şifre', 'şifresi',
+  'lamba', 'lambam', 'priz', 'elektrik',
+  'temizlik', 'temizlemiş', 'temizlenmiş',
+  'şikayet', 'rahatsız', 'iade', 'fatura',
+]);
+
+const ROOM_REGEX = /(?:oda|room|zimmer|номер|غرفة|no|numara|number)?\s*#?\s*(\d{2,4})/i;
+const LASTNAME_HINT_REGEX =
+  /(?:soyad(?:ım|ı|ım:|:)?|lastname:?|surname:?|familyname:?)\s+([\p{L}]{2,})/iu;
+
+export function parseVerificationInput(text: string): ParsedVerification {
+  const result: ParsedVerification = {
+    roomNumber: null,
+    lastName: null,
+    hasEmbeddedRequest: false,
+    embeddedRequest: null,
+  };
+
+  if (!text || typeof text !== 'string') return result;
+
+  const cleaned = text.trim().replace(/[,;:]/g, ' ');
+
+  // 1) Oda numarası
+  const roomMatch = cleaned.match(ROOM_REGEX);
   if (roomMatch) {
-    rest = lower.slice(roomMatch.index! + roomMatch[0].length);
+    result.roomNumber = roomMatch[1];
   }
 
-  // "oda", "room", "soyad", "soyadım", "no", "numara" stop-word'leri at
-  const cleaned = rest
-    .replace(/\b(oda|room|soyad|soyad[ıi]m|no|numara|nr|chamber|zimmer|комната|غرفة)\b/gi, '')
-    .replace(/[,.;:!?'"`]/g, ' ')
-    .trim();
+  // 2) "soyadım X" tipi hint öncelikli
+  const hintMatch = cleaned.match(LASTNAME_HINT_REGEX);
+  if (hintMatch) {
+    result.lastName = hintMatch[1];
+  } else {
+    // 3) Oda numarasından sonraki kısma bak, stop word'leri at, son harf-only kelimeyi al
+    const afterRoom = result.roomNumber
+      ? cleaned.slice(cleaned.indexOf(result.roomNumber) + result.roomNumber.length)
+      : cleaned;
 
-  // Kalan tüm harf token'larından SON kelimeyi soyad kabul et ("Ad Soyad" sırası)
-  const tokens = cleaned.split(/\s+/).filter((t) => /^[\p{L}]{2,}$/u.test(t));
-  const lastName = tokens.length > 0 ? tokens[tokens.length - 1] : null;
+    const tokens = afterRoom
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .filter((t) => /^[\p{L}]{2,}$/u.test(t)) // sadece harf-only, 2+ karakter
+      .filter((t) => !STOP_WORDS.has(t.toLowerCase()));
 
-  return { roomNo, lastName };
+    if (tokens.length > 0) {
+      result.lastName = tokens[tokens.length - 1]; // SON kelime soyad
+    }
+  }
+
+  // 4) Embedded request kontrolü
+  // Eğer parse sonrası kalan kelimelerde stop word'lerden biri varsa → talep gömülü demektir
+  if (result.roomNumber && result.lastName) {
+    const lowerText = cleaned.toLowerCase();
+    const stopWordHit = Array.from(STOP_WORDS).some((sw) => {
+      // soyad/oda gibi parse keyword'leri sayma
+      const skipList = new Set([
+        'oda', 'room', 'zimmer', 'soyad', 'soyadım', 'no', 'numara',
+        've', 'ile', 'için', 'and', 'with', 'for',
+      ]);
+      if (skipList.has(sw)) return false;
+      // sw mesajın içinde geçiyor mu?
+      return new RegExp(`\\b${sw}\\b`, 'iu').test(lowerText);
+    });
+
+    if (stopWordHit) {
+      result.hasEmbeddedRequest = true;
+      // Oda no ve soyadı mesajdan çıkar → kalan kısmı embeddedRequest yap
+      const stripped = cleaned
+        .replace(new RegExp(`\\b${result.roomNumber}\\b`, 'g'), '')
+        .replace(new RegExp(`\\b${result.lastName}\\b`, 'iu'), '')
+        .replace(/(?:oda|room|zimmer|номер|no|numara|number)/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      result.embeddedRequest = stripped.length > 3 ? stripped : null;
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -71,7 +169,7 @@ export async function verifyGuest(
 
   const { data, error } = await supa
     .from('inhouse_guests')
-    .select('id, full_name, first_name, room_number, last_name, check_in_date, check_out_date')
+    .select('id, full_name, first_name, last_name, room_number, language, gender, check_in_date, check_out_date')
     .eq('room_number', trimmedRoom)
     .eq('is_active', true)
     .lte('check_in_date', today)
@@ -100,6 +198,9 @@ export async function verifyGuest(
     guestId: match.id as string,
     guestFullName: (match.full_name as string) ?? `${match.last_name}`,
     guestFirstName: (match.first_name as string | null) ?? undefined,
+    guestLastName: (match.last_name as string) ?? undefined,
+    guestLanguage: (match.language as string | null) ?? undefined,
+    guestGender: (match.gender as 'male' | 'female' | null) ?? null,
     roomNo: match.room_number as string,
   };
 }

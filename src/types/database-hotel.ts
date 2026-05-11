@@ -16,6 +16,8 @@ export type ChannelType = 'whatsapp' | 'telegram' | 'instagram';
 export interface InhouseGuest {
   id: string;
   room_number: string;
+  first_name: string | null;
+  last_name: string;
   full_name: string;
   agency: string | null;
   voucher: string | null;
@@ -24,6 +26,7 @@ export interface InhouseGuest {
   check_out_date: string;
   channel_ids: string[];
   language: string | null;
+  gender: 'male' | 'female' | null;
   vip_status: 'standard' | 'repeat' | 'loyalty' | 'vip';
   is_active: boolean;
 }

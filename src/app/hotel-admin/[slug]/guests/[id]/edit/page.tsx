@@ -13,7 +13,7 @@ const labelStyle: React.CSSProperties = {
 
 interface Guest {
   id: string; room_number: string; first_name: string | null; last_name: string
-  phone: string | null; email: string | null; language: string; package: string | null
+  phone: string | null; email: string | null; language: string; gender: 'male' | 'female' | null; package: string | null
   check_in_date: string; check_out_date: string; is_active: boolean; notes: string | null
 }
 
@@ -47,7 +47,7 @@ export default function EditGuestPage({ params }: { params: Promise<{ slug: stri
       room_number: fd.get('room_number'), first_name: firstName || null, last_name: lastName,
       full_name: [firstName.trim(), lastName.trim()].filter(Boolean).join(' '),
       phone: fd.get('phone') || null, email: fd.get('email') || null,
-      language: fd.get('language'), package: fd.get('package') || null,
+      language: fd.get('language'), gender: fd.get('gender') || null, package: fd.get('package') || null,
       check_in_date: fd.get('check_in_date'), check_out_date: fd.get('check_out_date'),
       is_active: isActive, notes: fd.get('notes') || null,
     }
@@ -116,6 +116,14 @@ export default function EditGuestPage({ params }: { params: Promise<{ slug: stri
               <option value="ar">العربية (ar)</option>
               <option value="fr">Français (fr)</option>
               <option value="it">Italiano (it)</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Cinsiyet</label>
+            <select name="gender" defaultValue={guest.gender ?? ''} style={inputStyle}>
+              <option value="">— Belirtilmedi —</option>
+              <option value="male">Erkek</option>
+              <option value="female">Kadın</option>
             </select>
           </div>
           <div>

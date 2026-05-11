@@ -13,6 +13,7 @@ interface Guest {
   full_name: string
   phone: string | null
   language: string
+  gender: 'male' | 'female' | null
   package: string | null
   check_in_date: string
   check_out_date: string
@@ -53,7 +54,7 @@ export default async function GuestsPage({
   const tenant = await resolveTenantBySlug(slug)
   let query = tenant.hotelSupabase
     .from('inhouse_guests')
-    .select('id, room_number, first_name, last_name, full_name, phone, language, package, check_in_date, check_out_date, is_active, notes')
+    .select('id, room_number, first_name, last_name, full_name, phone, language, gender, package, check_in_date, check_out_date, is_active, notes')
     .order('check_in_date', { ascending: false })
 
   if (status === 'active') query = query.eq('is_active', true)
@@ -127,7 +128,7 @@ export default async function GuestsPage({
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px' }}>
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                {['Oda', 'Ad Soyad', 'Giriş', 'Çıkış', 'Dil', 'Durum', 'İşlem'].map((h) => (
+                {['Oda', 'Ad Soyad', 'Cinsiyet', 'Giriş', 'Çıkış', 'Dil', 'Durum', 'İşlem'].map((h) => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -137,6 +138,9 @@ export default async function GuestsPage({
                 <tr key={g.id} style={{ borderBottom: i < list.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
                   <td style={{ padding: '14px 16px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace', fontSize: '14px' }}>{g.room_number}</td>
                   <td style={{ padding: '14px 16px', color: '#1e293b', fontWeight: 500 }}>{g.full_name}</td>
+                  <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '12px' }}>
+                    {g.gender === 'male' ? 'Erkek' : g.gender === 'female' ? 'Kadın' : '—'}
+                  </td>
                   <td style={{ padding: '14px 16px', color: '#475569' }}>{g.check_in_date}</td>
                   <td style={{ padding: '14px 16px', color: '#475569' }}>{g.check_out_date}</td>
                   <td style={{ padding: '14px 16px', color: '#64748b' }}>{g.language?.toUpperCase()}</td>

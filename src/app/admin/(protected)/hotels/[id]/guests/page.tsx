@@ -20,6 +20,7 @@ interface Guest {
   check_out_date: string
   is_active: boolean
   language: string
+  gender: 'male' | 'female' | null
   package: string | null
 }
 
@@ -57,7 +58,7 @@ export default async function AdminHotelGuestsPage({
     const tenant = await resolveTenantBySlug(h.slug)
     let query = tenant.hotelSupabase
       .from('inhouse_guests')
-      .select('id, room_number, first_name, last_name, full_name, check_in_date, check_out_date, is_active, language, package')
+      .select('id, room_number, first_name, last_name, full_name, check_in_date, check_out_date, is_active, language, gender, package')
       .order('check_in_date', { ascending: false })
 
     if (status === 'active') query = query.eq('is_active', true)
@@ -133,7 +134,7 @@ export default async function AdminHotelGuestsPage({
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  {['Oda', 'Ad Soyad', 'Giriş', 'Çıkış', 'Dil', 'Durum', 'İşlem'].map((h) => (
+                  {['Oda', 'Ad Soyad', 'Cinsiyet', 'Giriş', 'Çıkış', 'Dil', 'Durum', 'İşlem'].map((h) => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500">{h}</th>
                   ))}
                 </tr>
@@ -143,6 +144,9 @@ export default async function AdminHotelGuestsPage({
                   <tr key={g.id} className={i < guests.length - 1 ? 'border-b border-gray-100' : ''}>
                     <td className="px-4 py-3 font-mono font-bold text-gray-900">{g.room_number}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{g.full_name}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">
+                      {g.gender === 'male' ? 'Erkek' : g.gender === 'female' ? 'Kadın' : '—'}
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{g.check_in_date}</td>
                     <td className="px-4 py-3 text-gray-600">{g.check_out_date}</td>
                     <td className="px-4 py-3 text-gray-500 uppercase text-xs">{g.language}</td>

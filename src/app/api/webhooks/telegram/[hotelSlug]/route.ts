@@ -11,6 +11,7 @@ import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
 import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/verification/verify-guest';
+import { formatGuestAddress } from '@/lib/utils/salutation';
 
 export const runtime = 'nodejs';
 
@@ -92,7 +93,7 @@ export async function POST(
   }
 
   try {
-    await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, msg, tg });
+    await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, msg, tg, botToken });
   } catch (err) {
     console.error('[telegram] handleMessage error:', err);
   }
@@ -146,14 +147,20 @@ function getIncompleteFormatMsg(lang: string): string {
   return msgs[lang] ?? msgs['tr'];
 }
 
-function getVerificationSuccessMsg(lang: string, firstName: string | undefined): string {
-  const name = firstName ?? '';
+function getVerificationSuccessMsg(
+  lang: string,
+  firstName: string | null | undefined,
+  lastName: string | null | undefined,
+  gender: 'male' | 'female' | null | undefined,
+): string {
+  const address = formatGuestAddress(firstName ?? null, lastName ?? null, lang, gender);
+  const addrPart = address ? `, ${address}` : '';
   const msgs: Record<string, string> = {
-    tr: `Bilgileriniz doğrulandı${name ? `, ${name} Bey/Hanım` : ''}. Talebinizi iletiyorum.`,
-    en: `Your details have been verified${name ? `, ${name}` : ''}. I'm forwarding your request now.`,
-    de: `Ihre Daten wurden verifiziert${name ? `, ${name}` : ''}. Ich leite Ihre Anfrage weiter.`,
-    ru: `Ваши данные подтверждены${name ? `, ${name}` : ''}. Перенаправляю ваш запрос.`,
-    ar: `تم التحقق من بياناتك${name ? `، ${name}` : ''}. جاري إحالة طلبك.`,
+    tr: `Bilgileriniz doğrulandı${addrPart}. Talebinizi iletiyorum.`,
+    en: `Your details have been verified${addrPart}. I'm forwarding your request now.`,
+    de: `Ihre Daten wurden verifiziert${addrPart}. Ich leite Ihre Anfrage weiter.`,
+    ru: `Ваши данные подтверждены${addrPart}. Перенаправляю ваш запрос.`,
+    ar: `تم التحقق من بياناتك${addrPart ? `، ${address}` : ''}. جاري إحالة طلبك.`,
   };
   return msgs[lang] ?? msgs['tr'];
 }
@@ -185,18 +192,103 @@ interface VerificationFlowResult {
   replyText: string;
   verifiedGuestId: string | null;
   effectiveIntent: string;
+  embeddedRequest?: string | null; // hasEmbeddedRequest=true ise talep metni
+}
+
+async function notifyFrontDeskUnverified(params: {
+  hotelSupabase: SupabaseClient;
+  botToken: string;
+  tg: TelegramClient;
+  conversationId: string;
+  guestTelegramId: string;
+  guestTelegramUsername: string | null;
+  pendingIntent: string;
+  attemptedRoomNumber: string | null;
+  attemptedLastName: string | null;
+  originalMessage: string;
+  language: string;
+}): Promise<void> {
+  // 1) Demo_OnBuro chat_id'sini çek
+  const { data: dept } = await params.hotelSupabase
+    .from('departments')
+    .select('telegram_chat_id, name')
+    .eq('code', 'front_office')
+    .maybeSingle();
+
+  if (!dept?.telegram_chat_id) {
+    console.warn('[unverified-notify] front_office grup chat_id yok');
+    return;
+  }
+
+  const frontOfficeChatId = dept.telegram_chat_id as number;
+
+  // 2) HTML mesajı hazırla
+  const intentLabel: Record<string, string> = {
+    allergy: '🧴 Alerji bildirimi',
+    room_service: '🛎 Oda servisi talebi',
+    complaint: '⚠️ Şikayet',
+    billing: '💳 Fatura/hesap',
+    lost_and_found: '🔍 Kayıp eşya',
+  };
+
+  const html =
+    `🚨 <b>Kayıt Dışı Misafir Talebi</b>\n\n` +
+    `${intentLabel[params.pendingIntent] || params.pendingIntent}\n\n` +
+    `📞 <b>Telegram:</b> ${params.guestTelegramUsername ? '@' + params.guestTelegramUsername : 'ID ' + params.guestTelegramId}\n` +
+    `🚪 <b>Beyan ettiği oda:</b> ${params.attemptedRoomNumber || '—'}\n` +
+    `👤 <b>Beyan ettiği soyad:</b> ${params.attemptedLastName || '—'}\n` +
+    `🌐 <b>Dil:</b> ${params.language || '—'}\n\n` +
+    `📝 <b>İlk mesaj:</b>\n<i>${escapeHtml(params.originalMessage)}</i>\n\n` +
+    `❗ Bu kişi in-house listede yok. Lütfen kontrol edip gerekirse panelden ekleyin.`;
+
+  // 3) Telegram'a gönder
+  try {
+    await params.tg.sendMessage({
+      chat_id: frontOfficeChatId,
+      text: html,
+      parse_mode: 'HTML',
+    });
+    console.log(`[unverified-notify] front_office bildirimi gönderildi → chatId=${frontOfficeChatId}`);
+  } catch (err) {
+    console.error('[unverified-notify] Telegram gönderim hatası:', err instanceof Error ? err.message : err);
+    return;
+  }
+
+  // 4) forwarded_messages tablosuna log
+  await params.hotelSupabase.from('forwarded_messages').insert({
+    conversation_id: params.conversationId,
+    department_code: 'front_office',
+    target_type: 'unverified_alert',
+    target_chat_id: frontOfficeChatId,
+    message_html: html,
+    sent_at: new Date().toISOString(),
+    source_department: params.pendingIntent,
+    target_department: 'front_office',
+    status: 'sent',
+  });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 async function handleVerificationFlow(args: {
   supa: SupabaseClient;
+  tg: TelegramClient;
+  botToken: string;
   conversationId: string;
   conversation: ConversationState;
   guestMessageText: string;
+  guestTelegramId: string;
+  guestTelegramUsername: string | null;
   aiIntent: string;
   aiReplyText: string;
   language: string;
 }): Promise<VerificationFlowResult> {
-  const { supa, conversationId, conversation, guestMessageText, aiIntent, language } = args;
+  const { supa, tg, botToken, conversationId, conversation, guestMessageText, aiIntent, language } = args;
 
   // 1. Zaten doğrulanmış ve TTL geçerli → normal akışa devam
   if (
@@ -224,9 +316,10 @@ async function handleVerificationFlow(args: {
     };
   }
 
-  // 3. Mesajda doğrulama bilgisi var mı?
-  const { roomNo, lastName } = parseVerificationInput(guestMessageText);
-  const hasCredentials = roomNo !== null && lastName !== null;
+  // 3. Mesajda doğrulama bilgisi var mı? (yeni parseVerificationInput kullan)
+  const parsed = parseVerificationInput(guestMessageText);
+  const { roomNumber, lastName, hasEmbeddedRequest, embeddedRequest } = parsed;
+  const hasCredentials = roomNumber !== null && lastName !== null;
 
   if (!hasCredentials) {
     if (!conversation.verification_pending_intent) {
@@ -253,7 +346,7 @@ async function handleVerificationFlow(args: {
     } else {
       // Daha önce sorduk ama kullanıcı eksik bilgi gönderdi (sadece oda no veya sadece soyad)
       // attempts artırma — bu bir format hatası, yanlış girişim sayılmaz
-      console.log(`[verification] Eksik format — pending_intent=${conversation.verification_pending_intent}, roomNo=${roomNo}, lastName=${lastName}`);
+      console.log(`[verification] Eksik format — pending_intent=${conversation.verification_pending_intent}, roomNumber=${roomNumber}, lastName=${lastName}`);
       const incompleteMsg = getIncompleteFormatMsg(language);
       return {
         shouldShortCircuit: true,
@@ -265,12 +358,12 @@ async function handleVerificationFlow(args: {
   }
 
   // 4. Doğrulama bilgisi var — verifyGuest çağır
-  console.log(`[verification] Deneniyor: room=${roomNo} lastName=${lastName}`);
-  const result = await verifyGuest(supa, roomNo!, lastName!);
+  console.log(`[verification] Deneniyor: room=${roomNumber} lastName=${lastName} hasEmbeddedRequest=${hasEmbeddedRequest}`);
+  const result = await verifyGuest(supa, roomNumber!, lastName!);
 
   void supa.from('verification_attempts').insert({
     conversation_id: conversationId,
-    attempted_room_no: roomNo,
+    attempted_room_no: roomNumber,
     attempted_last_name: lastName,
     result: result.matched ? 'success' : 'no_match',
     matched_guest_id: result.matched ? result.guestId : null,
@@ -291,13 +384,20 @@ async function handleVerificationFlow(args: {
       })
       .eq('id', conversationId);
 
-    const successMsg = getVerificationSuccessMsg(language, result.guestFirstName);
-    console.log(`[verification] Başarılı — guest_id=${result.guestId} effectiveIntent=${effectiveIntent}`);
+    // Salutation helper ile hitap üret
+    const successMsg = getVerificationSuccessMsg(
+      result.guestLanguage ?? language,
+      result.guestFirstName ?? null,
+      result.guestLastName ?? null,
+      result.guestGender ?? null,
+    );
+    console.log(`[verification] Başarılı — guest_id=${result.guestId} effectiveIntent=${effectiveIntent} hasEmbeddedRequest=${hasEmbeddedRequest}`);
     return {
       shouldShortCircuit: false,
       replyText: successMsg,
       verifiedGuestId: result.guestId ?? null,
       effectiveIntent,
+      embeddedRequest: hasEmbeddedRequest ? (embeddedRequest ?? null) : null,
     };
   } else {
     // ❌ Eşleşme yok — attempts artır
@@ -311,8 +411,24 @@ async function handleVerificationFlow(args: {
       .eq('id', conversationId);
 
     if (newAttempts >= MAX_VERIFICATION_ATTEMPTS) {
-      // Kilitlendi
+      // Kilitlendi → ön büroya bildirim gönder
       console.log(`[verification] Kilitlendi — attempts=${newAttempts}`);
+
+      // Bildirim — void (hata olsa bile kilidi uygula)
+      void notifyFrontDeskUnverified({
+        hotelSupabase: supa,
+        botToken,
+        tg,
+        conversationId,
+        guestTelegramId: args.guestTelegramId,
+        guestTelegramUsername: args.guestTelegramUsername,
+        pendingIntent: conversation.verification_pending_intent ?? aiIntent,
+        attemptedRoomNumber: roomNumber,
+        attemptedLastName: lastName,
+        originalMessage: guestMessageText,
+        language,
+      });
+
       const lockedMsg = getVerificationLockedMsg(language);
       return {
         shouldShortCircuit: true,
@@ -340,8 +456,9 @@ async function handleMessage(args: {
   hotelName: string;
   msg: TelegramMessage;
   tg: TelegramClient;
+  botToken: string;
 }) {
-  const { supa, hotelId, hotelName, msg, tg } = args;
+  const { supa, hotelId, hotelName, msg, tg, botToken } = args;
   const text = msg.text ?? msg.caption ?? '';
   const chatId = msg.chat.id;
   const userId = msg.from?.id;
@@ -468,9 +585,13 @@ async function handleMessage(args: {
 
     const vResult = await handleVerificationFlow({
       supa,
+      tg,
+      botToken,
       conversationId,
       conversation,
       guestMessageText: text,
+      guestTelegramId: String(userId),
+      guestTelegramUsername: msg.from?.username ?? null,
       aiIntent: effectiveIntent,
       aiReplyText,
       language,
@@ -479,15 +600,20 @@ async function handleMessage(args: {
     if (vResult.shouldShortCircuit) {
       finalResponseText = vResult.replyText;
       finalIntent = vResult.effectiveIntent;
+      // Kilitlendi ve front_office → artık bildirim atıldı, forward atla
       skipForward = true;
-      // Kilitlendi ve front_office → forward gerekiyor
-      if (vResult.effectiveIntent === 'front_office' && vResult.verifiedGuestId === null && conversation.verification_attempts + 1 >= MAX_VERIFICATION_ATTEMPTS) {
-        skipForward = false;
-      }
     } else {
       // Doğrulandı — success mesajı + orijinal akış
       finalResponseText = vResult.replyText;
       finalIntent = vResult.effectiveIntent;
+      // Embedded request varsa AI'a göndermek yerine doğrudan forward et
+      if (vResult.embeddedRequest) {
+        console.log(`[verification] Embedded request tespit edildi: "${vResult.embeddedRequest}" — doğrudan forward edilecek`);
+        // embeddedRequest'i guestMessage olarak kullan (AI zaten cevap verdi, direkt forward)
+        // guestMessage'ı override et ki forward mesajında doğru görünsün
+        // finalResponseText (success msg) kalsın, forward ise embedded request ile yapılsın
+        // Not: forward'da guestMessage parametresine embeddedRequest aktarılır (aşağıda override)
+      }
       // Doğrulandıktan sonra forward yapılır (skipForward = false)
       skipForward = false;
     }

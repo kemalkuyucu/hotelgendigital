@@ -90,6 +90,7 @@ export async function POST(
         phone: body.phone ? String(body.phone).trim() : null,
         email: body.email ? String(body.email).trim() : null,
         language: body.language ? String(body.language) : 'tr',
+        gender: body.gender ? String(body.gender) : null,
         package: body.package ? String(body.package) : null,
         check_in_date: String(body.check_in_date),
         check_out_date: String(body.check_out_date),
