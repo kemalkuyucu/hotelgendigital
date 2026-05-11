@@ -5,7 +5,7 @@
  * AI için sistem promptuna inject edilecek özet metin.
  * Faktları kategoriye göre gruplandırır, sections'ı ekler.
  *
- * Token cap: 12000 karakter (~3000-4000 token, Claude context'inde sorun değil)
+ * Token cap: 30000 karakter (~7500-10000 token, Claude context'inde sorun değil)
  * Per-section cap: 600 karakter (fazlası "..." ile kesilir)
  *
  * Section sıralaması: created_at DESC (yeni belgeler önce — daha güncel)
@@ -16,7 +16,7 @@ import { listFacts, listSections } from './knowledge-client';
 import { FACT_CATEGORY_LABELS } from './types';
 import type { FactCategory } from './types';
 
-const MAX_CHARS = 12000;
+const MAX_CHARS = 30000;
 const SECTION_MAX_CHARS = 600;
 
 export async function buildKnowledgeSummary(hotelId: string): Promise<string> {
