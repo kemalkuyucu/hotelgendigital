@@ -105,11 +105,11 @@ export async function POST(
 
 function getVerificationAskMsg(lang: string): string {
   const msgs: Record<string, string> = {
-    tr: 'Talebinizi iletmek için lütfen oda numaranızı ve soyadınızı paylaşır mısınız? Örnek: 215 Yılmaz',
-    en: 'To process your request, could you share your room number and last name? Example: 215 Smith',
-    de: 'Bitte teilen Sie uns Ihre Zimmernummer und Ihren Nachnamen mit. Beispiel: 215 Müller',
-    ru: 'Пожалуйста, укажите номер вашей комнаты и фамилию. Пример: 215 Иванов',
-    ar: 'يرجى مشاركة رقم غرفتك واسم العائلة. مثال: 215 محمد',
+    tr: 'Yardımcı olabilmemiz için lütfen oda numaranızı, adınızı ve soyadınızı paylaşır mısınız? Örnek: 312 Kemal Kuyucu',
+    en: 'To process your request, could you share your room number, first name, and last name? Example: 312 John Smith',
+    de: 'Bitte teilen Sie uns Ihre Zimmernummer, Vorname und Nachname mit. Beispiel: 312 Hans Müller',
+    ru: 'Чтобы обработать ваш запрос, укажите номер комнаты, имя и фамилию. Пример: 312 Иван Иванов',
+    ar: 'يرجى مشاركة رقم غرفتك واسمك الأول واسم العائلة. مثال: 312 محمد علي',
   };
   return msgs[lang] ?? msgs['tr'];
 }
@@ -138,11 +138,22 @@ function getVerificationLockedMsg(lang: string): string {
 
 function getIncompleteFormatMsg(lang: string): string {
   const msgs: Record<string, string> = {
-    tr: 'Hem oda numaranızı hem de soyadınızı belirtmeniz gerekiyor. Örnek: 215 Yılmaz',
-    en: 'Please provide both your room number and last name. Example: 215 Smith',
-    de: 'Bitte geben Sie sowohl Ihre Zimmernummer als auch Ihren Nachnamen an. Beispiel: 215 Müller',
-    ru: 'Пожалуйста, укажите и номер комнаты, и фамилию. Пример: 215 Иванов',
-    ar: 'يرجى توفير رقم الغرفة والاسم الأخير معاً. مثال: 215 محمد',
+    tr: 'Oda numaranızı, adınızı ve soyadınızı birlikte belirtmeniz gerekiyor. Örnek: 312 Kemal Kuyucu',
+    en: 'Please provide your room number, first name, and last name together. Example: 312 John Smith',
+    de: 'Bitte geben Sie Ihre Zimmernummer, Vorname und Nachname zusammen an. Beispiel: 312 Hans Müller',
+    ru: 'Пожалуйста, укажите номер комнаты, имя и фамилию вместе. Пример: 312 Иван Иванов',
+    ar: 'يرجى توفير رقم الغرفة والاسم الأول واسم العائلة معاً. مثال: 312 محمد علي',
+  };
+  return msgs[lang] ?? msgs['tr'];
+}
+
+function getReVerificationMsg(lang: string): string {
+  const msgs: Record<string, string> = {
+    tr: 'Hoş geldiniz! Önceki konaklamaniz sona ermiş görünüyor. Yeniden talepte bulunmak için lütfen oda numaranızı, adınızı ve soyadınızı paylaşır mısınız? Örnek: 312 Kemal Kuyucu',
+    en: 'Welcome back! Your previous stay appears to have ended. To make a new request, please share your room number, first name, and last name. Example: 312 John Smith',
+    de: 'Willkommen! Ihr vorheriger Aufenthalt scheint beendet zu sein. Bitte teilen Sie Zimmernummer, Vorname und Nachname mit. Beispiel: 312 Hans Müller',
+    ru: 'Добро пожаловать! Предыдущее пребывание завершено. Укажите номер комнаты, имя и фамилию. Пример: 312 Иван Иванов',
+    ar: 'مرحباً! يبدو أن إقامتك السابقة قد انتهت. لتقديم طلب جديد، يرجى مشاركة رقم غرفتك واسمك الأول واسم العائلة. مثال: 312 محمد علي',
   };
   return msgs[lang] ?? msgs['tr'];
 }
@@ -318,8 +329,8 @@ async function handleVerificationFlow(args: {
 
   // 3. Mesajda doğrulama bilgisi var mı? (yeni parseVerificationInput kullan)
   const parsed = parseVerificationInput(guestMessageText);
-  const { roomNumber, lastName, hasEmbeddedRequest, embeddedRequest } = parsed;
-  const hasCredentials = roomNumber !== null && lastName !== null;
+  const { roomNumber, firstName, lastName, hasEmbeddedRequest, embeddedRequest } = parsed;
+  const hasCredentials = roomNumber !== null && firstName !== null && lastName !== null;
 
   if (!hasCredentials) {
     if (!conversation.verification_pending_intent) {
@@ -358,8 +369,8 @@ async function handleVerificationFlow(args: {
   }
 
   // 4. Doğrulama bilgisi var — verifyGuest çağır
-  console.log(`[verification] Deneniyor: room=${roomNumber} lastName=${lastName} hasEmbeddedRequest=${hasEmbeddedRequest}`);
-  const result = await verifyGuest(supa, roomNumber!, lastName!);
+  console.log(`[verification] Deneniyor: room=${roomNumber} firstName=${firstName} lastName=${lastName} hasEmbeddedRequest=${hasEmbeddedRequest}`);
+  const result = await verifyGuest(supa, roomNumber!, firstName!, lastName!);
 
   void supa.from('verification_attempts').insert({
     conversation_id: conversationId,
@@ -579,8 +590,88 @@ async function handleMessage(args: {
   let finalIntent = aiIntent;
   let skipForward = aiResult?.answered_from_knowledge ?? false;
 
-  if (requiresVerification(aiIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at))) {
-    // Verification gerekiyor veya pending var
+  // ============================================================
+  // PERSISTENT VERIFICATION CHECK (Modül 10.2)
+  // ============================================================
+  // Conversation zaten doğrulanmış mı? Doğrulanmışsa, misafir hâlâ
+  // in-house mu (check_out_date >= bugün)? Cevap evet'se doğrulama atla.
+  // ============================================================
+
+  let persistentVerifiedGuest: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    room_number: string;
+    language: string | null;
+    gender: string | null;
+    check_out_date: string;
+    is_active: boolean;
+  } | null = null;
+
+  let needsReVerification = false;
+
+  if (conversation.verified_inhouse_guest_id) {
+    const today = new Date().toISOString().slice(0, 10);
+
+    const { data: linkedGuest } = await supa
+      .from('inhouse_guests')
+      .select('id, first_name, last_name, room_number, language, gender, check_out_date, is_active')
+      .eq('id', conversation.verified_inhouse_guest_id)
+      .maybeSingle();
+
+    if (
+      linkedGuest &&
+      linkedGuest.is_active === true &&
+      (linkedGuest.check_out_date as string) >= today
+    ) {
+      // ✅ Misafir hâlâ aktif, doğrulama atla
+      persistentVerifiedGuest = linkedGuest as unknown as typeof persistentVerifiedGuest;
+      console.log(`[persistent-verify] Misafir hâlâ aktif, doğrulama atlaniyor. guest_id=${conversation.verified_inhouse_guest_id}`);
+    } else {
+      // ❌ Çıkış yapmış veya pasif → re-verify gerekiyor
+      needsReVerification = true;
+      console.log(`[persistent-verify] Misafir artık aktif değil, re-verify gerekiyor. guest_id=${conversation.verified_inhouse_guest_id}`);
+
+      // Conversation'u temizle
+      await supa
+        .from('conversations')
+        .update({
+          verified_inhouse_guest_id: null,
+          verified_at: null,
+          verification_pending_intent: null,
+          verification_attempts: 0,
+        })
+        .eq('id', conversationId);
+
+      // conversation state'i de güncelle (handleVerificationFlow'a doğru state gitsin)
+      conversation.verified_inhouse_guest_id = null;
+      conversation.verified_at = null;
+      conversation.verification_pending_intent = null;
+      conversation.verification_attempts = 0;
+    }
+  }
+
+  // Persistent misafir varsa doğrulama akışına girme
+  if (persistentVerifiedGuest) {
+    // KB cevabı değilse forward yapılacak (skipForward zaten false)
+    console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent}`);
+  } else if (needsReVerification) {
+    // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
+    const reVerMsg = getReVerificationMsg(language);
+    finalResponseText = reVerMsg;
+    finalIntent = 'front_office';
+    skipForward = true;
+
+    await supa.from('bot_messages').insert({
+      conversation_id: conversationId,
+      direction: 'outbound',
+      text: finalResponseText,
+      message_type: 'text',
+    });
+    await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
+    return;
+  } else if (requiresVerification(aiIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at))) {
+
     const effectiveIntent = requiresVerification(aiIntent) ? aiIntent! : (conversation.verification_pending_intent ?? aiIntent ?? 'unknown');
 
     const vResult = await handleVerificationFlow({

@@ -14,29 +14,29 @@ export interface VerifyResult {
 }
 
 /**
- * Misafirin gönderdiği mesajdan oda numarası ve soyad çıkarır.
+ * Modül 10.2: Misafirin gönderdiği mesajdan oda numarası, AD ve SOYAD çıkarır.
  *
  * Stratejisi:
- *  1. Oda numarasını regex ile bul: "Oda 215", "room 312", "номер 408", "215" → 2-4 haneli sayı
- *  2. "soyadım X" / "soyad: X" / "lastname X" gibi keyword sonrası geleni öncelikle soyad al
- *  3. Yoksa: oda numarasından sonra kalan kelimelerden stop word'leri at, KALANLAR'ın
- *     SON harf-only kelimesini soyad olarak al
- *  4. roomNumber + lastName ikisi de varsa parse başarılı
+ *  1. Oda numarasını regex ile bul: "Oda 215", "room 312", "215" → 2-4 haneli sayı
+ *  2. Oda numarasından sonraki kısımdan harf-only token'lar al, stop word'leri at
+ *  3. En az 2 token gerekiyor: firstName + lastName
+ *     - Son token: lastName
+ *     - Geri kalan: firstName (çoklu ad desteklenir: "Mehmet Ali")
+ *  4. Tek token varsa → firstName=null, lastName=null (yetersiz)
  *
- * Ayrıca: mesajda talep cümlesi gömülü olabilir (ör. "Oda 312 Kuyucu, klimam çalışmıyor").
- * Bu durumda hasEmbeddedRequest=true döner ve embeddedRequest alanında talep metni gelir
- * (oda no + soyad + diğer kimlik kelimeleri çıkarıldıktan sonra geriye kalan).
+ * hasEmbeddedRequest=true durumunda embeddedRequest alanında talep metni gelir.
  */
 
 export interface ParsedVerification {
   roomNumber: string | null;
+  firstName: string | null;  // Modül 10.2: zorunlu
   lastName: string | null;
   hasEmbeddedRequest: boolean;
   embeddedRequest: string | null;
 }
 
 // Türkçe/İngilizce/Almanca/Rusça/Arapça sık kullanılan stop word'ler
-// (talep cümlelerinde geçen kelimeler — soyad olarak alınmamalı)
+// (talep cümlelerinde geçen kelimeler — isim olarak alınmamalı)
 const STOP_WORDS = new Set([
   // Mekan/keyword
   'oda', 'room', 'zimmer', 'номер', 'غرفة', 'no', 'numara', 'number',
@@ -71,12 +71,11 @@ const STOP_WORDS = new Set([
 ]);
 
 const ROOM_REGEX = /(?:oda|room|zimmer|номер|غرفة|no|numara|number)?\s*#?\s*(\d{2,4})/i;
-const LASTNAME_HINT_REGEX =
-  /(?:soyad(?:ım|ı|ım:|:)?|lastname:?|surname:?|familyname:?)\s+([\p{L}]{2,})/iu;
 
 export function parseVerificationInput(text: string): ParsedVerification {
   const result: ParsedVerification = {
     roomNumber: null,
+    firstName: null,
     lastName: null,
     hasEmbeddedRequest: false,
     embeddedRequest: null,
@@ -92,48 +91,47 @@ export function parseVerificationInput(text: string): ParsedVerification {
     result.roomNumber = roomMatch[1];
   }
 
-  // 2) "soyadım X" tipi hint öncelikli
-  const hintMatch = cleaned.match(LASTNAME_HINT_REGEX);
-  if (hintMatch) {
-    result.lastName = hintMatch[1];
-  } else {
-    // 3) Oda numarasından sonraki kısma bak, stop word'leri at, son harf-only kelimeyi al
-    const afterRoom = result.roomNumber
-      ? cleaned.slice(cleaned.indexOf(result.roomNumber) + result.roomNumber.length)
-      : cleaned;
+  // 2) Oda numarasından sonraki kısımdan harf-only token'lar al, stop word'leri at
+  const afterRoom = result.roomNumber
+    ? cleaned.slice(cleaned.indexOf(result.roomNumber) + result.roomNumber.length)
+    : cleaned;
 
-    const tokens = afterRoom
-      .split(/\s+/)
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .filter((t) => /^[\p{L}]{2,}$/u.test(t)) // sadece harf-only, 2+ karakter
-      .filter((t) => !STOP_WORDS.has(t.toLowerCase()));
+  const tokens = afterRoom
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .filter((t) => /^[\p{L}'-]{2,}$/u.test(t))   // harf, kesme, tire (O'Brien, Al-Saleh)
+    .filter((t) => !STOP_WORDS.has(t.toLowerCase()));
 
-    if (tokens.length > 0) {
-      result.lastName = tokens[tokens.length - 1]; // SON kelime soyad
-    }
+  // 3) En az 2 token gerekiyor: firstName + lastName
+  if (tokens.length >= 2) {
+    result.lastName = tokens[tokens.length - 1];
+    result.firstName = tokens.slice(0, -1).join(' '); // "Mehmet Ali" gibi çoklu ad desteklenir
+  } else if (tokens.length === 1) {
+    // Yetersiz — sadece tek isim verilmiş, parse fail
+    result.firstName = null;
+    result.lastName = null;
   }
 
   // 4) Embedded request kontrolü
-  // Eğer parse sonrası kalan kelimelerde stop word'lerden biri varsa → talep gömülü demektir
-  if (result.roomNumber && result.lastName) {
+  if (result.roomNumber && result.firstName && result.lastName) {
     const lowerText = cleaned.toLowerCase();
-    const stopWordHit = Array.from(STOP_WORDS).some((sw) => {
-      // soyad/oda gibi parse keyword'leri sayma
-      const skipList = new Set([
-        'oda', 'room', 'zimmer', 'soyad', 'soyadım', 'no', 'numara',
-        've', 'ile', 'için', 'and', 'with', 'for',
-      ]);
-      if (skipList.has(sw)) return false;
-      // sw mesajın içinde geçiyor mu?
-      return new RegExp(`\\b${sw}\\b`, 'iu').test(lowerText);
-    });
+    const requestStopWords = [
+      'klima', 'klimam', 'tv', 'televizyon', 'duş', 'banyo', 'havlu', 'bornoz',
+      'çarşaf', 'yastık', 'battaniye', 'minibar', 'bira', 'şarap', 'kahve',
+      'çay', 'yemek', 'wifi', 'lamba', 'priz', 'elektrik', 'temizlik',
+      'şikayet', 'iade', 'fatura', 'çalışmıyor', 'bozuk', 'kırık', 'eksik',
+      'kirli', 'soğuk', 'sıcak', 'lazım', 'istiyorum',
+    ];
+    const stopWordHit = requestStopWords.some((sw) =>
+      new RegExp(`\\b${sw}\\b`, 'iu').test(lowerText),
+    );
 
     if (stopWordHit) {
       result.hasEmbeddedRequest = true;
-      // Oda no ve soyadı mesajdan çıkar → kalan kısmı embeddedRequest yap
       const stripped = cleaned
         .replace(new RegExp(`\\b${result.roomNumber}\\b`, 'g'), '')
+        .replace(new RegExp(`\\b${result.firstName}\\b`, 'iu'), '')
         .replace(new RegExp(`\\b${result.lastName}\\b`, 'iu'), '')
         .replace(/(?:oda|room|zimmer|номер|no|numara|number)/gi, '')
         .replace(/\s+/g, ' ')
@@ -146,22 +144,25 @@ export function parseVerificationInput(text: string): ParsedVerification {
 }
 
 /**
- * inhouse_guests'ta eşleşme ara.
+ * Modül 10.2: inhouse_guests'ta 3'lü AND eşleşme ara.
  * Match kuralı:
  *  - room_number eşit (TEXT karşılaştırma)
- *  - lower(last_name) eşit
+ *  - first_name ILIKE eşit (case-insensitive)
+ *  - last_name  ILIKE eşit (case-insensitive)
  *  - is_active = true
- *  - bugün check_in_date ile check_out_date arasında (dahil)
+ *  - check_out_date >= bugün
  */
 export async function verifyGuest(
   supa: SupabaseClient,
   roomNo: string,
+  firstName: string,
   lastName: string,
 ): Promise<VerifyResult> {
   const trimmedRoom = roomNo.trim();
-  const trimmedName = lastName.trim().toLowerCase();
+  const trimmedFirst = firstName.trim();
+  const trimmedLast = lastName.trim();
 
-  if (!trimmedRoom || !trimmedName) {
+  if (!trimmedRoom || !trimmedFirst || !trimmedLast) {
     return { matched: false, reason: 'format_error' };
   }
 
@@ -171,42 +172,37 @@ export async function verifyGuest(
     .from('inhouse_guests')
     .select('id, full_name, first_name, last_name, room_number, language, gender, check_in_date, check_out_date')
     .eq('room_number', trimmedRoom)
+    .ilike('first_name', trimmedFirst)
+    .ilike('last_name', trimmedLast)
     .eq('is_active', true)
-    .lte('check_in_date', today)
-    .gte('check_out_date', today);
+    .gte('check_out_date', today)
+    .maybeSingle();
 
   if (error) {
     console.error('[verify-guest] Supabase error:', error.message);
     return { matched: false, reason: 'no_match' };
   }
 
-  if (!data || data.length === 0) {
-    return { matched: false, reason: 'no_match' };
-  }
-
-  // Soyad case-insensitive eşleşme
-  const match = data.find(
-    (g) => (g.last_name as string).trim().toLowerCase() === trimmedName,
-  );
-
-  if (!match) {
+  if (!data) {
     return { matched: false, reason: 'no_match' };
   }
 
   return {
     matched: true,
-    guestId: match.id as string,
-    guestFullName: (match.full_name as string) ?? `${match.last_name}`,
-    guestFirstName: (match.first_name as string | null) ?? undefined,
-    guestLastName: (match.last_name as string) ?? undefined,
-    guestLanguage: (match.language as string | null) ?? undefined,
-    guestGender: (match.gender as 'male' | 'female' | null) ?? null,
-    roomNo: match.room_number as string,
+    guestId: data.id as string,
+    guestFullName: (data.full_name as string) ?? `${data.first_name} ${data.last_name}`,
+    guestFirstName: (data.first_name as string | null) ?? undefined,
+    guestLastName: (data.last_name as string | null) ?? undefined,
+    guestLanguage: (data.language as string | null) ?? undefined,
+    guestGender: (data.gender as 'male' | 'female' | null) ?? null,
+    roomNo: data.room_number as string,
   };
 }
 
 /**
  * Conversation doğrulama state'i hâlâ geçerli mi?
+ * Modül 10.2: TTL kontrol artık sadece fallback için kullanılıyor.
+ * Asıl kontrol webhook'ta check_out_date >= bugün kontrolüyle yapılıyor.
  */
 export function isVerificationValid(verifiedAt: string | null): boolean {
   if (!verifiedAt) return false;

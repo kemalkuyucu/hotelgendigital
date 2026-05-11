@@ -94,15 +94,14 @@ export async function classifyAndRespond(
 
   // Yeni format öncelikli, legacy fallback
   const responseToGuest = parsed.reply_text ?? parsed.response_to_guest ?? '';
-  let department = parsed.intent ?? parsed.department ?? null;
-  let confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
+  const rawIntent = parsed.intent ?? parsed.department ?? null;
+  const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
 
-  // Şikayet intent'i her zaman guest_relation'a gider — confidence düşse bile.
-  // Devir notu kuralı: complaint → GR, CC YOK.
-  if (department === 'complaint') {
-    department = 'guest_relation';
-    confidence = Math.max(confidence, 0.85); // GR routing'i için minimum güven
-  }
+  // Modül 10.2: Hiyerarşik routing — AI'nın intent'ini departmana çevir.
+  // Complaint→GR kısayolu KALDIRILDI (çok genişti, operasyonel sorunları GR'a yönlendiriyordu).
+  const { department } = rawIntent
+    ? routeIntentToDepartment(rawIntent)
+    : { department: null };
 
   // Validasyon
   if (typeof responseToGuest !== 'string' || responseToGuest.length === 0) {
@@ -127,4 +126,58 @@ export async function classifyAndRespond(
     latency_ms,
     raw_response: rawText,
   };
+}
+
+// ── Modül 10.2: Intent → Departman hiyerarşik routing ─────────────────────────
+
+/**
+ * Intent → Departman mapping (hiyerarşik).
+ *
+ * Kural:
+ *   1. Operasyonel intent her zaman kendi departmanına gider (GR'a değil).
+ *   2. Kişisel intent (billing, allergy, lost_and_found) front_office'e gider.
+ *   3. Salt complaint (operasyonel olmayan deneyim şikayeti) GR'a gider.
+ *   4. Tanınmayan intent → front_office (fallback).
+ */
+
+const OPERATIONAL_INTENTS = new Set([
+  'technical',
+  'housekeeping',
+  'fb',
+  'spa',
+  'animation',
+  'room_service',
+]);
+
+const PERSONAL_INTENTS = new Set([
+  'allergy',
+  'billing',
+  'lost_and_found',
+]);
+
+const COMPLAINT_INTENTS = new Set(['complaint']);
+
+export function routeIntentToDepartment(intent: string): {
+  department: string;
+  routingReason: string;
+} {
+  const normalized = (intent || '').toLowerCase().trim();
+
+  if (OPERATIONAL_INTENTS.has(normalized)) {
+    // room_service özelleşmiş — F&B'ye gider
+    if (normalized === 'room_service') {
+      return { department: 'fb', routingReason: 'operational_room_service' };
+    }
+    return { department: normalized, routingReason: 'operational_direct' };
+  }
+
+  if (PERSONAL_INTENTS.has(normalized)) {
+    return { department: 'front_office', routingReason: 'personal_to_front_office' };
+  }
+
+  if (COMPLAINT_INTENTS.has(normalized)) {
+    return { department: 'guest_relation', routingReason: 'complaint_to_gr' };
+  }
+
+  return { department: normalized || 'front_office', routingReason: 'fallback' };
 }
