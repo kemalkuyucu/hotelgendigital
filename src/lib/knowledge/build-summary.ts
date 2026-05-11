@@ -4,13 +4,20 @@
  * ============================================================================
  * AI için sistem promptuna inject edilecek özet metin.
  * Faktları kategoriye göre gruplandırır, sections'ı ekler.
- * Token cap: 2000 karakter (yaklaşık 600-700 token)
+ *
+ * Token cap: 12000 karakter (~3000-4000 token, Claude context'inde sorun değil)
+ * Per-section cap: 600 karakter (fazlası "..." ile kesilir)
+ *
+ * Section sıralaması: created_at DESC (yeni belgeler önce — daha güncel)
  * ============================================================================
  */
 
 import { listFacts, listSections } from './knowledge-client';
 import { FACT_CATEGORY_LABELS } from './types';
 import type { FactCategory } from './types';
+
+const MAX_CHARS = 12000;
+const SECTION_MAX_CHARS = 600;
 
 export async function buildKnowledgeSummary(hotelId: string): Promise<string> {
   const [facts, sections] = await Promise.all([
@@ -34,21 +41,26 @@ export async function buildKnowledgeSummary(hotelId: string): Promise<string> {
     })
     .join('\n\n');
 
-  // Sections: başlık + içerik
+  // Sections: her section content'i 600 karakterle sınırla
   const sectionsText = sections
-    .map((s) => `[${s.title}]\n${s.content}`)
+    .map((s) => {
+      const content =
+        s.content.length <= SECTION_MAX_CHARS
+          ? s.content
+          : s.content.slice(0, SECTION_MAX_CHARS - 3) + '...';
+      return `[${s.title}]\n${content}`;
+    })
     .join('\n\n');
 
   const full = [
-    '=== OTEL BİLGİLERİ ===',
+    '=== OTEL TEMEL BİLGİLERİ ===',
     factsText || '(henüz bilgi girilmemiş)',
     '',
-    '=== EKSTRA BİLGİLER ===',
+    '=== DETAYLI BİLGİLER ===',
     sectionsText || '(henüz bölüm girilmemiş)',
     '=== SON ===',
   ].join('\n');
 
-  // Token cap: 2000 karakter
-  if (full.length <= 2000) return full;
-  return full.slice(0, 1997) + '...';
+  if (full.length <= MAX_CHARS) return full;
+  return full.slice(0, MAX_CHARS - 3) + '...';
 }

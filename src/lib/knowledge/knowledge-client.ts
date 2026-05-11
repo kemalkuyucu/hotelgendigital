@@ -104,7 +104,7 @@ export async function listSections(hotelId: string): Promise<KnowledgeSection[]>
     .select('id, title, content, category, is_active, display_order, created_at, updated_at')
     .eq('is_active', true)
     .order('display_order', { ascending: true })
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false }); // DESC: yeni belgeler önce
 
   if (error) throw new Error(`listSections hatası: ${error.message}`);
   return (data ?? []) as KnowledgeSection[];

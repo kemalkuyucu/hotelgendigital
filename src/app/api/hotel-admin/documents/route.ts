@@ -18,6 +18,7 @@ import { getAllowedDepartments } from '@/lib/hotel-admin/types';
 import type { DepartmentKey } from '@/lib/hotel-admin/types';
 import { createDocument, listDocuments } from '@/lib/documents/document-client';
 import type { DocumentType } from '@/lib/documents/document-client';
+import { invalidateSummary } from '@/lib/knowledge/cache';
 
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
@@ -142,6 +143,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       uploaded_by_user_id: admin.sub,
       notes,
     });
+
+    // Cache'i geçersiz kıl — bot bir sonraki mesajda taze KB çeker
+    invalidateSummary(tenant.hotelId);
 
     return NextResponse.json({ document_id: doc.id, status: 'pending' }, { status: 201 });
   } catch (err) {
