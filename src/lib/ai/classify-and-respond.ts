@@ -36,6 +36,8 @@ export async function classifyAndRespond(
   const client = getAnthropicClient();
   // Knowledge summary'yi cache'den getir (5dk TTL) ve sisteme inject et
   const knowledgeSummary = await getCachedSummary(input.hotelId);
+  console.log('[KB] summary length:', knowledgeSummary.length);
+  console.log('[KB] summary preview:', knowledgeSummary.slice(0, 500));
   const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments, knowledgeSummary);
 
   // Context mesajlarını Anthropic message formatına çevir
