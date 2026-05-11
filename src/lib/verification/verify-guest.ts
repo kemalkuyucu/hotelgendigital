@@ -24,8 +24,8 @@ export function parseVerificationInput(text: string): {
 } {
   const lower = text.trim().toLowerCase();
 
-  // Oda no: ilk 1-4 haneli sayı
-  const roomMatch = lower.match(/\b(\d{1,4})\b/);
+  // Oda no: ilk 2-4 haneli sayı (tek hane kabul edilmez)
+  const roomMatch = lower.match(/\b(\d{2,4})\b/);
   const roomNo = roomMatch?.[1] ?? null;
 
   // Soyad: sayı sonrası kalan kısmı temizle

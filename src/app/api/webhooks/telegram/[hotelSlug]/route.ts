@@ -135,6 +135,17 @@ function getVerificationLockedMsg(lang: string): string {
   return msgs[lang] ?? msgs['tr'];
 }
 
+function getIncompleteFormatMsg(lang: string): string {
+  const msgs: Record<string, string> = {
+    tr: 'Hem oda numaranızı hem de soyadınızı belirtmeniz gerekiyor. Örnek: 215 Yılmaz',
+    en: 'Please provide both your room number and last name. Example: 215 Smith',
+    de: 'Bitte geben Sie sowohl Ihre Zimmernummer als auch Ihren Nachnamen an. Beispiel: 215 Müller',
+    ru: 'Пожалуйста, укажите и номер комнаты, и фамилию. Пример: 215 Иванов',
+    ar: 'يرجى توفير رقم الغرفة والاسم الأخير معاً. مثال: 215 محمد',
+  };
+  return msgs[lang] ?? msgs['tr'];
+}
+
 function getVerificationSuccessMsg(lang: string, firstName: string | undefined): string {
   const name = firstName ?? '';
   const msgs: Record<string, string> = {
@@ -218,20 +229,34 @@ async function handleVerificationFlow(args: {
   const hasCredentials = roomNo !== null && lastName !== null;
 
   if (!hasCredentials) {
-    // Doğrulama bilgisi yok — pending_intent set et, cevap iste
-    const pendingIntent = conversation.verification_pending_intent ?? aiIntent;
-    await supa
-      .from('conversations')
-      .update({ verification_pending_intent: pendingIntent })
-      .eq('id', conversationId);
+    if (!conversation.verification_pending_intent) {
+      // İlk kez intent geldi, henüz sormadık → pending_intent kaydet, sor
+      const pendingIntent = aiIntent;
+      await supa
+        .from('conversations')
+        .update({ verification_pending_intent: pendingIntent })
+        .eq('id', conversationId);
 
-    const askMsg = getVerificationAskMsg(language);
-    return {
-      shouldShortCircuit: true,
-      replyText: askMsg,
-      verifiedGuestId: null,
-      effectiveIntent: aiIntent,
-    };
+      console.log(`[verification] İlk intent — pending_intent=${pendingIntent} kaydedildi, credentials isteniyor`);
+      const askMsg = getVerificationAskMsg(language);
+      return {
+        shouldShortCircuit: true,
+        replyText: askMsg,
+        verifiedGuestId: null,
+        effectiveIntent: aiIntent,
+      };
+    } else {
+      // Daha önce sorduk ama kullanıcı eksik bilgi gönderdi (sadece oda no veya sadece soyad)
+      // attempts artırma — bu bir format hatası, yanlış girişim sayılmaz
+      console.log(`[verification] Eksik format — pending_intent=${conversation.verification_pending_intent}, roomNo=${roomNo}, lastName=${lastName}`);
+      const incompleteMsg = getIncompleteFormatMsg(language);
+      return {
+        shouldShortCircuit: true,
+        replyText: incompleteMsg,
+        verifiedGuestId: null,
+        effectiveIntent: aiIntent,
+      };
+    }
   }
 
   // 4. Doğrulama bilgisi var — verifyGuest çağır
