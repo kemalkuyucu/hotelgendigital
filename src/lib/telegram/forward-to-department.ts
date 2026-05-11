@@ -1,6 +1,7 @@
 // Modül 6 — Departman grubuna mesaj forward
 // Modül 8 ile güncellendi: grup mesajı + vardiyadaki aktif personele bireysel DM
 // Modül 8.1 ile güncellendi: front-office CC + console.log + BigInt cast + 3 ayrı mesaj şablonu
+// Modül 10.3 ile güncellendi: staff DM guard, template sadelestirme, misafir adı kaynağı
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { TelegramClient } from './client';
@@ -16,10 +17,18 @@ export interface ForwardInput {
   targetChatId: number;
   wasRerouted: boolean;          // off-hours sebebiyle yönlendirildiyse true
   isOffHours: boolean;           // O an off-hours muydu
-  guestName: string;
+  guestName: string;             // Telegram profil ismi (fallback)
   guestMessage: string;
   aiResponse: string;
   confidence: number;
+  // Modül 10.3: Doğrulanmış misafir bilgisi — forward template'inde öncelikli kullanılır
+  verifiedGuest?: {
+    first_name: string | null;
+    last_name: string | null;
+    room_number: string | null;
+  } | null;
+  // Modül 10.3: Conversation'ın guest_telegram_id'si — staff DM guard için
+  guestTelegramId?: string | null;
 }
 
 export interface ForwardResult {
@@ -56,28 +65,30 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     guestMessage,
     aiResponse,
     confidence,
+    verifiedGuest,
+    guestTelegramId,
   } = input;
 
   // Türkiye saati — Intl.DateTimeFormat ile güvenilir
   const trDateStr = getTurkishDateStr();
 
-  const confidencePercent = Math.round(confidence * 100);
   const reroutedNote = wasRerouted
     ? '\n⚠️ <i>Off-hours veya sınıflandırılamadı — resepsiyona yönlendirildi</i>'
     : '';
 
   const deptDisplayLabel = DEPT_LABELS[targetDept] ?? targetDept;
 
+  // Modül 10.3: Misafir adı önceliği — verifiedGuest (inhouse) > guestName (Telegram profil)
+  const resolvedGuestName = resolveGuestName(verifiedGuest ?? null, guestName);
+  const resolvedRoomNumber = verifiedGuest?.room_number ?? null;
+
   // ─── 1. GRUP MESAJI ──────────────────────────────────────────────────────
   console.log(`[forward] starting forward → dept=${targetDept} chatId=${targetChatId}`);
 
   const groupMsgText = formatGroupMessage({
-    guestName,
+    guestName: resolvedGuestName,
+    roomNumber: resolvedRoomNumber,
     guestMessage,
-    aiResponse,
-    targetDept,
-    deptDisplayLabel,
-    confidencePercent,
     trDateStr,
     reroutedNote,
   });
@@ -148,9 +159,15 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
         continue;
       }
 
+      // Modül 10.3: GUARD — staff telegram_id, misafirin chat_id'siyle eşleşiyorsa DM atla
+      if (guestTelegramId && String(staff.telegram_user_id) === String(guestTelegramId)) {
+        console.log(`[fwd] DM GUARD: staff_telegram_id=${staff.telegram_user_id} matches guest_telegram_id — skipping DM to avoid sending to guest`);
+        continue;
+      }
+
       const dmText = formatStaffDmMessage({
         staffFullName: staff.full_name,
-        guestName,
+        guestName: resolvedGuestName,
         guestMessage,
         deptDisplayLabel,
         trDateStr,
@@ -232,7 +249,8 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
         const frontOfficeChatId = foRow.telegram_chat_id as number;
 
         const ccMsgText = formatFrontOfficeCcMessage({
-          guestName,
+          guestName: resolvedGuestName,
+          roomNumber: resolvedRoomNumber,
           guestMessage,
           deptDisplayLabel,
           trDateStr,
@@ -277,29 +295,38 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
 
 // ─── MESAJ ŞABLONLARI ─────────────────────────────────────────────────────────
 
-/** Şablon 1: Departman grubuna — eylem talebi */
+/**
+ * Modül 10.3: Misafir adını çöz.
+ * Öncelik: verifiedGuest (inhouse_guests) > fallbackName (Telegram profili)
+ */
+function resolveGuestName(
+  verifiedGuest: { first_name: string | null; last_name: string | null } | null,
+  fallbackName: string,
+): string {
+  if (verifiedGuest) {
+    const name = `${verifiedGuest.first_name ?? ''} ${verifiedGuest.last_name ?? ''}`.trim();
+    if (name) return name.toUpperCase();
+  }
+  return (fallbackName || '(bilinmiyor)').toUpperCase();
+}
+
+/** Şablon 1: Departman grubuna — eylem talebi (Modül 10.3: sadeleştirildi, 5 alan) */
 function formatGroupMessage(args: {
   guestName: string;
+  roomNumber: string | null;
   guestMessage: string;
-  aiResponse: string;
-  targetDept: string;
-  deptDisplayLabel: string;
-  confidencePercent: number;
   trDateStr: string;
   reroutedNote: string;
 }): string {
-  return [
-    `🆕 <b>Misafir Talebi</b>`,
-    ``,
-    `👤 Misafir: ${escapeHtml(args.guestName)}`,
-    `📝 Mesaj: ${escapeHtml(args.guestMessage)}`,
-    `🤖 AI Cevabı: ${escapeHtml(args.aiResponse)}`,
-    `📊 Departman: <code>${args.targetDept}</code> | Güven: %${args.confidencePercent}`,
-    `🕐 ${args.trDateStr}`,
-    args.reroutedNote,
-  ]
-    .filter((l) => l !== undefined)
-    .join('\n');
+  const roomLine = args.roomNumber ? `🚪 <b>Oda:</b> ${escapeHtml(args.roomNumber)}\n` : '';
+  return (
+    `🛎 <b>Misafir Talebi</b>\n\n` +
+    roomLine +
+    `👤 <b>Misafir:</b> ${escapeHtml(args.guestName)}\n` +
+    `📝 <b>Talep:</b> "${escapeHtml(args.guestMessage)}"\n` +
+    `🕐 <b>Saat:</b> ${escapeHtml(args.trDateStr)}` +
+    args.reroutedNote
+  );
 }
 
 /** Şablon 2: Vardiyadaki personele bireysel DM — kişiye özel */
@@ -320,30 +347,26 @@ function formatStaffDmMessage(args: {
     `👤 Misafir: ${escapeHtml(args.guestName)}`,
     `📝 Talep: "${escapeHtml(args.guestMessage)}"`,
     `🕐 Saat: ${args.trDateStr}`,
-    ``,
-    `Bu mesaj size özel iletildi. İlgili departman grubunda da kayıtlıdır.`,
   ].join('\n');
 }
 
-/** Şablon 3: Resepsiyon (front_office) CC — bilgilendirme, eylem değil */
+/** Şablon 3: Resepsiyon (front_office) CC — bilgilendirme (Modül 10.3: sadeleştirildi) */
 function formatFrontOfficeCcMessage(args: {
   guestName: string;
+  roomNumber: string | null;
   guestMessage: string;
   deptDisplayLabel: string;
   trDateStr: string;
 }): string {
-  return [
-    `ℹ️ <b>BİLGİLENDİRME</b>`,
-    ``,
-    `Aşağıdaki talep <b>${escapeHtml(args.deptDisplayLabel)}</b> departmanına iletildi.`,
-    ``,
-    `👤 Misafir: ${escapeHtml(args.guestName)}`,
-    `📝 Talep: "${escapeHtml(args.guestMessage)}"`,
-    `🕐 Saat: ${args.trDateStr}`,
-    ``,
-    `Bu mesaj sadece haberdar olmanız içindir.`,
-    `İlgili departman aksiyon alacaktır. Aksi durumda SLA aşımında bilgilendirileceksiniz.`,
-  ].join('\n');
+  const roomLine = args.roomNumber ? `🚪 <b>Oda:</b> ${escapeHtml(args.roomNumber)}\n` : '';
+  return (
+    `ℹ️ <b>Bilgilendirme:</b> ${escapeHtml(args.deptDisplayLabel)} departmanına iletildi.\n\n` +
+    roomLine +
+    `👤 <b>Misafir:</b> ${escapeHtml(args.guestName)}\n` +
+    `📝 <b>Talep:</b> "${escapeHtml(args.guestMessage)}"\n` +
+    `🕐 <b>Saat:</b> ${escapeHtml(args.trDateStr)}\n\n` +
+    `<i>Bu mesaj sadece haberdar olmanız içindir. İlgili departman aksiyon alacaktır.</i>`
+  );
 }
 
 // ─── YARDIMCI FONKSİYONLAR ───────────────────────────────────────────────────

@@ -769,6 +769,16 @@ async function handleMessage(args: {
           guestMessage: text,
           aiResponse: finalResponseText,
           confidence: aiResult?.confidence ?? 0,
+          // Modül 10.3: Doğrulanmış misafir bilgisi (template'te öncelikli)
+          verifiedGuest: persistentVerifiedGuest != null
+            ? {
+                first_name: (persistentVerifiedGuest as { first_name: string | null }).first_name,
+                last_name: (persistentVerifiedGuest as { last_name: string | null }).last_name,
+                room_number: (persistentVerifiedGuest as { room_number: string }).room_number,
+              }
+            : null,
+          // Modül 10.3: Staff DM guard — misafir kendi DM'ini almasın
+          guestTelegramId: String(userId),
         });
         console.log(
           `[telegram] forward OK → dept=${routingResult.targetDept} chat=${routingResult.targetChatId} rerouted=${routingResult.wasRerouted}`,
