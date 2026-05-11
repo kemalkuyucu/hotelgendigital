@@ -40,9 +40,9 @@ export function parseVerificationInput(text: string): {
     .replace(/[,.;:!?'"`]/g, ' ')
     .trim();
 
-  // Kalan ilk kelime soyad varsayalım (1 kelime, en az 2 harf)
-  const lastNameMatch = cleaned.match(/[\p{L}]{2,}/u);
-  const lastName = lastNameMatch?.[0] ?? null;
+  // Kalan tüm harf token'larından SON kelimeyi soyad kabul et ("Ad Soyad" sırası)
+  const tokens = cleaned.split(/\s+/).filter((t) => /^[\p{L}]{2,}$/u.test(t));
+  const lastName = tokens.length > 0 ? tokens[tokens.length - 1] : null;
 
   return { roomNo, lastName };
 }

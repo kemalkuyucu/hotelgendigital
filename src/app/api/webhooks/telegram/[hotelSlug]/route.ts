@@ -231,10 +231,15 @@ async function handleVerificationFlow(args: {
   if (!hasCredentials) {
     if (!conversation.verification_pending_intent) {
       // İlk kez intent geldi, henüz sormadık → pending_intent kaydet, sor
+      // Aynı zamanda eski birikmiş attempts'i sıfırla (fresh start)
       const pendingIntent = aiIntent;
       await supa
         .from('conversations')
-        .update({ verification_pending_intent: pendingIntent })
+        .update({
+          verification_pending_intent: pendingIntent,
+          verification_attempts: 0,
+          verification_last_attempt_at: null,
+        })
         .eq('id', conversationId);
 
       console.log(`[verification] İlk intent — pending_intent=${pendingIntent} kaydedildi, credentials isteniyor`);
