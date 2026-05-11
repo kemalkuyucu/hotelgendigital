@@ -50,9 +50,9 @@ export function parseVerificationInput(text: string): {
 /**
  * inhouse_guests'ta eşleşme ara.
  * Match kuralı:
- *  - room_no eşit (TEXT karşılaştırma)
+ *  - room_number eşit (TEXT karşılaştırma)
  *  - lower(last_name) eşit
- *  - status = 'active'
+ *  - is_active = true
  *  - bugün check_in_date ile check_out_date arasında (dahil)
  */
 export async function verifyGuest(
@@ -71,9 +71,9 @@ export async function verifyGuest(
 
   const { data, error } = await supa
     .from('inhouse_guests')
-    .select('id, full_name, first_name, room_no, last_name, check_in_date, check_out_date')
-    .eq('room_no', trimmedRoom)
-    .eq('status', 'active')
+    .select('id, full_name, first_name, room_number, last_name, check_in_date, check_out_date')
+    .eq('room_number', trimmedRoom)
+    .eq('is_active', true)
     .lte('check_in_date', today)
     .gte('check_out_date', today);
 
@@ -100,7 +100,7 @@ export async function verifyGuest(
     guestId: match.id as string,
     guestFullName: (match.full_name as string) ?? `${match.last_name}`,
     guestFirstName: (match.first_name as string | null) ?? undefined,
-    roomNo: match.room_no as string,
+    roomNo: match.room_number as string,
   };
 }
 

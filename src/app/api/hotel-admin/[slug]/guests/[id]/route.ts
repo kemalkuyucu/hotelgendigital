@@ -1,6 +1,6 @@
 // GET /api/hotel-admin/[slug]/guests/[id] — Tek misafir
 // PATCH /api/hotel-admin/[slug]/guests/[id] — Güncelle
-// DELETE /api/hotel-admin/[slug]/guests/[id] — Status=cancelled (soft)
+// DELETE /api/hotel-admin/[slug]/guests/[id] — is_active=false (soft)
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getHotelAdminFromCookie } from '@/lib/hotel-admin/auth';
@@ -53,11 +53,26 @@ export async function PATCH(
   try {
     const body = await req.json() as Record<string, unknown>;
 
-    // Güncellenebilir alanlar
-    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    const allowed = ['room_no', 'first_name', 'last_name', 'phone', 'email', 'language', 'package', 'check_in_date', 'check_out_date', 'status', 'notes'];
-    for (const key of allowed) {
+    const updateData: Record<string, unknown> = {};
+
+    // Scalar güncellenebilir alanlar
+    const scalarFields = ['room_number', 'first_name', 'last_name', 'phone', 'email', 'language', 'package', 'check_in_date', 'check_out_date', 'notes'];
+    for (const key of scalarFields) {
       if (key in body) updateData[key] = body[key];
+    }
+
+    // is_active boolean
+    if ('is_active' in body) {
+      updateData['is_active'] = Boolean(body.is_active);
+    }
+
+    // full_name: first_name veya last_name değiştiyse yeniden hesapla
+    if ('first_name' in body || 'last_name' in body) {
+      const fn = 'first_name' in body ? String(body.first_name ?? '').trim() : '';
+      const ln = 'last_name' in body ? String(body.last_name ?? '').trim() : '';
+      if (fn || ln) {
+        updateData['full_name'] = [fn, ln].filter(Boolean).join(' ');
+      }
     }
 
     const tenant = await resolveTenantBySlug(slug);
@@ -93,7 +108,7 @@ export async function DELETE(
     const tenant = await resolveTenantBySlug(slug);
     const { error } = await tenant.hotelSupabase
       .from('inhouse_guests')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .update({ is_active: false })
       .eq('id', id);
 
     if (error) throw new Error(error.message);

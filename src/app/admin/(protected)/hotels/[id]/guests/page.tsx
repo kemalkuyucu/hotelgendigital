@@ -12,25 +12,21 @@ interface Hotel {
 
 interface Guest {
   id: string
-  room_no: string
+  room_number: string
   first_name: string | null
   last_name: string
   full_name: string
   check_in_date: string
   check_out_date: string
-  status: string
+  is_active: boolean
   language: string
   package: string | null
 }
 
-function statusBadge(status: string) {
-  const map: Record<string, { label: string; color: string }> = {
-    active: { label: 'Aktif', color: '#16a34a' },
-    checked_out: { label: 'Check-out', color: '#64748b' },
-    cancelled: { label: 'İptal', color: '#dc2626' },
-  }
-  const s = map[status] ?? map['cancelled']
-  return <span style={{ color: s.color, fontWeight: 600, fontSize: '12px' }}>{s.label}</span>
+function statusBadge(isActive: boolean) {
+  return isActive
+    ? <span style={{ color: '#16a34a', fontWeight: 600, fontSize: '12px' }}>Aktif</span>
+    : <span style={{ color: '#64748b', fontWeight: 600, fontSize: '12px' }}>Pasif</span>
 }
 
 export default async function AdminHotelGuestsPage({
@@ -61,11 +57,11 @@ export default async function AdminHotelGuestsPage({
     const tenant = await resolveTenantBySlug(h.slug)
     let query = tenant.hotelSupabase
       .from('inhouse_guests')
-      .select('id, room_no, first_name, last_name, full_name, check_in_date, check_out_date, status, language, package')
+      .select('id, room_number, first_name, last_name, full_name, check_in_date, check_out_date, is_active, language, package')
       .order('check_in_date', { ascending: false })
 
-    if (status === 'active') query = query.eq('status', 'active')
-    if (search) query = query.or(`room_no.ilike.%${search}%,last_name.ilike.%${search}%`)
+    if (status === 'active') query = query.eq('is_active', true)
+    if (search) query = query.or(`room_number.ilike.%${search}%,last_name.ilike.%${search}%`)
 
     const { data, error } = await query
     if (error) dbError = error.message
@@ -145,12 +141,12 @@ export default async function AdminHotelGuestsPage({
               <tbody>
                 {guests.map((g, i) => (
                   <tr key={g.id} className={i < guests.length - 1 ? 'border-b border-gray-100' : ''}>
-                    <td className="px-4 py-3 font-mono font-bold text-gray-900">{g.room_no}</td>
+                    <td className="px-4 py-3 font-mono font-bold text-gray-900">{g.room_number}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{g.full_name}</td>
                     <td className="px-4 py-3 text-gray-600">{g.check_in_date}</td>
                     <td className="px-4 py-3 text-gray-600">{g.check_out_date}</td>
                     <td className="px-4 py-3 text-gray-500 uppercase text-xs">{g.language}</td>
-                    <td className="px-4 py-3">{statusBadge(g.status)}</td>
+                    <td className="px-4 py-3">{statusBadge(g.is_active)}</td>
                     <td className="px-4 py-3">
                       <Link
                         href={`/hotel-admin/${h.slug}/guests/${g.id}/edit`}
