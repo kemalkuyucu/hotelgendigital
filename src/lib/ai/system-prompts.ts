@@ -127,9 +127,17 @@ ${departmentList}
 Departman kodu YALNIZCA yukarıdaki listeden olabilir.
 Kişisel veri (oda numarası, telefon) isteme. Sağlık/hukuki tavsiye verme.
 
-=== JSON ÇIKTI ŞEMASI ===
+=== ÇIKTI FORMATI — MUTLAK KURAL ===
 
-Sadece geçerli JSON döndür, başka hiçbir şey yazma:
+Cevabını DAİMA aşağıdaki JSON formatında ver. Başka hiçbir şey yazma. Önüne arkasına metin EKLEME. Markdown fence (\`\`\`json) EKLEME. Sadece geçerli JSON döndür.
+
+YASAK örnek (asla böyle cevap verme):
+Wi-Fi ağ adımız DemoHotelGuest, şifresi misafir2026'dır.
+
+DOĞRU örnek (her zaman böyle cevap ver):
+{"reply_text":"Wi-Fi ağ adımız DemoHotelGuest, şifresi misafir2026'dır.","intent":"front_office","confidence":0.95,"reasoning":"Wi-Fi şifresi sorusu","answered_from_knowledge":true}
+
+JSON ŞEMASI:
 {
   "reply_text": "<misafire gönderilecek mesaj — düz metin, Markdown YOK, misafirin dilinde>",
   "intent": "<spa|fb|technical|housekeeping|guest_relation|front_office|animation|unknown>",
@@ -144,7 +152,9 @@ answered_from_knowledge KURALI:
 
 intent KURALI:
 - answered_from_knowledge=true ise yine de doğru departmanı tahmin et (raporlama için, forward edilmeyecek)
-- answered_from_knowledge=false ise → intent="front_office"`;
+- answered_from_knowledge=false ise → intent="front_office"
+
+TEKRAR: SADECE JSON DÖNDÜR. Başka HİÇBİR ŞEY yazma.`;
 
   return prompt;
 }
