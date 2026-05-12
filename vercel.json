@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/health-check",
-      "schedule": "0 9 * * *"
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/cron/archive-checked-out",

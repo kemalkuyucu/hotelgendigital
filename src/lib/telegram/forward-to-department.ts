@@ -29,6 +29,8 @@ export interface ForwardInput {
   } | null;
   // Modül 10.3: Conversation'ın guest_telegram_id'si — staff DM guard için
   guestTelegramId?: string | null;
+  // Modül 11: true ise grup mesajı atlanır (SLA butonlu mesaj zaten gönderildi)
+  skipGroupMessage?: boolean;
 }
 
 export interface ForwardResult {
@@ -67,6 +69,7 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     confidence,
     verifiedGuest,
     guestTelegramId,
+    skipGroupMessage,
   } = input;
 
   // Türkiye saati — Intl.DateTimeFormat ile güvenilir
@@ -83,65 +86,70 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
   const resolvedRoomNumber = verifiedGuest?.room_number ?? null;
 
   // ─── 1. GRUP MESAJI ──────────────────────────────────────────────────────
-  console.log(`[forward] starting forward → dept=${targetDept} chatId=${targetChatId}`);
+  console.log(`[forward] starting forward → dept=${targetDept} chatId=${targetChatId} skipGroupMessage=${skipGroupMessage ?? false}`);
 
-  const groupMsgText = formatGroupMessage({
-    guestName: resolvedGuestName,
-    roomNumber: resolvedRoomNumber,
-    guestMessage,
-    trDateStr,
-    reroutedNote,
-  });
-
-  // forwarded_messages tablosuna pending kaydı oluştur (grup)
-  const { data: fwdRow, error: insertError } = await hotelSupa
-    .from('forwarded_messages')
-    .insert({
-      ai_intent_id: aiIntentId ?? null,
-      source_department: classifiedDepartment ?? null,
-      target_department: targetDept,
-      target_chat_id: targetChatId,
-      is_off_hours: isOffHours,
-      status: 'pending',
-      target_type: 'group',
-    })
-    .select('id')
-    .single();
-
-  if (insertError) {
-    console.error('[forward] forwarded_messages group insert error:', insertError.message);
-  }
-
-  const fwdId = fwdRow?.id as string | undefined;
-
-  // Telegram grubuna mesajı gönder
-  let telegramMessageId: number | undefined;
-  let sendError: string | undefined;
-
-  try {
-    const sent = await tg.sendMessage({
-      chat_id: targetChatId,
-      text: groupMsgText,
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
+  // Modül 11: skipGroupMessage=true ise grup mesajı zaten SLA butonlu gönderildi
+  if (!skipGroupMessage) {
+    const groupMsgText = formatGroupMessage({
+      guestName: resolvedGuestName,
+      roomNumber: resolvedRoomNumber,
+      guestMessage,
+      trDateStr,
+      reroutedNote,
     });
-    telegramMessageId = sent.message_id;
-    console.log(`[forward] group message sent → messageId=${telegramMessageId}`);
-  } catch (err) {
-    sendError = err instanceof Error ? err.message : 'unknown send error';
-    console.error('[forward] Telegram group send error:', sendError);
-  }
 
-  // forwarded_messages kaydını güncelle
-  if (fwdId) {
-    await hotelSupa
+    // forwarded_messages tablosuna pending kaydı oluştur (grup)
+    const { data: fwdRow, error: insertError } = await hotelSupa
       .from('forwarded_messages')
-      .update({
-        status: sendError ? 'failed' : 'sent',
-        telegram_message_id: telegramMessageId ?? null,
-        error: sendError ?? null,
+      .insert({
+        ai_intent_id: aiIntentId ?? null,
+        source_department: classifiedDepartment ?? null,
+        target_department: targetDept,
+        target_chat_id: targetChatId,
+        is_off_hours: isOffHours,
+        status: 'pending',
+        target_type: 'group',
       })
-      .eq('id', fwdId);
+      .select('id')
+      .single();
+
+    if (insertError) {
+      console.error('[forward] forwarded_messages group insert error:', insertError.message);
+    }
+
+    const fwdId = fwdRow?.id as string | undefined;
+
+    // Telegram grubuna mesajı gönder
+    let telegramMessageId: number | undefined;
+    let sendError: string | undefined;
+
+    try {
+      const sent = await tg.sendMessage({
+        chat_id: targetChatId,
+        text: groupMsgText,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      });
+      telegramMessageId = sent.message_id;
+      console.log(`[forward] group message sent → messageId=${telegramMessageId}`);
+    } catch (err) {
+      sendError = err instanceof Error ? err.message : 'unknown send error';
+      console.error('[forward] Telegram group send error:', sendError);
+    }
+
+    // forwarded_messages kaydını güncelle
+    if (fwdId) {
+      await hotelSupa
+        .from('forwarded_messages')
+        .update({
+          status: sendError ? 'failed' : 'sent',
+          telegram_message_id: telegramMessageId ?? null,
+          error: sendError ?? null,
+        })
+        .eq('id', fwdId);
+    }
+  } else {
+    console.log('[forward] group message SKIPPED (skipGroupMessage=true, SLA butonlu mesaj zaten gönderildi)');
   }
 
   // ─── 2. BİREYSEL DM — Vardiyadaki aktif personele ────────────────────────
@@ -287,10 +295,8 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
 
   // ─── SONUÇ ────────────────────────────────────────────────────────────────
 
-  if (sendError) {
-    return { status: 'failed', error: sendError };
-  }
-  return { status: 'sent', telegramMessageId };
+  // skipGroupMessage=true ise sendError/telegramMessageId tanımsız — başarılı say
+  return { status: 'sent', telegramMessageId: undefined };
 }
 
 // ─── MESAJ ŞABLONLARI ─────────────────────────────────────────────────────────

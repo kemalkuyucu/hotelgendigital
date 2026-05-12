@@ -15,6 +15,10 @@ import { formatGuestAddress } from '@/lib/utils/salutation';
 import { downloadTelegramAudio } from '@/lib/voice/download-telegram-audio';
 import { whisperTranscribe } from '@/lib/voice/whisper-transcribe';
 import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
+// Modül 11: SLA imports
+import { handleSlaCallback } from '@/lib/sla/handle-callback';
+import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
+import { sendForwardWithSlaButtons } from '@/lib/sla/send-forward-with-buttons';
 
 export const runtime = 'nodejs';
 
@@ -90,9 +94,68 @@ export async function POST(
     return NextResponse.json({ ok: false, error: 'invalid json' }, { status: 400 });
   }
 
+  // ============================================================
+  // MODÜL 11: callback_query dispatch (inline button basımları)
+  // ============================================================
+  if (update.callback_query) {
+    const cq = update.callback_query;
+
+    if (cq.data?.startsWith('sla:respond:')) {
+      await handleSlaCallback({
+        hotelSupabase: supa,
+        botToken,
+        callbackQueryId: cq.id,
+        callbackData: cq.data,
+        fromTelegramId: String(cq.from.id),
+        fromUsername: cq.from.username,
+        fromFirstName: cq.from.first_name,
+      });
+      return NextResponse.json({ ok: true });
+    }
+
+    // SLA noop (kaldırılmış butona basıldı)
+    if (cq.data === 'sla:noop') {
+      await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu talep zaten işlendi' }),
+      });
+      return NextResponse.json({ ok: true });
+    }
+
+    // Diğer callback'ler — şimdilik yoksay
+    return NextResponse.json({ ok: true });
+  }
+
   const msg = update.message ?? update.edited_message;
   if (!msg) {
     return NextResponse.json({ ok: true, info: 'no message' });
+  }
+
+  // ============================================================
+  // MODÜL 11: Resepsiyon grup reply → SLA escalation reply handler
+  // Grup mesajı + reply_to varsa, SLA escalation mesajına reply mi kontrol et
+  // ============================================================
+  if (
+    msg.reply_to_message?.message_id &&
+    msg.chat?.type !== 'private' &&
+    msg.text
+  ) {
+    try {
+      const result = await handleReceptionReply({
+        hotelSupabase: supa,
+        botToken,
+        chatId: String(msg.chat.id),
+        replyToMessageId: msg.reply_to_message.message_id,
+        replyText: msg.text,
+        responderTelegramId: String(msg.from?.id ?? 0),
+      });
+      if (result.handled) {
+        return NextResponse.json({ ok: true });
+      }
+    } catch (replyErr) {
+      console.error('[telegram] handleReceptionReply error:', replyErr);
+    }
   }
 
   try {
@@ -1004,7 +1067,7 @@ async function handleMessage(args: {
       });
     }
   } else {
-    // ── Departman forward ─────────────────────────────────────────────────
+    // ── Departman forward (Modül 11: SLA butonlu) ─────────────────────────
     const routingResult = resolveTargetDepartment(
       finalIntent ?? null,
       departments as DeptRouteInfo[],
@@ -1012,29 +1075,122 @@ async function handleMessage(args: {
 
     if (routingResult) {
       try {
-        // Modül 10.4: Orijinal talebi kullan (doğrulama akışı varsa pending_request_text, yoksa text)
-        // vResult yalnızca doğrulama bloğu içinde tanımlı; burada conversation.pending_request_text
-        // zaten temizlendi ama DB'den önce okuduğumuz conversation nesnesini referans alıyoruz.
-        // Doğrulama tamamlandıysa (fresh), persistentVerifiedGuest artık set edilmiş durumda.
-        // forward mesajında doğru talep metnini kullan:
+        // Modül 10.4: Orijinal talebi kullan
         const forwardGuestMessage = (persistentVerifiedGuest != null && conversation.pending_request_text)
-          ? conversation.pending_request_text  // Doğrulama akışı öncesi orijinal talep
-          : text;                              // Normal akış veya persistent verified (pending_request_text=null)
+          ? conversation.pending_request_text
+          : text;
 
+        // ── Modül 11: Departman DB'den sla_minutes + telegram_group_chat_id çek ──
+        const { data: deptSla } = await supa
+          .from('departments')
+          .select('code, telegram_group_chat_id, telegram_chat_id, sla_minutes, reception_sla_minutes')
+          .eq('code', routingResult.targetDept)
+          .maybeSingle();
+
+        const slaMinutes = (deptSla as { sla_minutes?: number | null } | null)?.sla_minutes ?? 1;
+        // telegram_group_chat_id varsa onu kullan, yoksa resolveTargetDepartment'tan gelen targetChatId
+        const deptChatIdForSla =
+          (deptSla as { telegram_group_chat_id?: string | null } | null)?.telegram_group_chat_id ??
+          String(routingResult.targetChatId);
+
+        // ── Modül 11: sla_events satırı oluştur (önce DB, sonra Telegram mesajı) ──
+        const nowSla = new Date();
+        const slaDedline = new Date(nowSla.getTime() + slaMinutes * 60 * 1000);
+
+        const guestFullNameForSla = persistentVerifiedGuest
+          ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim().toUpperCase()
+          : guestName.toUpperCase();
+
+        const { data: slaEvent, error: slaErr } = await supa
+          .from('sla_events')
+          .insert({
+            conversation_id: conversationId,
+            inhouse_guest_id: persistentVerifiedGuest?.id ?? null,
+            department_code: routingResult.targetDept,
+            department_chat_id: deptChatIdForSla,
+            request_text: forwardGuestMessage,
+            room_number: persistentVerifiedGuest?.room_number ?? null,
+            guest_full_name: guestFullNameForSla,
+            forwarded_at: nowSla.toISOString(),
+            sla_deadline: slaDedline.toISOString(),
+          })
+          .select('id')
+          .single();
+
+        if (slaErr || !slaEvent) {
+          console.error('[sla] sla_events insert failed:', slaErr);
+        }
+
+        // ── Modül 11: Departman grubuna SLA butonlu mesaj gönder ──
+        // forwardToDepartment'in grup mesajını devre dışı bırakmak yerine,
+        // sendForwardWithSlaButtons ile grup mesajını biz gönderiyoruz.
+        // forwardToDepartment sadece Staff DM + OnBüro CC için çağrılıyor.
+
+        // Grup mesajı metnini formatla (forward-to-department'taki formatGroupMessage ile aynı format)
+        const trDateStr = (() => {
+          const now = new Date();
+          return new Intl.DateTimeFormat('tr-TR', {
+            timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit',
+            day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+          }).format(now) + ' (TR)';
+        })();
+
+        const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const roomLine = persistentVerifiedGuest?.room_number
+          ? `🚪 <b>Oda:</b> ${esc(persistentVerifiedGuest.room_number)}\n`
+          : '';
+        const groupMsgHtml =
+          `🛎 <b>Misafir Talebi</b>\n\n` +
+          roomLine +
+          `👤 <b>Misafir:</b> ${esc(guestFullNameForSla)}\n` +
+          `📝 <b>Talep:</b> "${esc(forwardGuestMessage)}"\n` +
+          `🕐 <b>Saat:</b> ${esc(trDateStr)}`;
+
+        if (slaEvent) {
+          const { messageId: slaMsgId, ok: slaOk } = await sendForwardWithSlaButtons({
+            botToken,
+            chatId: deptChatIdForSla,
+            html: groupMsgHtml,
+            slaEventId: slaEvent.id as string,
+          });
+
+          if (slaOk && slaMsgId) {
+            await supa
+              .from('sla_events')
+              .update({ department_message_id: slaMsgId })
+              .eq('id', slaEvent.id as string);
+            console.log(`[sla] department message sent with buttons. msgId=${slaMsgId}`);
+          }
+        } else {
+          // sla_events oluşturulamadı — butonlu olmayan fallback mesaj gönder
+          await tg.sendMessage({
+            chat_id: routingResult.targetChatId,
+            text: groupMsgHtml,
+            parse_mode: 'HTML',
+          });
+          console.warn('[sla] fallback (no-button) group message sent');
+        }
+
+        // ── Staff DM + OnBüro CC: forwardToDepartment'i skipGroupMsg=true gibi çağır ──
+        // Mevcut forwardToDepartment grup mesajını da gönderir; bunu engellemek için
+        // şimdilik duplicate gönderimi kabul edip log bırakıyoruz.
+        // Gelecekte forwardToDepartment'a skipGroupMessage flag eklenebilir.
+        // Şu an: grup mesajı 2x gönderiliyor (biri butonlu SLA, biri plain forwardToDepartment).
+        // ÇÖZÜM: forwardToDepartment yerine sadece DM + CC kısımlarını çağırıyoruz.
+        // Bu nedenle forwardToDepartment'ı DM+CC için import edilmiş haliyle tutuyoruz.
         await forwardToDepartment({
           hotelSupa: supa,
           tg,
           aiIntentId: aiIntentId ?? null,
           classifiedDepartment: finalIntent ?? null,
           targetDept: routingResult.targetDept,
-          targetChatId: routingResult.targetChatId,
+          targetChatId: -1, // Grup mesajı SLA tarafından gönderildi, grup'a tekrar gönderme
           wasRerouted: routingResult.wasRerouted,
           isOffHours: routingResult.wasRerouted && (finalIntent ?? null) !== null,
           guestName,
-          guestMessage: forwardGuestMessage, // Modül 10.4: orijinal talep
+          guestMessage: forwardGuestMessage,
           aiResponse: finalResponseText,
           confidence: aiResult?.confidence ?? 0,
-          // Modül 10.4: Doğrulanmış misafir bilgisi — persistentVerifiedGuest (fresh veya persistent)
           verifiedGuest: persistentVerifiedGuest != null
             ? {
                 first_name: persistentVerifiedGuest.first_name,
@@ -1042,11 +1198,12 @@ async function handleMessage(args: {
                 room_number: persistentVerifiedGuest.room_number,
               }
             : null,
-          // Modül 10.3: Staff DM guard — misafir kendi DM'ini almasın
           guestTelegramId: String(userId),
+          skipGroupMessage: true, // Modül 11: grup mesajı zaten SLA butonlu gönderildi
         });
+
         console.log(
-          `[telegram] forward OK → dept=${routingResult.targetDept} chat=${routingResult.targetChatId} rerouted=${routingResult.wasRerouted}`,
+          `[telegram] forward OK (SLA) → dept=${routingResult.targetDept} chat=${routingResult.targetChatId} rerouted=${routingResult.wasRerouted}`,
         );
 
         await supa

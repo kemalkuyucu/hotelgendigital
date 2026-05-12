@@ -29,6 +29,7 @@ export interface TelegramMessage {
   audio?: { file_id: string; duration: number; mime_type?: string };
   photo?: Array<{ file_id: string; width: number; height: number }>;
   entities?: Array<{ type: string; offset: number; length: number }>;
+  reply_to_message?: { message_id: number }; // Modül 11: resepsiyon reply handler için
 }
 
 export interface TelegramUpdate {
