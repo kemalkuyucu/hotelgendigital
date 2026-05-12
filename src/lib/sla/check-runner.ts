@@ -82,14 +82,13 @@ export async function runSlaCheck(
       // front_office departmanını bul
       const { data: frontOffice } = await hotelSupabase
         .from('departments')
-        .select('telegram_group_chat_id, telegram_chat_id, reception_sla_minutes')
+        .select('telegram_chat_id, reception_sla_minutes')
         .eq('code', 'front_office')
         .maybeSingle();
 
-      // telegram_group_chat_id veya telegram_chat_id'yi kullan
+      // telegram_chat_id kullan
       const foChatId =
-        (frontOffice as { telegram_group_chat_id?: string | null; telegram_chat_id?: number | null } | null)?.telegram_group_chat_id ??
-        (frontOffice as { telegram_group_chat_id?: string | null; telegram_chat_id?: number | null } | null)?.telegram_chat_id?.toString() ??
+        (frontOffice as { telegram_chat_id?: number | null } | null)?.telegram_chat_id?.toString() ??
         null;
 
       if (!foChatId) {
