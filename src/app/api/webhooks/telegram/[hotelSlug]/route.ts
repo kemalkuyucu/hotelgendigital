@@ -196,6 +196,7 @@ interface ConversationState {
   verified_at: string | null;
   verification_pending_intent: string | null;
   verification_attempts: number;
+  pending_request_text: string | null; // Modül 10.4: doğrulama öncesi orijinal talep
 }
 
 interface VerificationFlowResult {
@@ -204,6 +205,16 @@ interface VerificationFlowResult {
   verifiedGuestId: string | null;
   effectiveIntent: string;
   embeddedRequest?: string | null; // hasEmbeddedRequest=true ise talep metni
+  originalRequestText?: string | null; // Modül 10.4: orijinal talep (forward için)
+  // Doğrulama başarılı olunca tüm inhouse_guests alanları
+  verifiedGuestRecord?: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    room_number: string;
+    language: string | null;
+    gender: string | null;
+  } | null;
 }
 
 async function notifyFrontDeskUnverified(params: {
@@ -337,12 +348,14 @@ async function handleVerificationFlow(args: {
       // İlk kez intent geldi, henüz sormadık → pending_intent kaydet, sor
       // Aynı zamanda eski birikmiş attempts'i sıfırla (fresh start)
       const pendingIntent = aiIntent;
+      // Modül 10.4: Orijinal talebi pending_request_text olarak sakla
       await supa
         .from('conversations')
         .update({
           verification_pending_intent: pendingIntent,
           verification_attempts: 0,
           verification_last_attempt_at: null,
+          pending_request_text: guestMessageText, // ← ORİJİNAL TALEBİ SAKLA
         })
         .eq('id', conversationId);
 
@@ -384,6 +397,8 @@ async function handleVerificationFlow(args: {
   if (result.matched) {
     // ✅ Doğrulama başarılı
     const effectiveIntent = conversation.verification_pending_intent ?? aiIntent;
+    // Modül 10.4: Orijinal talebi al, ardından pending'i temizle
+    const originalRequestText = conversation.pending_request_text || null;
     await supa
       .from('conversations')
       .update({
@@ -392,8 +407,29 @@ async function handleVerificationFlow(args: {
         verification_pending_intent: null,
         verification_attempts: 0,
         verification_last_attempt_at: new Date().toISOString(),
+        pending_request_text: null, // ← TEMİZLE (forward sonrası)
       })
       .eq('id', conversationId);
+
+    // Doğrulanmış misafirin tam kaydını çek (forward + CC için)
+    let verifiedGuestRecord: VerificationFlowResult['verifiedGuestRecord'] = null;
+    if (result.guestId) {
+      const { data: gRec } = await supa
+        .from('inhouse_guests')
+        .select('id, first_name, last_name, room_number, language, gender')
+        .eq('id', result.guestId)
+        .maybeSingle();
+      if (gRec) {
+        verifiedGuestRecord = {
+          id: gRec.id as string,
+          first_name: gRec.first_name as string | null,
+          last_name: gRec.last_name as string | null,
+          room_number: gRec.room_number as string,
+          language: gRec.language as string | null,
+          gender: gRec.gender as string | null,
+        };
+      }
+    }
 
     // Salutation helper ile hitap üret
     const successMsg = getVerificationSuccessMsg(
@@ -402,13 +438,15 @@ async function handleVerificationFlow(args: {
       result.guestLastName ?? null,
       result.guestGender ?? null,
     );
-    console.log(`[verification] Başarılı — guest_id=${result.guestId} effectiveIntent=${effectiveIntent} hasEmbeddedRequest=${hasEmbeddedRequest}`);
+    console.log(`[verification] Başarılı — guest_id=${result.guestId} effectiveIntent=${effectiveIntent} hasEmbeddedRequest=${hasEmbeddedRequest} originalRequest="${originalRequestText}"`);
     return {
       shouldShortCircuit: false,
       replyText: successMsg,
       verifiedGuestId: result.guestId ?? null,
       effectiveIntent,
       embeddedRequest: hasEmbeddedRequest ? (embeddedRequest ?? null) : null,
+      originalRequestText, // Modül 10.4: orijinal talep (forward için)
+      verifiedGuestRecord,  // Modül 10.4: tam inhouse_guests kaydı
     };
   } else {
     // ❌ Eşleşme yok — attempts artır
@@ -697,16 +735,32 @@ async function handleMessage(args: {
       // Doğrulandı — success mesajı + orijinal akış
       finalResponseText = vResult.replyText;
       finalIntent = vResult.effectiveIntent;
-      // Embedded request varsa AI'a göndermek yerine doğrudan forward et
+      // Modül 10.4: Yeni doğrulama ile elde edilen verifiedGuest kaydını persistentVerifiedGuest'e ata
+      // (persistentVerifiedGuest daha önce null'dı — bu branch sadece fresh verification'da çalışır)
+      if (vResult.verifiedGuestRecord) {
+        persistentVerifiedGuest = {
+          id: vResult.verifiedGuestRecord.id,
+          first_name: vResult.verifiedGuestRecord.first_name,
+          last_name: vResult.verifiedGuestRecord.last_name,
+          room_number: vResult.verifiedGuestRecord.room_number,
+          language: vResult.verifiedGuestRecord.language,
+          gender: vResult.verifiedGuestRecord.gender,
+          check_out_date: '', // forward'da kullanılmaz
+          is_active: true,
+        };
+      }
+      // Modül 10.4: Orijinal talebi override et (doğrulama cevabı yerine)
+      if (vResult.originalRequestText) {
+        // forward'da guestMessage olarak originalRequestText kullanılacak (aşağıda override)
+        console.log(`[verification] Orijinal talep forward'a aktarılacak: "${vResult.originalRequestText}"`);
+      }
       if (vResult.embeddedRequest) {
         console.log(`[verification] Embedded request tespit edildi: "${vResult.embeddedRequest}" — doğrudan forward edilecek`);
-        // embeddedRequest'i guestMessage olarak kullan (AI zaten cevap verdi, direkt forward)
-        // guestMessage'ı override et ki forward mesajında doğru görünsün
-        // finalResponseText (success msg) kalsın, forward ise embedded request ile yapılsın
-        // Not: forward'da guestMessage parametresine embeddedRequest aktarılır (aşağıda override)
       }
       // Doğrulandıktan sonra forward yapılır (skipForward = false)
       skipForward = false;
+      // vResult'u sakla — aşağıdaki forward çağrısında kullanmak için
+      // (TypeScript scope'u için referans dışarıya taşıyoruz)
     }
   }
   // ─────────────────────────────────────────────────────────────────────────
@@ -756,6 +810,15 @@ async function handleMessage(args: {
 
     if (routingResult) {
       try {
+        // Modül 10.4: Orijinal talebi kullan (doğrulama akışı varsa pending_request_text, yoksa text)
+        // vResult yalnızca doğrulama bloğu içinde tanımlı; burada conversation.pending_request_text
+        // zaten temizlendi ama DB'den önce okuduğumuz conversation nesnesini referans alıyoruz.
+        // Doğrulama tamamlandıysa (fresh), persistentVerifiedGuest artık set edilmiş durumda.
+        // forward mesajında doğru talep metnini kullan:
+        const forwardGuestMessage = (persistentVerifiedGuest != null && conversation.pending_request_text)
+          ? conversation.pending_request_text  // Doğrulama akışı öncesi orijinal talep
+          : text;                              // Normal akış veya persistent verified (pending_request_text=null)
+
         await forwardToDepartment({
           hotelSupa: supa,
           tg,
@@ -766,15 +829,15 @@ async function handleMessage(args: {
           wasRerouted: routingResult.wasRerouted,
           isOffHours: routingResult.wasRerouted && (finalIntent ?? null) !== null,
           guestName,
-          guestMessage: text,
+          guestMessage: forwardGuestMessage, // Modül 10.4: orijinal talep
           aiResponse: finalResponseText,
           confidence: aiResult?.confidence ?? 0,
-          // Modül 10.3: Doğrulanmış misafir bilgisi (template'te öncelikli)
+          // Modül 10.4: Doğrulanmış misafir bilgisi — persistentVerifiedGuest (fresh veya persistent)
           verifiedGuest: persistentVerifiedGuest != null
             ? {
-                first_name: (persistentVerifiedGuest as { first_name: string | null }).first_name,
-                last_name: (persistentVerifiedGuest as { last_name: string | null }).last_name,
-                room_number: (persistentVerifiedGuest as { room_number: string }).room_number,
+                first_name: persistentVerifiedGuest.first_name,
+                last_name: persistentVerifiedGuest.last_name,
+                room_number: persistentVerifiedGuest.room_number,
               }
             : null,
           // Modül 10.3: Staff DM guard — misafir kendi DM'ini almasın
@@ -856,7 +919,7 @@ async function upsertGuestAndConversation(args: {
   // Conversation upsert — doğrulama state sütunlarını da çek
   const { data: existingConv } = await supa
     .from('conversations')
-    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts')
+    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text')
     .eq('telegram_chat_id', chatId)
     .maybeSingle();
 
@@ -871,6 +934,7 @@ async function upsertGuestAndConversation(args: {
       verified_at: (existingConv.verified_at as string | null) ?? null,
       verification_pending_intent: (existingConv.verification_pending_intent as string | null) ?? null,
       verification_attempts: (existingConv.verification_attempts as number) ?? 0,
+      pending_request_text: (existingConv.pending_request_text as string | null) ?? null, // Modül 10.4
     };
     await supa
       .from('conversations')
@@ -895,6 +959,7 @@ async function upsertGuestAndConversation(args: {
       verified_at: null,
       verification_pending_intent: null,
       verification_attempts: 0,
+      pending_request_text: null, // Modül 10.4
     };
   }
 
