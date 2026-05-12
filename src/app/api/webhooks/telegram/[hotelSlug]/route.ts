@@ -1076,6 +1076,8 @@ async function handleMessage(args: {
     if (routingResult) {
       try {
         // Modül 10.4: Orijinal talebi kullan
+        // Not: vResult.originalRequestText fresh-verification sonrası orijinal talebi taşır;
+        // persistentVerifiedGuest null iken conversation.pending_request_text DB'den temizlenmiş olabilir.
         const forwardGuestMessage = (persistentVerifiedGuest != null && conversation.pending_request_text)
           ? conversation.pending_request_text
           : text;
@@ -1101,6 +1103,18 @@ async function handleMessage(args: {
           ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim().toUpperCase()
           : guestName.toUpperCase();
 
+        console.log('[sla-forward] START', {
+          intent: finalIntent,
+          dept: routingResult.targetDept,
+          deptChatIdForSla,
+          slaMinutes,
+          deptSlaRaw: deptSla,
+          persistentVerifiedGuest: !!persistentVerifiedGuest,
+          roomNumber: persistentVerifiedGuest?.room_number ?? null,
+          guestFullNameForSla,
+          forwardGuestMessage: forwardGuestMessage.slice(0, 80),
+        });
+
         const { data: slaEvent, error: slaErr } = await supa
           .from('sla_events')
           .insert({
@@ -1118,7 +1132,15 @@ async function handleMessage(args: {
           .single();
 
         if (slaErr || !slaEvent) {
-          console.error('[sla] sla_events insert failed:', slaErr);
+          console.error('[sla-forward] sla_events INSERT FAILED', {
+            errorCode: slaErr?.code,
+            errorMsg: slaErr?.message,
+            errorDetails: slaErr?.details,
+            errorHint: slaErr?.hint,
+            slaEventNull: !slaEvent,
+          });
+        } else {
+          console.log('[sla-forward] inserted', { slaEventId: slaEvent.id });
         }
 
         // ── Modül 11: Departman grubuna SLA butonlu mesaj gönder ──
@@ -1153,6 +1175,7 @@ async function handleMessage(args: {
             html: groupMsgHtml,
             slaEventId: slaEvent.id as string,
           });
+          console.log('[sla-forward] sent', { messageId: slaMsgId, ok: slaOk, deptChatIdForSla });
 
           if (slaOk && slaMsgId) {
             await supa
@@ -1160,6 +1183,8 @@ async function handleMessage(args: {
               .update({ department_message_id: slaMsgId })
               .eq('id', slaEvent.id as string);
             console.log(`[sla] department message sent with buttons. msgId=${slaMsgId}`);
+          } else {
+            console.error('[sla-forward] sendForwardWithSlaButtons FAILED or no messageId', { slaOk, slaMsgId });
           }
         } else {
           // sla_events oluşturulamadı — butonlu olmayan fallback mesaj gönder
@@ -1168,7 +1193,7 @@ async function handleMessage(args: {
             text: groupMsgHtml,
             parse_mode: 'HTML',
           });
-          console.warn('[sla] fallback (no-button) group message sent');
+          console.warn('[sla-forward] fallback (no-button) group message sent — sla_events INSERT failed above');
         }
 
         // ── Staff DM + OnBüro CC: forwardToDepartment'i skipGroupMsg=true gibi çağır ──
