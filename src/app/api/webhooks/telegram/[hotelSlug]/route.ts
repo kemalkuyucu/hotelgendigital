@@ -1082,18 +1082,16 @@ async function handleMessage(args: {
           ? conversation.pending_request_text
           : text;
 
-        // ── Modül 11: Departman DB'den sla_minutes + telegram_group_chat_id çek ──
+        // ── Modül 11: Departman DB'den sla_minutes çek ──
         const { data: deptSla } = await supa
           .from('departments')
-          .select('code, telegram_group_chat_id, telegram_chat_id, sla_minutes, reception_sla_minutes')
+          .select('code, telegram_chat_id, sla_minutes, reception_sla_minutes')
           .eq('code', routingResult.targetDept)
           .maybeSingle();
 
         const slaMinutes = (deptSla as { sla_minutes?: number | null } | null)?.sla_minutes ?? 1;
-        // telegram_group_chat_id varsa onu kullan, yoksa resolveTargetDepartment'tan gelen targetChatId
-        const deptChatIdForSla =
-          (deptSla as { telegram_group_chat_id?: string | null } | null)?.telegram_group_chat_id ??
-          String(routingResult.targetChatId);
+        // telegram_chat_id kullan (resolveTargetDepartment'tan gelen targetChatId)
+        const deptChatIdForSla = String(routingResult.targetChatId);
 
         // ── Modül 11: sla_events satırı oluştur (önce DB, sonra Telegram mesajı) ──
         const nowSla = new Date();
