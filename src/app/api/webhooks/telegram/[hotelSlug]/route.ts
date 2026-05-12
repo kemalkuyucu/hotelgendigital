@@ -12,6 +12,8 @@ import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
 import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/verification/verify-guest';
 import { formatGuestAddress } from '@/lib/utils/salutation';
+import { downloadTelegramAudio } from '@/lib/voice/download-telegram-audio';
+import { whisperTranscribe } from '@/lib/voice/whisper-transcribe';
 
 export const runtime = 'nodejs';
 
@@ -508,9 +510,64 @@ async function handleMessage(args: {
   botToken: string;
 }) {
   const { supa, hotelId, hotelName, msg, tg, botToken } = args;
-  const text = msg.text ?? msg.caption ?? '';
   const chatId = msg.chat.id;
   const userId = msg.from?.id;
+
+  // ============================================================
+  // MODÜL 10.5 — VOICE DETECTION
+  // ============================================================
+  let rawText = msg.text ?? msg.caption ?? '';
+
+  const voiceObj = msg.voice || msg.audio;
+  if (!rawText && voiceObj) {
+    // Süre limiti: 5 dakika (300 saniye)
+    if (voiceObj.duration && voiceObj.duration > 300) {
+      await tg.sendMessage({
+        chat_id: chatId,
+        text: '⏳ Ses mesajınız çok uzun (5 dakikadan fazla). Lütfen daha kısa bir ses kaydı gönderir misiniz, ya da mesajınızı yazılı paylaşır mısınız?',
+      });
+      return;
+    }
+    try {
+      const audio = await downloadTelegramAudio({
+        botToken,
+        fileId: voiceObj.file_id,
+        durationSeconds: voiceObj.duration,
+      });
+      const transcript = await whisperTranscribe({
+        audioBuffer: audio.buffer,
+        filename: audio.filename,
+        mimeType: audio.mimeType,
+        promptHint: `${hotelName} otelinde misafir mesajı. Misafir oda, talep, şikayet veya bilgi sorusu iletebilir.`,
+      });
+      if (!transcript.text || transcript.text.length < 2) {
+        await tg.sendMessage({
+          chat_id: chatId,
+          text: '🎤 Sesinizi anlayamadım. Lütfen tekrar deneyebilir misiniz, ya da mesajınızı yazılı paylaşır mısınız?',
+        });
+        return;
+      }
+      rawText = transcript.text;
+      console.log('[voice]', {
+        chatId,
+        duration: voiceObj.duration,
+        transcript: transcript.text.slice(0, 100),
+        language: transcript.language,
+      });
+    } catch (err: unknown) {
+      console.error('[voice] error:', err);
+      await tg.sendMessage({
+        chat_id: chatId,
+        text: '🎤 Ses mesajınızı işlerken bir sorun oluştu. Lütfen yazılı tekrar dener misiniz?',
+      });
+      return;
+    }
+  }
+
+  const text = rawText;
+  // ============================================================
+  // VOICE DETECTION SONU
+  // ============================================================
 
   if (msg.chat.type !== 'private') {
     console.log(`[telegram] grup mesajı atlandı: chat ${chatId} (${msg.chat.type})`);

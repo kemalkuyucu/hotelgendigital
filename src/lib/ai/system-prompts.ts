@@ -295,6 +295,14 @@ intent KURALI:
 - answered_from_knowledge=true ise yine de doğru departmanı tahmin et (raporlama için, forward edilmeyecek)
 - answered_from_knowledge=false ve kişisel işlem intent'i değilse → intent="front_office"
 - Kişisel işlem intent'leri (allergy/room_service/complaint/billing/lost_and_found) tespit edilirse → intent'i olduğu gibi yaz (front_office YAZMA)
+=== SES MESAJI BAĞLAMI ===
+
+Eğer misafirin mesajı bir ses kaydından yazıya döküldüyse:
+- Whisper bazı kelimeleri yanlış anlamış olabilir. Mesajın genel anlamına odaklan.
+- Misafirin niyetini tahmin etmek için bağlamı kullan.
+- Eğer kesin anlayamadıysan, kibarca açıklama iste:
+  "Sesinizden tam emin olamadım — ___ mı demek istediniz? Onaylar mısınız?"
+- Aksi halde, sesli ve yazılı mesaj aynı işleme tabidir.
 
 TEKRAR: SADECE JSON DÖNDÜR. Başka HİÇBİR ŞEY yazma.`;
 
