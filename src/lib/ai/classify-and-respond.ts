@@ -18,6 +18,7 @@ export interface ClassifyAndRespondInput {
 
 export interface ClassifyAndRespondOutput {
   department: string | null;
+  shouldForward: boolean;          // false → sosyal intent, bot sadece cevap verir
   confidence: number;
   reasoning: string;
   response_to_guest: string;
@@ -98,10 +99,10 @@ export async function classifyAndRespond(
   const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
 
   // Modül 10.2: Hiyerarşik routing — AI'nın intent'ini departmana çevir.
-  // Complaint→GR kısayolu KALDIRILDI (çok genişti, operasyonel sorunları GR'a yönlendiriyordu).
-  const { department } = rawIntent
+  // Modül 10.6: NON_FORWARDING_INTENTS → shouldForward=false
+  const routing = rawIntent
     ? routeIntentToDepartment(rawIntent)
-    : { department: null };
+    : { department: null, shouldForward: false, routingReason: 'no_intent' };
 
   // Validasyon
   if (typeof responseToGuest !== 'string' || responseToGuest.length === 0) {
@@ -115,7 +116,8 @@ export async function classifyAndRespond(
       : false;
 
   return {
-    department,
+    department: routing.department,
+    shouldForward: routing.shouldForward,
     confidence,
     reasoning: parsed.reasoning ?? '',
     response_to_guest: responseToGuest,
@@ -128,16 +130,17 @@ export async function classifyAndRespond(
   };
 }
 
-// ── Modül 10.2: Intent → Departman hiyerarşik routing ─────────────────────────
+// ── Modül 10.2 + 10.6: Intent → Departman hiyerarşik routing ──────────────────
 
 /**
  * Intent → Departman mapping (hiyerarşik).
  *
  * Kural:
- *   1. Operasyonel intent her zaman kendi departmanına gider (GR'a değil).
- *   2. Kişisel intent (billing, allergy, lost_and_found) front_office'e gider.
- *   3. Salt complaint (operasyonel olmayan deneyim şikayeti) GR'a gider.
- *   4. Tanınmayan intent → front_office (fallback).
+ *   1. Sosyal / non-actionable intent → shouldForward=false (Modül 10.6)
+ *   2. Operasyonel intent her zaman kendi departmanına gider (GR'a değil).
+ *   3. Kişisel intent (billing, allergy, lost_and_found) front_office'e gider.
+ *   4. Salt complaint (operasyonel olmayan deneyim şikayeti) GR'a gider.
+ *   5. Tanınmayan intent → front_office (fallback).
  */
 
 const OPERATIONAL_INTENTS = new Set([
@@ -157,27 +160,57 @@ const PERSONAL_INTENTS = new Set([
 
 const COMPLAINT_INTENTS = new Set(['complaint']);
 
-export function routeIntentToDepartment(intent: string): {
-  department: string;
+/**
+ * Modül 10.6 — Sosyal / non-actionable intent'ler.
+ * Bu intent'lerde SADECE bot cevap verilir, hiçbir departmana forward EDİLMEZ.
+ * Doğrulama akışı da tetiklenmez.
+ */
+export const NON_FORWARDING_INTENTS = new Set([
+  'greeting',         // merhaba, selam, hello, hi
+  'acknowledgment',   // teşekkürler, sağol, thanks
+  'chitchat',         // nasılsın, hava nasıl
+  'farewell',         // görüşürüz, iyi geceler, bye
+  'affirmation',      // evet, tamam, olur, yes
+  'negation',         // hayır, gerek yok, no
+  'knowledge_query',  // KB sorusu (cevap KB'den, forward yok)
+]);
+
+export interface RoutingDecision {
+  department: string | null;
+  shouldForward: boolean;
   routingReason: string;
-} {
+}
+
+export function routeIntentToDepartment(intent: string): RoutingDecision {
   const normalized = (intent || '').toLowerCase().trim();
 
+  // 1) Sosyal / non-actionable → forward yok
+  if (NON_FORWARDING_INTENTS.has(normalized)) {
+    return {
+      department: null,
+      shouldForward: false,
+      routingReason: `no_forward_${normalized}`,
+    };
+  }
+
+  // 2) Operasyonel → kendi departmanı
   if (OPERATIONAL_INTENTS.has(normalized)) {
-    // room_service özelleşmiş — F&B'ye gider
     if (normalized === 'room_service') {
-      return { department: 'fb', routingReason: 'operational_room_service' };
+      return { department: 'fb', shouldForward: true, routingReason: 'operational_room_service' };
     }
-    return { department: normalized, routingReason: 'operational_direct' };
+    return { department: normalized, shouldForward: true, routingReason: 'operational_direct' };
   }
 
+  // 3) Kişisel → ön büro
   if (PERSONAL_INTENTS.has(normalized)) {
-    return { department: 'front_office', routingReason: 'personal_to_front_office' };
+    return { department: 'front_office', shouldForward: true, routingReason: 'personal_to_front_office' };
   }
 
+  // 4) Salt complaint → GR
   if (COMPLAINT_INTENTS.has(normalized)) {
-    return { department: 'guest_relation', routingReason: 'complaint_to_gr' };
+    return { department: 'guest_relation', shouldForward: true, routingReason: 'complaint_to_gr' };
   }
 
-  return { department: normalized || 'front_office', routingReason: 'fallback' };
+  // 5) Fallback — emin değilsek ön büroya
+  return { department: 'front_office', shouldForward: true, routingReason: 'fallback' };
 }

@@ -678,12 +678,20 @@ async function handleMessage(args: {
     'Mesajınız alındı, en kısa sürede ilgili departmandan dönüş yapılacaktır.';
 
   const aiReplyText = stripMarkdown(rawResponseText);
-  const aiIntent = aiResult?.department ?? null;
+  // Modül 10.6: Ham AI intent'i (routing kararı için)
+  const aiRawIntent = aiResult?.department ?? null; // department zaten routeIntentToDepartment çıktısı
+  const aiShouldForward = aiResult?.shouldForward ?? true; // sosyal intent ise false
 
-  // ── Modül 10: Doğrulama Gate ──────────────────────────────────────────────
+  // ── Modül 10: Doğrulama Gate ────────────────────────────────────
   let finalResponseText = aiReplyText;
-  let finalIntent = aiIntent;
-  let skipForward = aiResult?.answered_from_knowledge ?? false;
+  let finalIntent = aiRawIntent;
+  // Modül 10.6: shouldForward=false (sosyal) VEYA KB cevabı → forward yok
+  let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
+
+  if (!aiShouldForward) {
+    // Sosyal intent — doğrulama gate'ine GIRME, doğrudan bot cevabı gönder
+    console.log(`[telegram] Sosyal intent (${aiRawIntent ?? 'null'}) — forward ve doğrulama atlanıyor. shouldForward=false`);
+  }
 
   // ============================================================
   // PERSISTENT VERIFICATION CHECK (Modül 10.2)
@@ -748,7 +756,7 @@ async function handleMessage(args: {
 
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
-    // KB cevabı değilse forward yapılacak (skipForward zaten false)
+    // KB cevabı değilse forward yapılacak (skipForward zaten false/sosyal kontrolü yukarıda)
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent}`);
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
@@ -765,9 +773,9 @@ async function handleMessage(args: {
     });
     await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
     return;
-  } else if (requiresVerification(aiIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at))) {
+  } else if (aiShouldForward && (requiresVerification(aiRawIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at)))) {
 
-    const effectiveIntent = requiresVerification(aiIntent) ? aiIntent! : (conversation.verification_pending_intent ?? aiIntent ?? 'unknown');
+    const effectiveIntent = requiresVerification(aiRawIntent) ? aiRawIntent! : (conversation.verification_pending_intent ?? aiRawIntent ?? 'unknown');
 
     const vResult = await handleVerificationFlow({
       supa,
@@ -840,6 +848,8 @@ async function handleMessage(args: {
     })
     .select('id')
     .single();
+
+  console.log(`[telegram] aiShouldForward=${aiShouldForward} skipForward=${skipForward} finalIntent=${finalIntent}`);
 
   if (intentError) {
     console.error('[telegram] ai_intents insert error:', intentError.message);
