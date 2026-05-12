@@ -14,6 +14,7 @@ import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/
 import { formatGuestAddress } from '@/lib/utils/salutation';
 import { downloadTelegramAudio } from '@/lib/voice/download-telegram-audio';
 import { whisperTranscribe } from '@/lib/voice/whisper-transcribe';
+import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
 
 export const runtime = 'nodejs';
 
@@ -679,13 +680,35 @@ async function handleMessage(args: {
 
   const aiReplyText = stripMarkdown(rawResponseText);
   // Modül 10.6: Ham AI intent'i (routing kararı için)
-  const aiRawIntent = aiResult?.department ?? null; // department zaten routeIntentToDepartment çıktısı
-  const aiShouldForward = aiResult?.shouldForward ?? true; // sosyal intent ise false
+  const aiRawIntentRaw = aiResult?.department ?? null; // department zaten routeIntentToDepartment çıktısı
+  const aiShouldForwardRaw = aiResult?.shouldForward ?? true; // sosyal intent ise false
+
+  // ── Modül 10.7: Sosyal keyword override ────────────────────────────────────
+  // AI bazen kısa sosyal mesajları yanlış sınıflandırıyor; keyword-based override uygula
+  const { finalIntent: overriddenIntent, overridden: intentOverridden, reason: overrideReason } =
+    overrideSocialIntent(text, aiRawIntentRaw ?? 'unknown');
+
+  if (intentOverridden) {
+    console.log('[social-override]', {
+      aiIntent: aiRawIntentRaw,
+      finalIntent: overriddenIntent,
+      reason: overrideReason,
+      text: text.slice(0, 80),
+    });
+  }
+
+  // Sosyal intent override sonrası shouldForward kararı:
+  // Override sosyal intent verdiyse → forward yok; aksi hâlde AI kararına bak
+  const SOCIAL_NO_FORWARD_INTENTS = new Set(['greeting', 'acknowledgment', 'farewell', 'affirmation', 'negation', 'chitchat']);
+  const aiShouldForward = intentOverridden
+    ? !SOCIAL_NO_FORWARD_INTENTS.has(overriddenIntent)
+    : aiShouldForwardRaw;
+  const aiRawIntent = overriddenIntent === 'unknown' ? aiRawIntentRaw : overriddenIntent;
 
   // ── Modül 10: Doğrulama Gate ────────────────────────────────────
   let finalResponseText = aiReplyText;
   let finalIntent = aiRawIntent;
-  // Modül 10.6: shouldForward=false (sosyal) VEYA KB cevabı → forward yok
+  // Modül 10.6/10.7: shouldForward=false (sosyal) VEYA KB cevabı → forward yok
   let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
 
   if (!aiShouldForward) {
@@ -754,6 +777,117 @@ async function handleMessage(args: {
     }
   }
 
+  // ── Modül 10.7: Verification gate debug log ───────────────────────────────
+  {
+    type PvgType = { id: string; first_name: string | null; last_name: string | null; room_number: string; language: string | null; gender: string | null; check_out_date: string; is_active: boolean } | null;
+    const pvg = persistentVerifiedGuest as PvgType;
+    console.log('[verification-gate]', {
+      conversationId,
+      hasVerifiedGuestId: !!conversation.verified_inhouse_guest_id,
+      resolvedVerifiedGuest: !!pvg,
+      verifiedGuestRoom: pvg ? pvg.room_number : null,
+      verifiedGuestName: pvg ? `${pvg.first_name} ${pvg.last_name}` : null,
+      aiIntent: aiRawIntentRaw,
+      finalIntent,
+      aiShouldForward,
+      skipForward,
+    });
+  }
+
+  // ── Modül 10.7: Re-verification (oda değiştirme algılaması) ──────────────
+  // Verified misafir mesajında yeni oda+ad+soyad bilgisi varsa re-verify yap
+  // TypeScript narrowing bypass: yerel değişkene kopyala
+  type VerifiedGuestShape = {
+    id: string; first_name: string | null; last_name: string | null;
+    room_number: string; language: string | null; gender: string | null;
+    check_out_date: string; is_active: boolean;
+  };
+  const currentVerifiedGuest: VerifiedGuestShape | null = persistentVerifiedGuest as VerifiedGuestShape | null;
+
+  if (currentVerifiedGuest && aiShouldForward) {
+    const reParsed = parseVerificationInput(text);
+    if (
+      reParsed.roomNumber !== null &&
+      reParsed.firstName !== null &&
+      reParsed.lastName !== null &&
+      (
+        reParsed.roomNumber !== currentVerifiedGuest.room_number ||
+        reParsed.lastName.toLowerCase() !== (currentVerifiedGuest.last_name ?? '').toLowerCase()
+      )
+    ) {
+      // Misafir yeni kimlik bilgisi yazmış → re-verify
+      console.log('[re-verify] Yeni oda/ad/soyad tespit edildi, re-verify deneniyor', {
+        oldRoom: currentVerifiedGuest.room_number,
+        newRoom: reParsed.roomNumber,
+        oldLast: currentVerifiedGuest.last_name,
+        newLast: reParsed.lastName,
+      });
+
+      const reVerResult = await verifyGuest(supa, reParsed.roomNumber!, reParsed.firstName!, reParsed.lastName!);
+
+      if (reVerResult.matched && reVerResult.guestId) {
+        // Yeni misafir DB'de doğrulandı → güncelle
+        await supa
+          .from('conversations')
+          .update({
+            verified_inhouse_guest_id: reVerResult.guestId,
+            verified_at: new Date().toISOString(),
+          })
+          .eq('id', conversationId);
+
+        // persistentVerifiedGuest'i güncelle
+        const { data: newGuestRec } = await supa
+          .from('inhouse_guests')
+          .select('id, first_name, last_name, room_number, language, gender, check_out_date, is_active')
+          .eq('id', reVerResult.guestId)
+          .maybeSingle();
+
+        if (newGuestRec) {
+          persistentVerifiedGuest = newGuestRec as unknown as typeof persistentVerifiedGuest;
+        }
+
+        console.log('[re-verify] Başarılı —', {
+          newGuest: `${reVerResult.guestFirstName} ${reVerResult.guestLastName}`,
+          newRoom: reParsed.roomNumber,
+        });
+
+        const reVerMsg =
+          language === 'en'
+            ? `I've updated your information, ${reVerResult.guestFirstName ?? ''}. I've recorded that you are now in room ${reParsed.roomNumber}. Would you like me to forward your request?`
+            : language === 'de'
+              ? `Ihre Informationen wurden aktualisiert, ${reVerResult.guestFirstName ?? ''}. Ich habe notiert, dass Sie nun in Zimmer ${reParsed.roomNumber} sind. Soll ich Ihre Anfrage weiterleiten?`
+              : `Bilgilerinizi güncelledim, ${reVerResult.guestFirstName ?? ''} Bey. Şu an ${reParsed.roomNumber} numaralı odada konakladığınızı kayıt ettim. Talebinizi iletmemi ister misiniz?`;
+
+        await supa.from('bot_messages').insert({
+          conversation_id: conversationId,
+          direction: 'outbound',
+          text: reVerMsg,
+          message_type: 'text',
+        });
+        await tg.sendMessage({ chat_id: chatId, text: reVerMsg });
+        return;
+      } else {
+        // Eşleşme yok → ön büroya yönlendir, eski verified guest devam eder
+        console.log('[re-verify] Eşleşme yok — eski verified devam ediyor');
+        const noMatchMsg =
+          language === 'en'
+            ? `I couldn't find a match for the details you provided. Our front desk will assist you.`
+            : language === 'de'
+              ? `Die von Ihnen angegebenen Daten konnten nicht gefunden werden. Unsere Rezeption wird Ihnen helfen.`
+              : `Verdiğiniz bilgilerle in-house listesinde eşleşme bulamadım. Ön büromuza yönlendiriyorum, sizinle ilgilenecekler.`;
+
+        await supa.from('bot_messages').insert({
+          conversation_id: conversationId,
+          direction: 'outbound',
+          text: noMatchMsg,
+          message_type: 'text',
+        });
+        await tg.sendMessage({ chat_id: chatId, text: noMatchMsg });
+        return;
+      }
+    }
+  }
+
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
     // KB cevabı değilse forward yapılacak (skipForward zaten false/sosyal kontrolü yukarıda)
@@ -774,6 +908,7 @@ async function handleMessage(args: {
     await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
     return;
   } else if (aiShouldForward && (requiresVerification(aiRawIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at)))) {
+    // Modül 10.7: verified misafir varsa doğrulama akışına GİRME (needsVerification = personalIntent && !persistentVerifiedGuest)
 
     const effectiveIntent = requiresVerification(aiRawIntent) ? aiRawIntent! : (conversation.verification_pending_intent ?? aiRawIntent ?? 'unknown');
 
