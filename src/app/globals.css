@@ -20,6 +20,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
   --accent-green: #22c55e;
   --accent-purple: #8b5cf6;
   --accent-orange: #fb923c;
+  --accent-pink: #ec4899;
 }
 
 .landing-root {
@@ -333,6 +334,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
   box-shadow: 0 0 12px rgba(251, 146, 60, 0.7);
 }
 
+.dot.active.active-5 {
+  background: var(--accent-pink);
+  box-shadow: 0 0 12px rgba(236, 72, 153, 0.7);
+}
+
 /* ── Slide 4 — Bell icon ── */
 .hero-icon-bell {
   color: var(--accent-orange);
@@ -359,6 +365,31 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 @keyframes pulseGlow {
   0%, 100% { opacity: 0.6; transform: scale(1); }
   50%      { opacity: 1;   transform: scale(1.15); }
+}
+
+/* ── Slide 5 — Heart icon ── */
+.hero-icon-heart {
+  color: var(--accent-pink);
+  filter: drop-shadow(0 0 24px rgba(236, 72, 153, 0.55));
+  animation: heartBeat 1.6s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.hero-icon-glow-pink {
+  position: absolute;
+  inset: -40px;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.35) 0%, transparent 70%);
+  filter: blur(28px);
+  z-index: -1;
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+@keyframes heartBeat {
+  0%, 100% { transform: scale(1); }
+  14%      { transform: scale(1.18); }
+  28%      { transform: scale(1); }
+  42%      { transform: scale(1.12); }
+  70%      { transform: scale(1); }
 }
 
 .floating-right {
