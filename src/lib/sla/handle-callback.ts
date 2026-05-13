@@ -7,7 +7,8 @@
  *   2. responded_at + response_type set et
  *   3. Misafire önceden tanımlı sıcak cevap gönder
  *   4. Departman mesajının inline butonlarını "✅ Cevaplandı" yazısıyla değiştir
- *   5. answerCallbackQuery ile popup göster
+ *   5. Modül 11.1: Resepsiyona "Bilgi — Talep Yanıtlandı" mesajı gönder
+ *   6. answerCallbackQuery ile popup göster
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -131,7 +132,17 @@ export async function handleSlaCallback(params: CallbackParams): Promise<void> {
     );
   }
 
-  // 5) Popup feedback
+  // 5) Modül 11.1: Resepsiyona bilgi mesajı gönder (buton yanıtlandıktan sonra)
+  await sendReceptionInfoMessage({
+    hotelSupabase: params.hotelSupabase,
+    botToken: params.botToken,
+    slaEvent,
+    responseType,
+    responderName,
+    respondedAt: now,
+  });
+
+  // 6) Popup feedback
   await answerCallback(
     params.botToken,
     params.callbackQueryId,
@@ -145,6 +156,83 @@ export async function handleSlaCallback(params: CallbackParams): Promise<void> {
     responseType,
     responder: responderName,
   });
+}
+
+// ─── Modül 11.1: Resepsiyon bilgi mesajı ────────────────────────────────────
+
+interface ReceptionInfoParams {
+  hotelSupabase: SupabaseClient;
+  botToken: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  slaEvent: Record<string, any>;
+  responseType: string;
+  responderName: string;
+  respondedAt: Date;
+}
+
+async function sendReceptionInfoMessage(p: ReceptionInfoParams): Promise<void> {
+  try {
+    // front_office chat_id'sini DB'den çek
+    const { data: foRow } = await p.hotelSupabase
+      .from('departments')
+      .select('telegram_chat_id, display_name')
+      .eq('code', 'front_office')
+      .eq('is_enabled', true)
+      .maybeSingle();
+
+    if (!foRow?.telegram_chat_id) {
+      console.log('[sla-callback] front_office chat_id yok — resepsiyon bildirimi atlandı');
+      return;
+    }
+
+    const frontOfficeChatId = foRow.telegram_chat_id as number;
+
+    // Yanıt bilgilerini hazırla
+    const responseEmoji = p.responseType === 'immediate' ? '🟢' : '🟡';
+    const responseLabel =
+      p.responseType === 'immediate' ? 'Hemen ilgileniyoruz' : 'Biraz sonra ilgileniyoruz';
+
+    // Departman adını bul (sla_event'teki department_code'dan)
+    const deptCode = (p.slaEvent.department_code as string) ?? '';
+    const { data: deptRow } = await p.hotelSupabase
+      .from('departments')
+      .select('display_name')
+      .eq('code', deptCode)
+      .maybeSingle();
+    const deptDisplayName = (deptRow?.display_name as string | null) ?? deptCode;
+
+    const roomNumber = (p.slaEvent.room_number as string | null) ?? '—';
+    const guestFullName = (p.slaEvent.guest_full_name as string | null) ?? '—';
+    const requestText = (p.slaEvent.request_text as string | null) ?? '—';
+    const timeStr = formatTime(p.respondedAt);
+
+    const esc = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const infoHtml =
+      `ℹ️ <b>Bilgi — Talep Yanıtlandı</b>\n\n` +
+      `🚪 Oda: ${esc(roomNumber)}\n` +
+      `👤 Misafir: ${esc(guestFullName)}\n` +
+      `📝 Talep: "${esc(requestText)}"\n` +
+      `🏢 Departman: ${esc(deptDisplayName)}\n` +
+      `✅ Yanıt: ${responseEmoji} ${esc(responseLabel)}\n` +
+      `👤 Yanıtlayan: ${esc(p.responderName)}\n` +
+      `🕐 Saat: ${esc(timeStr)}`;
+
+    await fetch(`https://api.telegram.org/bot${p.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: frontOfficeChatId,
+        text: infoHtml,
+        parse_mode: 'HTML',
+      }),
+    });
+
+    console.log(`[sla-callback] reception info message sent → chatId=${frontOfficeChatId}`);
+  } catch (err) {
+    console.error('[sla-callback] sendReceptionInfoMessage error:', err instanceof Error ? err.message : err);
+  }
 }
 
 async function answerCallback(

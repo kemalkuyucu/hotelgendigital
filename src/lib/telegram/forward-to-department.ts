@@ -39,8 +39,7 @@ export interface ForwardResult {
   error?: string;
 }
 
-// Operasyonel departmanlar — talep iletildiğinde Demo_OnBuro CC alır
-const CC_TO_FRONT_OFFICE: string[] = ['technical', 'housekeeping', 'fb'];
+// Modül 11.1: CC_TO_FRONT_OFFICE kaldırıldı — resepsiyon artık buton yanıtı sonrası bilgilendirilir
 
 // Departman label'ları — CC ve DM mesajlarında kullanılır
 const DEPT_LABELS: Record<string, string> = {
@@ -236,62 +235,9 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     console.error(`[fwd] DM error: getActiveStaffNow FAILED: ${staffErr instanceof Error ? staffErr.stack ?? staffErr.message : String(staffErr)}`);
   }
 
-  // ─── 3. RESEPSIYON CC — Operasyonel departmanlarda Demo_OnBuro haberdar edilir ──
-
-  if (CC_TO_FRONT_OFFICE.includes(targetDept)) {
-    console.log(`[forward] checking front_office CC for dept=${targetDept}...`);
-    try {
-      // front_office departmanının telegram_chat_id'sini DB'den çek
-      const { data: foRow, error: foErr } = await hotelSupa
-        .from('departments')
-        .select('telegram_chat_id')
-        .eq('code', 'front_office')
-        .eq('is_enabled', true)
-        .maybeSingle();
-
-      if (foErr) {
-        console.error('[forward] front_office dept query error:', foErr.message);
-      } else if (!foRow?.telegram_chat_id) {
-        console.log('[forward] front_office telegram_chat_id bulunamadı — CC atlandı');
-      } else {
-        const frontOfficeChatId = foRow.telegram_chat_id as number;
-
-        const ccMsgText = formatFrontOfficeCcMessage({
-          guestName: resolvedGuestName,
-          roomNumber: resolvedRoomNumber,
-          guestMessage,
-          deptDisplayLabel,
-          trDateStr,
-        });
-
-        const sent = await tg.sendMessage({
-          chat_id: frontOfficeChatId,
-          text: ccMsgText,
-          parse_mode: 'HTML',
-          disable_web_page_preview: true,
-        });
-
-        await hotelSupa
-          .from('forwarded_messages')
-          .insert({
-            ai_intent_id: aiIntentId ?? null,
-            source_department: classifiedDepartment ?? null,
-            target_department: 'front_office',
-            target_chat_id: frontOfficeChatId,
-            is_off_hours: isOffHours,
-            status: 'sent',
-            target_type: 'group_cc',
-            telegram_message_id: sent.message_id,
-          });
-
-        console.log(`[forward] front_office CC sent → chatId=${frontOfficeChatId} messageId=${sent.message_id}`);
-      }
-    } catch (ccErr) {
-      console.error('[forward] front office CC failed:', ccErr instanceof Error ? ccErr.message : ccErr);
-    }
-  } else {
-    console.log(`[forward] no CC for dept=${targetDept} (not in CC list)`);
-  }
+  // ─── 3. RESEPSIYON CC — Modül 11.1: İlk iletimde CC GÖNDERİLMEZ.
+  // Resepsiyon artık yalnızca departman butona bastıktan sonra bilgilendirilir.
+  // (bkz. handle-callback.ts → sendReceptionInfoMessage)
 
   // ─── SONUÇ ────────────────────────────────────────────────────────────────
 
@@ -356,24 +302,7 @@ function formatStaffDmMessage(args: {
   ].join('\n');
 }
 
-/** Şablon 3: Resepsiyon (front_office) CC — bilgilendirme (Modül 10.3: sadeleştirildi) */
-function formatFrontOfficeCcMessage(args: {
-  guestName: string;
-  roomNumber: string | null;
-  guestMessage: string;
-  deptDisplayLabel: string;
-  trDateStr: string;
-}): string {
-  const roomLine = args.roomNumber ? `🚪 <b>Oda:</b> ${escapeHtml(args.roomNumber)}\n` : '';
-  return (
-    `ℹ️ <b>Bilgilendirme:</b> ${escapeHtml(args.deptDisplayLabel)} departmanına iletildi.\n\n` +
-    roomLine +
-    `👤 <b>Misafir:</b> ${escapeHtml(args.guestName)}\n` +
-    `📝 <b>Talep:</b> "${escapeHtml(args.guestMessage)}"\n` +
-    `🕐 <b>Saat:</b> ${escapeHtml(args.trDateStr)}\n\n` +
-    `<i>Bu mesaj sadece haberdar olmanız içindir. İlgili departman aksiyon alacaktır.</i>`
-  );
-}
+// Modül 11.1: formatFrontOfficeCcMessage kaldırıldı — resepsiyon CC artık handle-callback.ts'te
 
 // ─── YARDIMCI FONKSİYONLAR ───────────────────────────────────────────────────
 
