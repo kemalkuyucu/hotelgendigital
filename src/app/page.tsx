@@ -7,6 +7,7 @@ import { TopButtons, FloatingRight, Pagination } from '@/components/landing/Shar
 import Slide1 from '@/components/landing/Slide1';
 import Slide2 from '@/components/landing/Slide2';
 import Slide3 from '@/components/landing/Slide3';
+import Slide4 from '@/components/landing/Slide4';
 
 const TOTAL_SLIDES = 7;
 
@@ -62,6 +63,7 @@ export default function LandingPage() {
         <Slide1 onContinue={() => scrollToSlide(2)} />
         <Slide2 onContinue={() => scrollToSlide(3)} />
         <Slide3 onContinue={() => scrollToSlide(4)} />
+        <Slide4 onContinue={() => scrollToSlide(5)} />
       </div>
 
       <Pagination
