@@ -50,14 +50,18 @@ export function FloatingRight() {
 export function Pagination({ total, active, onDotClick }: PaginationProps) {
   return (
     <div className="pagination">
-      {Array.from({ length: total }).map((_, i) => (
-        <button
-          key={i}
-          className={`dot ${active === i + 1 ? 'active' : ''}`}
-          onClick={() => onDotClick(i + 1)}
-          aria-label={`Slayt ${i + 1}'e git`}
-        />
-      ))}
+      {Array.from({ length: total }).map((_, i) => {
+        const n = i + 1;
+        const isActive = active === n;
+        return (
+          <button
+            key={n}
+            className={`dot ${isActive ? `active active-${n}` : ''}`}
+            onClick={() => onDotClick(n)}
+            aria-label={`Slayt ${n}'e git`}
+          />
+        );
+      })}
     </div>
   );
 }
