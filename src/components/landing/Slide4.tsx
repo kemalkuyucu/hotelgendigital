@@ -4,11 +4,12 @@ import { ContinueButton } from './SharedUI';
 
 interface Slide4Props {
   onContinue: () => void;
+  isActive?: boolean;
 }
 
-export default function Slide4({ onContinue }: Slide4Props) {
+export default function Slide4({ onContinue, isActive }: Slide4Props) {
   return (
-    <section id="slide-4" className="slide-section">
+    <section id="slide-4" className={`slide-section ${isActive ? 'is-active' : ''}`}>
       <div className="hero-content">
         <div className="hero-icon-wrapper">
           <div className="hero-icon-glow-orange" />
