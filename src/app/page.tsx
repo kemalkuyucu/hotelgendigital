@@ -17,12 +17,15 @@ export default function LandingPage() {
   const scrollToSlide = (n: number) => {
     const el = document.getElementById(`slide-${n}`);
     const root = rootRef.current;
-    if (el && root) {
-      root.scrollTo({
-        top: el.offsetTop,
-        behavior: 'smooth',
-      });
+    if (!el || !root) {
+      console.warn('[scrollToSlide] el or root not found', { n });
+      return;
     }
+    const elRect = el.getBoundingClientRect();
+    const rootRect = root.getBoundingClientRect();
+    const offset = elRect.top - rootRect.top + root.scrollTop;
+    console.log('[scrollToSlide]', { n, offset, rootScrollTop: root.scrollTop });
+    root.scrollTo({ top: offset, behavior: 'smooth' });
   };
 
   useEffect(() => {
