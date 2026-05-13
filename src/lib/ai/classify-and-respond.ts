@@ -16,9 +16,17 @@ export interface ClassifyAndRespondInput {
   context: ConversationContextMessage[]; // Son N mesaj (eski → yeni sırada)
 }
 
+export interface ClassifiedIntentItem {
+  department: string;
+  requestText: string;
+  shouldForward: boolean;
+  rawDepartment: string;
+}
+
 export interface ClassifyAndRespondOutput {
-  department: string | null;
-  shouldForward: boolean;          // false → sosyal intent, bot sadece cevap verir
+  classifiedIntents: ClassifiedIntentItem[];    // YENİ — çoklu intent desteği
+  department: string | null;                    // LEGACY — classifiedIntents[0]'dan türetilir
+  shouldForward: boolean;                       // LEGACY — herhangi biri forward → true
   confidence: number;
   reasoning: string;
   response_to_guest: string;
@@ -80,6 +88,7 @@ export async function classifyAndRespond(
     response_to_guest?: string; // legacy uyum
     intent?: string | null;
     department?: string | null; // legacy uyum
+    intents?: Array<{ department: string; request_text: string }>; // YENİ çoklu intent
     confidence: number;
     reasoning: string;
     answered_from_knowledge?: boolean;
@@ -95,14 +104,26 @@ export async function classifyAndRespond(
 
   // Yeni format öncelikli, legacy fallback
   const responseToGuest = parsed.reply_text ?? parsed.response_to_guest ?? '';
-  const rawIntent = parsed.intent ?? parsed.department ?? null;
   const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
 
-  // Modül 10.2: Hiyerarşik routing — AI'nın intent'ini departmana çevir.
-  // Modül 10.6: NON_FORWARDING_INTENTS → shouldForward=false
-  const routing = rawIntent
-    ? routeIntentToDepartment(rawIntent)
-    : { department: null, shouldForward: false, routingReason: 'no_intent' };
+  // Modül 12: intents[] array varsa çoklu routing; yoksa tek intent'e fallback
+  const rawIntents =
+    Array.isArray(parsed.intents) && parsed.intents.length > 0
+      ? parsed.intents
+      : [{
+          department: parsed.intent ?? parsed.department ?? 'unknown',
+          request_text: parsed.reply_text ?? parsed.response_to_guest ?? '',
+        }];
+
+  const classifiedIntents: ClassifiedIntentItem[] = rawIntents.map((item: { department: string; request_text: string }) => {
+    const routing = routeIntentToDepartment(item.department);
+    return {
+      department: routing.department ?? 'front_office',
+      requestText: item.request_text || responseToGuest,
+      shouldForward: routing.shouldForward,
+      rawDepartment: item.department,
+    };
+  });
 
   // Validasyon
   if (typeof responseToGuest !== 'string' || responseToGuest.length === 0) {
@@ -116,8 +137,9 @@ export async function classifyAndRespond(
       : false;
 
   return {
-    department: routing.department,
-    shouldForward: routing.shouldForward,
+    classifiedIntents,
+    department: classifiedIntents[0]?.department ?? null,
+    shouldForward: classifiedIntents.some((i) => i.shouldForward),
     confidence,
     reasoning: parsed.reasoning ?? '',
     response_to_guest: responseToGuest,
