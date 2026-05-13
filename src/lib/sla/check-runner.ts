@@ -110,8 +110,8 @@ export async function runSlaCheck(
         `⏱ <b>SLA aşımı:</b> ${elapsedMin} dakika (cevap verilmedi)\n\n` +
         `<b>Lütfen kontrol edip aksiyon alın:</b>\n` +
         `• Departmanı arayıp durumu sorun\n` +
-        `• Bu mesaja <b>REPLY</b> ile açıklamanızı yazın\n` +
-        `• Açıklama yönetici raporunda görünecektir`;
+        `• Bu mesajı basılı tutun → 'Yanıtla' seçeneğine basın → açıklamanızı yazın\n` +
+        `• Yazdığınız açıklama yönetici raporunda görünecektir`;
 
       const sendRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: 'POST',
