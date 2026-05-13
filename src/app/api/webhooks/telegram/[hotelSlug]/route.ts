@@ -1192,13 +1192,11 @@ async function handleMessage(args: {
               inhouse_guest_id: persistentVerifiedGuest?.id ?? null,
               department_code: targetDept,
               department_chat_id: deptChatIdForSla,
-              classified_department: targetDept,
               request_text: fwdItem.requestText,
               room_number: persistentVerifiedGuest?.room_number ?? null,
               guest_full_name: guestFullNameForSla,
               forwarded_at: nowSla.toISOString(),
               sla_deadline: slaDedline.toISOString(),
-              ai_intent_id: aiIntentIdForItem,
             })
             .select('id')
             .single();
