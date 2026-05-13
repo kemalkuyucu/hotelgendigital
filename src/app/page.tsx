@@ -23,9 +23,9 @@ export default function LandingPage() {
     }
     const elRect = el.getBoundingClientRect();
     const rootRect = root.getBoundingClientRect();
-    const offset = elRect.top - rootRect.top + root.scrollTop;
-    console.log('[scrollToSlide]', { n, offset, rootScrollTop: root.scrollTop });
-    root.scrollTo({ top: offset, behavior: 'smooth' });
+    const offset = elRect.left - rootRect.left + root.scrollLeft;
+    console.log('[scrollToSlide]', { n, offset, rootScrollLeft: root.scrollLeft });
+    root.scrollTo({ left: offset, behavior: 'smooth' });
   };
 
   useEffect(() => {
