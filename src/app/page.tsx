@@ -9,6 +9,7 @@ import Slide2 from '@/components/landing/Slide2';
 import Slide3 from '@/components/landing/Slide3';
 import Slide4 from '@/components/landing/Slide4';
 import Slide5 from '@/components/landing/Slide5';
+import Slide6 from '@/components/landing/Slide6';
 
 const TOTAL_SLIDES = 7;
 
@@ -66,6 +67,7 @@ export default function LandingPage() {
         <Slide3 onContinue={() => scrollToSlide(4)} />
         <Slide4 onContinue={() => scrollToSlide(5)} />
         <Slide5 onContinue={() => scrollToSlide(6)} />
+        <Slide6 onContinue={() => scrollToSlide(7)} />
       </div>
 
       <Pagination
