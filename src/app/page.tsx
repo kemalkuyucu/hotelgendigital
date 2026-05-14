@@ -8,11 +8,10 @@ import Slide1 from '@/components/landing/Slide1';
 import Slide2 from '@/components/landing/Slide2';
 import Slide3 from '@/components/landing/Slide3';
 import Slide4 from '@/components/landing/Slide4';
-import Slide5 from '@/components/landing/Slide5';
 import Slide6 from '@/components/landing/Slide6';
 import Slide7 from '@/components/landing/Slide7';
 
-const TOTAL_SLIDES = 7;
+const TOTAL_SLIDES = 6;
 
 export default function LandingPage() {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -66,10 +65,9 @@ export default function LandingPage() {
         <Slide1 onContinue={() => scrollToSlide(2)} isActive={activeSlide === 1} />
         <Slide2 onContinue={() => scrollToSlide(3)} isActive={activeSlide === 2} />
         <Slide3 onContinue={() => scrollToSlide(4)} isActive={activeSlide === 3} />
-        <Slide4 onContinue={() => scrollToSlide(5)} isActive={activeSlide === 4} />
-        <Slide5 onContinue={() => scrollToSlide(6)} isActive={activeSlide === 5} />
-        <Slide6 onContinue={() => scrollToSlide(7)} isActive={activeSlide === 6} />
-        <Slide7 isActive={activeSlide === 7} />
+        <Slide4 onContinue={() => scrollToSlide(6)} isActive={activeSlide === 4} />
+        <Slide6 onContinue={() => scrollToSlide(7)} isActive={activeSlide === 5} />
+        <Slide7 isActive={activeSlide === 6} />
       </div>
 
       <Pagination
