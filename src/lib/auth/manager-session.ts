@@ -31,7 +31,12 @@ export async function createManagerSession(managerId: string, ip: string, ua: st
 
 export async function getSessionManager() {
   const cookieStore = await cookies()
+  // ── DEBUG: cookie audit ──────────────────────────────────────────────────
+  const allCookies = cookieStore.getAll()
+  console.log('[getSessionManager] all cookies:', allCookies.map((c) => c.name))
   const token = cookieStore.get(COOKIE_NAME)?.value
+  console.log('[getSessionManager] token exists:', !!token, '| cookie name:', COOKIE_NAME)
+  // ────────────────────────────────────────────────────────────────────────
   if (!token) return null
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
 
