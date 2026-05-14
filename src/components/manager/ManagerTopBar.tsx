@@ -13,7 +13,7 @@ export default function ManagerTopBar({ onLogout, loggingOut }: ManagerTopBarPro
   const [username, setUsername] = useState<string>('Yönetici');
 
   useEffect(() => {
-    fetch('/api/manager/me')
+    fetch('/api/manager/me', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.username) setUsername(data.username);

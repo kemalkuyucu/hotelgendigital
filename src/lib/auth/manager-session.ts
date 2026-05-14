@@ -46,7 +46,7 @@ export async function getSessionManager() {
   if (new Date(session.expires_at) < new Date()) return null
 
   const { data: manager } = await supabase
-    .from('admin_users')
+    .from('master_admins')
     .select('id, username, full_name, role, is_active')
     .eq('id', session.manager_id)
     .eq('role', 'super_admin')
