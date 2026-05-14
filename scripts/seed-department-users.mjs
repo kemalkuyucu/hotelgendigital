@@ -20,6 +20,7 @@
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 import { config } from 'dotenv';
+import ws from 'ws';
 
 // .env.local yükle
 config({ path: '.env.local' });
@@ -34,7 +35,10 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  realtime: { transport: ws },
+  auth: { persistSession: false, autoRefreshToken: false },
+});
 
 // ─── Seed listesi ─────────────────────────────────────────────────────────────
 // role değerleri hotel_admin_users.role CHECK constraint ile eşleşmeli
