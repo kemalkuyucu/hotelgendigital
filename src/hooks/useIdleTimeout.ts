@@ -12,7 +12,7 @@ export function useIdleTimeout(timeoutMs: number = 5 * 60 * 1000): void {
 
   const logout = useCallback(async () => {
     try {
-      await fetch('/api/auth/manager/logout', { method: 'POST' });
+      await fetch('/api/auth/manager/logout', { method: 'POST', credentials: 'include' });
     } catch {
       // Hata olsa bile yönlendir
     } finally {

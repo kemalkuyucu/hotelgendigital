@@ -22,7 +22,7 @@ export default function ManagerDashboardPage() {
   async function handleLogout() {
     setLoggingOut(true);
     try {
-      await fetch('/api/auth/manager/logout', { method: 'POST' });
+      await fetch('/api/auth/manager/logout', { method: 'POST', credentials: 'include' });
     } finally {
       router.push('/manager/login');
     }
