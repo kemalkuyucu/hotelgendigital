@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "seed:demo-knowledge": "tsx scripts/seed-demo-knowledge.ts"
+    "seed:demo-knowledge": "tsx scripts/seed-demo-knowledge.ts",
+    "create-admin": "node scripts/create-admin.mjs",
+    "seed-departments": "node scripts/seed-department-users.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

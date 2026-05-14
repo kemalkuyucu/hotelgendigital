@@ -732,3 +732,83 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     font-size: 36px;
   }
 }
+
+/* ── Departman Dropdown (Modül 12.9) ── */
+
+/* login-card-wrapper: dropdown'un absolute konumlanması için referans */
+.login-card-wrapper {
+  position: relative;
+}
+
+/* Kartın içindeki chevron ok */
+.dept-chevron {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  color: rgba(255, 255, 255, 0.5);
+  transition: transform 0.3s ease, color 0.3s ease;
+  pointer-events: none;
+}
+
+.dept-chevron--open {
+  transform: rotate(180deg);
+  color: var(--accent-blue);
+}
+
+/* Dropdown listesi */
+.dept-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: rgba(10, 16, 36, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(91, 158, 255, 0.3);
+  border-radius: 14px;
+  padding: 8px;
+  margin: 0;
+  list-style: none;
+  z-index: 100;
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  animation: dropdownFadeIn 0.22s ease;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Her departman seçeneği */
+.dept-dropdown-item {
+  padding: 11px 16px;
+  border-radius: 9px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+  text-align: left;
+  letter-spacing: 0.01em;
+}
+
+.dept-dropdown-item:hover {
+  background: rgba(91, 158, 255, 0.12);
+  color: #ffffff;
+}
+
+.dept-dropdown-item--active {
+  background: rgba(91, 158, 255, 0.18);
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
