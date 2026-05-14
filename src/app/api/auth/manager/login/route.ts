@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
     const supabase = getCentralSupabase()
     const { data: manager } = await supabase
-      .from('admin_users')
+      .from('master_admins')
       .select('id, username, password_hash, role, is_active, failed_login_attempts, locked_until')
       .eq('username', username)
       .eq('role', 'super_admin')
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       const lockUntil =
         attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : null
       await supabase
-        .from('admin_users')
+        .from('master_admins')
         .update({ failed_login_attempts: attempts, locked_until: lockUntil })
         .eq('id', manager.id)
 
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     // Başarılı giriş — sayaçları sıfırla
     await supabase
-      .from('admin_users')
+      .from('master_admins')
       .update({
         failed_login_attempts: 0,
         locked_until: null,
