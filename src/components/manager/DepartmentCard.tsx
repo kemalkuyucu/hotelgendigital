@@ -1,17 +1,18 @@
 'use client';
 
+import React from 'react';
 import {
-  Hotel,
-  UtensilsCrossed,
-  BedDouble,
-  Wrench,
-  HeartHandshake,
-  Sparkles,
-  PartyPopper,
-  Users,
-  Clock,
-  Bell,
-} from 'lucide-react';
+  FrontOfficeIcon,
+  FBIcon,
+  HousekeepingIcon,
+  TechnicalIcon,
+  GuestRelationIcon,
+  SpaIcon,
+  AnimationIcon,
+  UsersIcon,
+  ClockIcon,
+  BellIcon,
+} from './icons';
 
 export interface Department {
   id: string;
@@ -30,18 +31,20 @@ interface DepartmentCardProps {
   index: number;
 }
 
-const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  front_office: Hotel,
-  fb: UtensilsCrossed,
-  housekeeping: BedDouble,
-  technical: Wrench,
-  guest_relation: HeartHandshake,
-  spa: Sparkles,
-  animation: PartyPopper,
+type SvgIconComponent = (props: { size?: number; className?: string }) => React.ReactElement;
+
+const ICON_MAP: Record<string, SvgIconComponent> = {
+  front_office: FrontOfficeIcon,
+  fb: FBIcon,
+  housekeeping: HousekeepingIcon,
+  technical: TechnicalIcon,
+  guest_relation: GuestRelationIcon,
+  spa: SpaIcon,
+  animation: AnimationIcon,
 };
 
 function DeptIcon({ code }: { code: string }) {
-  const Icon = ICON_MAP[code] ?? Hotel;
+  const Icon = ICON_MAP[code] ?? FrontOfficeIcon;
   return <Icon size={28} className="dept-card-icon-svg" />;
 }
 
@@ -87,15 +90,15 @@ export default function DepartmentCard({ department, index }: DepartmentCardProp
       {/* ── Stats row ── */}
       <div className="dept-stat-row">
         <div className="stat-chip">
-          <Users size={13} />
+          <UsersIcon size={13} />
           <span>{staff_count} kişi</span>
         </div>
         <div className="stat-chip">
-          <Clock size={13} />
+          <ClockIcon size={13} />
           <span>{sla_minutes ?? '—'} dk</span>
         </div>
         <div className="stat-chip">
-          <Bell size={13} />
+          <BellIcon size={13} />
           <span>{notification_channel_priority ?? '—'}</span>
         </div>
       </div>
