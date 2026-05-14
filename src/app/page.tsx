@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import CursorGlow from '@/components/landing/CursorGlow';
 import ParticleBackground from '@/components/landing/ParticleBackground';
 import { TopButtons, FloatingRight, Pagination } from '@/components/landing/SharedUI';
@@ -10,10 +11,12 @@ import Slide3 from '@/components/landing/Slide3';
 import Slide4 from '@/components/landing/Slide4';
 import Slide5 from '@/components/landing/Slide5';
 import Slide6 from '@/components/landing/Slide6';
+import Slide7 from '@/components/landing/Slide7';
 
-const TOTAL_SLIDES = 6;
+const TOTAL_SLIDES = 7;
 
 export default function LandingPage() {
+  const router = useRouter();
   const rootRef = useRef<HTMLDivElement>(null);
   const [activeSlide, setActiveSlide] = useState(1);
 
@@ -67,7 +70,8 @@ export default function LandingPage() {
         <Slide3 onContinue={() => scrollToSlide(4)} isActive={activeSlide === 3} />
         <Slide4 onContinue={() => scrollToSlide(5)} isActive={activeSlide === 4} />
         <Slide5 onContinue={() => scrollToSlide(6)} isActive={activeSlide === 5} />
-        <Slide6 onContinue={() => {}} isActive={activeSlide === 6} />
+        <Slide6 onContinue={() => scrollToSlide(7)} isActive={activeSlide === 6} />
+        <Slide7 onContinue={() => router.push('/login')} isActive={activeSlide === 7} />
       </div>
 
       <Pagination
