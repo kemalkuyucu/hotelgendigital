@@ -28,7 +28,7 @@ export default function LandingPage() {
     const elRect = el.getBoundingClientRect();
     const rootRect = root.getBoundingClientRect();
     const offset = elRect.left - rootRect.left + root.scrollLeft;
-    console.log('[scrollToSlide]', { n, offset, rootScrollLeft: root.scrollLeft });
+    setActiveSlide(n); // is-active'i anında uygula, observer gecikmesine bağımlı olma
     root.scrollTo({ left: offset, behavior: 'smooth' });
   };
 
