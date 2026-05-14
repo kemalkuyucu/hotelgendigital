@@ -11,8 +11,8 @@ export async function createManagerSession(managerId: string, ip: string, ua: st
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 60 * 60 * 1000)
 
   const supabase = getCentralSupabase()
-  await supabase.from('manager_sessions').insert({
-    manager_id: managerId,
+  await supabase.from('master_admin_sessions').insert({
+    admin_id: managerId,
     token_hash: tokenHash,
     ip_address: ip,
     user_agent: ua,
@@ -31,19 +31,14 @@ export async function createManagerSession(managerId: string, ip: string, ua: st
 
 export async function getSessionManager() {
   const cookieStore = await cookies()
-  // ── DEBUG: cookie audit ──────────────────────────────────────────────────
-  const allCookies = cookieStore.getAll()
-  console.log('[getSessionManager] all cookies:', allCookies.map((c) => c.name))
   const token = cookieStore.get(COOKIE_NAME)?.value
-  console.log('[getSessionManager] token exists:', !!token, '| cookie name:', COOKIE_NAME)
-  // ────────────────────────────────────────────────────────────────────────
   if (!token) return null
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
 
   const supabase = getCentralSupabase()
   const { data: session } = await supabase
-    .from('manager_sessions')
-    .select('manager_id, expires_at')
+    .from('master_admin_sessions')
+    .select('admin_id, expires_at')
     .eq('token_hash', tokenHash)
     .single()
 
@@ -53,14 +48,14 @@ export async function getSessionManager() {
   const { data: manager } = await supabase
     .from('master_admins')
     .select('id, username, full_name, role, is_active')
-    .eq('id', session.manager_id)
+    .eq('id', session.admin_id)
     .eq('role', 'super_admin')
     .single()
 
   if (!manager || !manager.is_active) return null
 
   await supabase
-    .from('manager_sessions')
+    .from('master_admin_sessions')
     .update({ last_activity_at: new Date().toISOString() })
     .eq('token_hash', tokenHash)
 
@@ -73,7 +68,7 @@ export async function destroyManagerSession() {
   if (token) {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
     const supabase = getCentralSupabase()
-    await supabase.from('manager_sessions').delete().eq('token_hash', tokenHash)
+    await supabase.from('master_admin_sessions').delete().eq('token_hash', tokenHash)
   }
   cookieStore.delete(COOKIE_NAME)
 }
