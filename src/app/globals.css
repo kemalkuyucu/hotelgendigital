@@ -20,6 +20,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
   --accent-green: #22c55e;
   --accent-orange: #fb923c;
   --accent-pink: #ec4899;
+  --accent-purple: #a855f7;
 }
 
 .landing-root {
@@ -433,6 +434,43 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
   70%      { transform: scale(1); }
 }
 
+/* ── Slide 6 — Chart icon ── */
+.hero-icon-chart {
+  color: var(--accent-purple);
+  filter: drop-shadow(0 0 24px rgba(168, 85, 247, 0.55));
+}
+
+.hero-icon-chart .bar-1 { animation: barGrow1 2.4s ease-in-out infinite; transform-origin: bottom; }
+.hero-icon-chart .bar-2 { animation: barGrow2 2.4s ease-in-out infinite; transform-origin: bottom; }
+.hero-icon-chart .bar-3 { animation: barGrow3 2.4s ease-in-out infinite; transform-origin: bottom; }
+
+.hero-icon-glow-purple {
+  position: absolute;
+  inset: -40px;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.35) 0%, transparent 70%);
+  filter: blur(28px);
+  z-index: -1;
+  pointer-events: none;
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+@keyframes barGrow1 {
+  0%, 100% { transform: scaleY(0.6); }
+  50% { transform: scaleY(1); }
+}
+@keyframes barGrow2 {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.7); }
+}
+@keyframes barGrow3 {
+  0%, 100% { transform: scaleY(0.8); }
+  50% { transform: scaleY(1); }
+}
+
+.dot.active.active-6 {
+  background: var(--accent-purple);
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.7);
+}
 
 
 .floating-right {
