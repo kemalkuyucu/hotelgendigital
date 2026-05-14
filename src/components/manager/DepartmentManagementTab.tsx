@@ -8,15 +8,27 @@ type FetchState = 'loading' | 'error' | 'empty' | 'data';
 export default function DepartmentManagementTab() {
   const [state, setState] = useState<FetchState>('loading');
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
   useEffect(() => {
     setState('loading');
+    setErrorDetail(null);
+
     fetch('/api/manager/departments/list', { credentials: 'include' })
-      .then((r) => {
-        if (!r.ok) throw new Error('Fetch failed');
-        return r.json();
-      })
-      .then((data: { departments: Department[] }) => {
+      .then(async (r) => {
+        if (!r.ok) {
+          let detail: string | null = null;
+          try {
+            const json = await r.json();
+            detail = json?.detail ?? json?.error ?? null;
+          } catch {
+            // JSON parse başarısız olsa bile devam et
+          }
+          setErrorDetail(detail);
+          setState('error');
+          return;
+        }
+        const data: { departments: Department[] } = await r.json();
         if (!data.departments || data.departments.length === 0) {
           setState('empty');
         } else {
@@ -24,7 +36,11 @@ export default function DepartmentManagementTab() {
           setState('data');
         }
       })
-      .catch(() => setState('error'));
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        setErrorDetail(msg);
+        setState('error');
+      });
   }, []);
 
   return (
@@ -59,7 +75,23 @@ export default function DepartmentManagementTab() {
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          Departmanlar yüklenemedi. Lütfen sayfayı yenileyin.
+          <span>
+            Departmanlar yüklenemedi. Lütfen sayfayı yenileyin.
+            {errorDetail && (
+              <span
+                style={{
+                  display: 'block',
+                  fontSize: '11px',
+                  opacity: 0.6,
+                  marginTop: '4px',
+                  fontFamily: 'monospace',
+                  wordBreak: 'break-all',
+                }}
+              >
+                Detay: {errorDetail}
+              </span>
+            )}
+          </span>
         </div>
       )}
 
