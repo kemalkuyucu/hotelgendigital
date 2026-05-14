@@ -1,11 +1,13 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import CursorGlow from '@/components/landing/CursorGlow';
 import ParticleBackground from '@/components/landing/ParticleBackground';
 
-export default function ManagerLoginPage() {
+function ManagerLoginInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const sessionExpired = searchParams.get('session') === 'expired';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -100,6 +102,18 @@ export default function ManagerLoginPage() {
 
         {/* Login kartı */}
         <div className="manager-login-card" id="manager-login-card">
+
+          {/* Oturum süresi doldu uyarısı */}
+          {sessionExpired && (
+            <div className="manager-login-warning" id="manager-session-expired-warning" role="alert">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              Oturum süreniz doldu. Güvenliğiniz için lütfen tekrar giriş yapın.
+            </div>
+          )}
 
           {/* Kart başlığı */}
           <div className="manager-login-header">
@@ -206,5 +220,13 @@ export default function ManagerLoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ManagerLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <ManagerLoginInner />
+    </Suspense>
   );
 }

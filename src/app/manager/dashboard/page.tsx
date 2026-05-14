@@ -3,10 +3,14 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import CursorGlow from '@/components/landing/CursorGlow';
 import ParticleBackground from '@/components/landing/ParticleBackground';
+import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 
 export default function ManagerDashboardPage() {
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // 5 dakika hareketsizlik → otomatik logout
+  useIdleTimeout();
 
   // Basit client-side auth guard — session cookie yoksa login'e döndür
   useEffect(() => {
