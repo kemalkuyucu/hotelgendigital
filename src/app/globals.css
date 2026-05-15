@@ -1608,7 +1608,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 }
 
 /* Dept tab — content area override for top alignment */
-.manager-content-area:has(.dept-tab-root) {
+.manager-content-area:has(.dept-tab-root),
+.manager-content-area:has(.hotel-settings-root) {
   align-items: flex-start;
   justify-content: flex-start;
 }
@@ -3639,3 +3640,977 @@ input[type="time"] { color-scheme: dark; }
   50%       { opacity: 0.7; }
 }
 
+/* ================================================================
+   Hotel Settings Tab — Modül 14 (sub-tab iskelet)
+   ================================================================ */
+
+/* Root wrapper — tam genişlik, üstten hizalı */
+.hotel-settings-root {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 8px 0 48px;
+  animation: fadeInUp 0.3s ease both;
+}
+
+/* Başlık */
+.hotel-settings-header {
+  margin-bottom: 28px;
+}
+
+.hotel-settings-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 5px;
+  letter-spacing: -0.01em;
+}
+
+.hotel-settings-subtitle {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+}
+
+/* ── Alt Sekme Barı ── */
+.hotel-subtabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 28px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.hotel-subtabs::-webkit-scrollbar { display: none; }
+
+/* Ortak buton stili */
+.hotel-subtab-active,
+.hotel-subtab-inactive {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 18px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  white-space: nowrap;
+  position: relative;
+  bottom: -1px;
+}
+
+.hotel-subtab-active {
+  color: #ffffff;
+  border-bottom-color: var(--accent-purple);
+}
+
+.hotel-subtab-inactive {
+  color: rgba(255, 255, 255, 0.4);
+  border-bottom-color: transparent;
+}
+
+.hotel-subtab-inactive:hover {
+  color: rgba(255, 255, 255, 0.7);
+  border-bottom-color: rgba(168, 85, 247, 0.3);
+}
+
+/* ── İçerik Alanı ── */
+.hotel-subtab-content {
+  animation: fadeInUp 0.2s ease both;
+}
+
+/* ── Sub-tab Placeholder ── */
+.hotel-subtab-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 48px 32px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(168, 85, 247, 0.25);
+  border-radius: 14px;
+  text-align: center;
+}
+
+.hotel-subtab-placeholder-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  color: rgba(168, 85, 247, 0.7);
+}
+
+.hotel-subtab-placeholder-text {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.35);
+  margin: 0;
+}
+
+/* ================================================================
+   Hotel Info SubTab — Modül 14.1
+   ================================================================ */
+
+/* Textarea extension of form-input */
+.form-textarea {
+  resize: vertical;
+  min-height: 72px;
+  line-height: 1.55;
+}
+
+.form-textarea--tall {
+  min-height: 120px;
+}
+
+/* Select override — same dark theme as form-input */
+.form-select {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 10px;
+  padding: 10px 40px 10px 14px;
+  color: #ffffff;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(168,85,247,0.7)' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+.form-select:focus {
+  border-color: rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.12);
+}
+
+.form-select option {
+  background: #0f0a1e;
+  color: #ffffff;
+  padding: 8px;
+}
+
+/* form-input error state */
+.form-input--error {
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+}
+
+/* Root wrapper */
+.hotel-info-root {
+  width: 100%;
+  animation: fadeInUp 0.25s ease both;
+}
+
+/* Skeleton */
+.hotel-info-skeleton-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 740px;
+  margin: 0 auto;
+  animation: fadeInUp 0.25s ease both;
+}
+
+.hotel-info-skeleton-field {
+  border-radius: 10px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 600px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  width: 100%;
+}
+
+/* Two-column row (phone+email, check-in+check-out) */
+.hotel-info-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 560px) {
+  .hotel-info-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Form body spacing */
+.hotel-info-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 4px;
+}
+
+/* Required asterisk */
+.hotel-info-required {
+  color: #f87171;
+  margin-left: 2px;
+}
+
+/* Field-level error */
+.hotel-info-field-error {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: #f87171;
+  margin-top: 2px;
+}
+
+/* Char counter */
+.hotel-info-char-count {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+  text-align: right;
+  margin-top: 2px;
+}
+
+/* Spinner on save button */
+@keyframes hotelInfoSpin {
+  to { transform: rotate(360deg); }
+}
+
+.hotel-info-spin {
+  animation: hotelInfoSpin 0.8s linear infinite;
+}
+
+/* Save button icon alignment */
+.btn-form-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+
+/* ================================================================
+   Knowledge Base SubTab — Modül 14.2
+   ================================================================ */
+
+/* Root */
+.knowledge-root {
+  width: 100%;
+  animation: fadeInUp 0.25s ease both;
+}
+
+/* ── Header ── */
+.knowledge-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* ── Add Button Row ── */
+.knowledge-add-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 18px;
+}
+
+.knowledge-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* "+ Yeni Bilgi Ekle" primary button */
+.knowledge-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  background: linear-gradient(135deg, #a855f7 0%, #7e22ce 100%);
+  border: none;
+  border-radius: 9px;
+  color: #ffffff;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.knowledge-add-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.5);
+}
+
+/* ── Slide-down Panel ── */
+.knowledge-panel {
+  background: rgba(10, 12, 26, 0.92);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  border-radius: 14px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  animation: knowledgePanelSlide 0.22s ease both;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(168, 85, 247, 0.08) inset;
+}
+
+@keyframes knowledgePanelSlide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.knowledge-panel-header {
+  padding: 14px 20px 0;
+}
+
+.knowledge-panel-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(168, 85, 247, 0.9);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.knowledge-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 20px 16px;
+}
+
+.knowledge-panel-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+/* Panel form inputs — remove the left padding override from login form */
+.knowledge-form-input {
+  padding-left: 14px !important;
+}
+
+/* Select */
+.knowledge-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px !important;
+  cursor: pointer;
+}
+.knowledge-select option {
+  background: #0d0f1e;
+  color: #ffffff;
+}
+
+/* Required asterisk */
+.knowledge-required {
+  color: #f87171;
+  margin-left: 2px;
+}
+
+/* Key hint */
+.knowledge-key-hint {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.22);
+  margin-top: 3px;
+  display: block;
+}
+
+/* Field error */
+.knowledge-field-error {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: #f87171;
+  margin-top: 2px;
+  display: block;
+}
+
+/* ── Toggle switch ── */
+.knowledge-toggle-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding-bottom: 2px;
+}
+
+.knowledge-toggle {
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  padding: 0;
+}
+.knowledge-toggle--on {
+  background: rgba(74, 222, 128, 0.25);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+.knowledge-toggle-thumb {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  transform: translateY(-50%);
+  transition: left 0.2s ease, background 0.2s ease;
+}
+.knowledge-toggle--on .knowledge-toggle-thumb {
+  left: calc(100% - 18px);
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+}
+
+/* ── Filter chips ── */
+.knowledge-filter-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  margin-bottom: 18px;
+  flex-wrap: nowrap;
+}
+.knowledge-filter-bar::-webkit-scrollbar { display: none; }
+
+.knowledge-chip {
+  flex-shrink: 0;
+  padding: 5px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.45);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+.knowledge-chip:hover {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.3);
+  color: rgba(168, 85, 247, 0.9);
+}
+.knowledge-chip--active {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.45);
+  color: #c4b5fd;
+}
+
+/* ── Facts list ── */
+.knowledge-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.knowledge-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  transition: background 0.18s ease, border-color 0.18s ease;
+  position: relative;
+}
+.knowledge-card:hover {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(168, 85, 247, 0.2);
+}
+.knowledge-card:hover .knowledge-card-actions {
+  opacity: 1;
+}
+
+.knowledge-card-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.knowledge-card-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.knowledge-card-value {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.knowledge-card-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.knowledge-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.knowledge-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.knowledge-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.knowledge-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.knowledge-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.knowledge-action-btn--edit {
+  background: rgba(168, 85, 247, 0.1);
+  color: rgba(168, 85, 247, 0.7);
+}
+.knowledge-action-btn--edit:hover {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c4b5fd;
+}
+
+.knowledge-action-btn--delete {
+  background: rgba(239, 68, 68, 0.08);
+  color: rgba(239, 68, 68, 0.6);
+}
+.knowledge-action-btn--delete:hover {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+/* ── Skeleton ── */
+.knowledge-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.knowledge-skeleton-card {
+  height: 62px;
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.07) 50%,
+    rgba(255, 255, 255, 0.03) 75%
+  );
+  background-size: 600px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* ── Empty state ── */
+.knowledge-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  text-align: center;
+}
+.knowledge-empty-text {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.3);
+  margin: 0;
+}
+
+/* ── Confirm Delete Overlay ── */
+.knowledge-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  animation: fadeIn 0.18s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.knowledge-confirm {
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 18px;
+  padding: 28px 28px 24px;
+  max-width: 380px;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(239, 68, 68, 0.1) inset;
+  animation: knowledgePanelSlide 0.2s ease;
+}
+
+.knowledge-confirm-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f87171;
+}
+
+.knowledge-confirm-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.knowledge-confirm-text {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  margin: 0;
+  line-height: 1.55;
+}
+
+.knowledge-confirm-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+.knowledge-confirm-actions .btn-form-cancel--sm {
+  flex: 1;
+}
+
+.knowledge-btn-delete {
+  flex: 1;
+  padding: 7px 16px;
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  border: none;
+  border-radius: 10px;
+  color: #ffffff;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.knowledge-btn-delete:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+}
+
+/* ── Progress Bar ── */
+.knowledge-progress {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.knowledge-progress-row {
+  display: grid;
+  grid-template-columns: 130px 70px 1fr 42px;
+  align-items: center;
+  gap: 10px;
+}
+
+.knowledge-progress-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+  white-space: nowrap;
+}
+
+.knowledge-progress-count {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.knowledge-progress-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.knowledge-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.knowledge-progress-fill--critical    { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.4); }
+.knowledge-progress-fill--recommended { background: #eab308; box-shadow: 0 0 8px rgba(234,179,8,0.4); }
+.knowledge-progress-fill--detailed    { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.4); }
+.knowledge-progress-fill--total       { background: var(--accent-primary, #a855f7); box-shadow: 0 0 8px rgba(168,85,247,0.4); }
+
+.knowledge-progress-pct {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.35);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.knowledge-progress-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  margin: 2px 0;
+}
+
+/* ── Status Filter ── */
+.knowledge-status-filter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.knowledge-status-filter::-webkit-scrollbar { display: none; }
+
+.knowledge-status-chip {
+  flex-shrink: 0;
+  padding: 5px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.45);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+.knowledge-status-chip:hover {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.3);
+  color: rgba(168, 85, 247, 0.9);
+}
+.knowledge-status-chip--active {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.45);
+  color: #c4b5fd;
+}
+
+/* ── Tier Badge ── */
+.knowledge-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.knowledge-tier-badge--critical {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+.knowledge-tier-badge--recommended {
+  color: #fde68a;
+  background: rgba(234, 179, 8, 0.12);
+  border-color: rgba(234, 179, 8, 0.3);
+}
+.knowledge-tier-badge--detailed {
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+/* ── Empty / Placeholder Card ── */
+.knowledge-empty-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.knowledge-empty-card:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(168, 85, 247, 0.25);
+}
+
+.knowledge-empty-card-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.knowledge-empty-card-hint {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.knowledge-empty-card-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.knowledge-empty-card-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  background: rgba(168, 85, 247, 0.08);
+  color: rgba(168, 85, 247, 0.7);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 300;
+}
+.knowledge-empty-card-add:hover {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: rgba(168, 85, 247, 0.5);
+  color: #c4b5fd;
+}
+
+/* ── Inactive / Yok Sayilan Card ── */
+.knowledge-card--inactive {
+  opacity: 0.5;
+}
+.knowledge-card--inactive .knowledge-card-label {
+  text-decoration: line-through;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Custom (Sablon Disi) Card ── */
+.knowledge-card--custom {
+  border-color: rgba(59, 130, 246, 0.25);
+}
+.knowledge-card--custom:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.knowledge-badge--custom {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  font-size: 10px;
+  padding: 2px 7px;
+}

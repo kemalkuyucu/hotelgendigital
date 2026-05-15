@@ -1,26 +1,62 @@
+'use client';
+
+import { useState } from 'react';
+import HotelInfoSubTab from './hotel-settings/HotelInfoSubTab';
+import KnowledgeBaseSubTab from './hotel-settings/KnowledgeBaseSubTab';
+import DocumentsSubTab from './hotel-settings/DocumentsSubTab';
+
+type SubTab = 'info' | 'knowledge' | 'documents';
+
+const SUB_TABS: { id: SubTab; label: string }[] = [
+  { id: 'info',      label: 'Otel Bilgileri' },
+  { id: 'knowledge', label: 'Bilgi Tabanı' },
+  { id: 'documents', label: 'Belgeler' },
+];
+
 export default function HotelSettingsTab() {
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>('info');
+
   return (
-    <div className="manager-placeholder-card" role="tabpanel" id="tabpanel-settings" aria-labelledby="tab-settings">
-      {/* Büyük İkon */}
-      <div className="manager-placeholder-icon manager-placeholder-icon--settings">
-        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-          <path d="M4.93 4.93a10 10 0 0 0 0 14.14" />
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-          <path d="M8.46 8.46a5 5 0 0 0 0 7.07" />
-        </svg>
+    <div
+      className="hotel-settings-root"
+      role="tabpanel"
+      id="tabpanel-settings"
+      aria-labelledby="tab-settings"
+    >
+      {/* Başlık */}
+      <div className="hotel-settings-header">
+        <h2 className="hotel-settings-title">Otel Sistem Ayarları</h2>
+        <p className="hotel-settings-subtitle">Otel bilgilerini, bilgi tabanını ve belgelerinizi yönetin</p>
       </div>
 
-      <h2 className="manager-placeholder-title">Otel Sistem Ayarları</h2>
+      {/* Alt Sekme Barı */}
+      <nav className="hotel-subtabs" role="tablist" aria-label="Otel Ayarları Alt Sekmeleri">
+        {SUB_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            role="tab"
+            id={`subtab-${tab.id}`}
+            aria-selected={activeSubTab === tab.id}
+            aria-controls={`subtabpanel-${tab.id}`}
+            className={activeSubTab === tab.id ? 'hotel-subtab-active' : 'hotel-subtab-inactive'}
+            onClick={() => setActiveSubTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
 
-      {/* Rozet */}
-      <div className="manager-placeholder-badge">
-        <span className="manager-placeholder-dot" />
-        Yapım Aşamasında
+      {/* Alt Sekme İçeriği */}
+      <div
+        className="hotel-subtab-content"
+        role="tabpanel"
+        id={`subtabpanel-${activeSubTab}`}
+        aria-labelledby={`subtab-${activeSubTab}`}
+      >
+        {activeSubTab === 'info'      && <HotelInfoSubTab />}
+        {activeSubTab === 'knowledge' && <KnowledgeBaseSubTab />}
+        {activeSubTab === 'documents' && <DocumentsSubTab />}
       </div>
-
-      <p className="manager-placeholder-sub">Modül 14&apos;te açılacak</p>
     </div>
   );
 }

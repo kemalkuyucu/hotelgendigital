@@ -1,0 +1,475 @@
+'use client';
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import Toast, { ToastItem, useToast } from '../Toast';
+import { EditIcon, DeleteIcon, PlusIcon } from '../icons';
+import {
+  ConceptType,
+  PriorityTier,
+  FactCategory,
+  FactTemplate,
+  getTemplatesForConcept,
+} from '@/data/factTemplates';
+
+interface HotelFact {
+  id: string;
+  fact_key: string;
+  fact_label: string;
+  fact_value: string;
+  category: string;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+type MergedFactStatus = 'filled' | 'empty' | 'inactive' | 'custom';
+type FilterStatus = 'all' | 'empty' | 'filled' | 'inactive';
+
+interface MergedFact {
+  status: MergedFactStatus;
+  fact_key: string;
+  fact_label: string;
+  fact_value: string | null;
+  category: string;
+  tier: PriorityTier | null;
+  is_active: boolean;
+  placeholder?: string;
+  hint?: string;
+  display_order: number;
+  db_id: string | null;
+  applies_to_concepts: ConceptType[] | 'all' | null;
+}
+
+interface ProgressStats {
+  critical:    { filled: number; total: number };
+  recommended: { filled: number; total: number };
+  detailed:    { filled: number; total: number };
+  total:       { filled: number; total: number };
+}
+
+interface FormState {
+  fact_label: string;
+  fact_key: string;
+  fact_value: string;
+  category: string;
+  is_active: boolean;
+}
+
+const EMPTY_FORM: FormState = { fact_label: '', fact_key: '', fact_value: '', category: 'general', is_active: true };
+
+const CATEGORY_LABELS: Record<FactCategory, string> = {
+  general:            'Genel',
+  food_beverage:      'Yiyecek-İçecek',
+  pool_beach:         'Havuz & Plaj',
+  spa_wellness:       'SPA & Wellness',
+  activity_animation: 'Aktivite',
+  rooms:              'Odalar',
+  transport:          'Ulaşım',
+  children:           'Çocuklar',
+  policies:           'Politikalar',
+};
+
+const ALL_FACT_CATEGORIES: FactCategory[] = [
+  'general','food_beverage','pool_beach','spa_wellness',
+  'activity_animation','rooms','transport','children','policies',
+];
+
+const STATUS_CHIPS: { id: FilterStatus; label: string }[] = [
+  { id: 'empty',    label: 'Doldurulması Gereken' },
+  { id: 'filled',   label: 'Dolu' },
+  { id: 'inactive', label: 'Yok Sayılan' },
+  { id: 'all',      label: 'Tümü' },
+];
+
+const TIER_ORDER: Record<PriorityTier, number> = { critical: 0, recommended: 1, detailed: 2 };
+const STATUS_ORDER: Record<MergedFactStatus, number> = { empty: 0, filled: 1, custom: 2, inactive: 3 };
+
+const TIER_META: Record<PriorityTier, { emoji: string; label: string; cls: string; fill: string }> = {
+  critical:    { emoji: '🔴', label: 'Kritik',    cls: 'critical',    fill: 'knowledge-progress-fill--critical' },
+  recommended: { emoji: '🟡', label: 'Önerilen',  cls: 'recommended', fill: 'knowledge-progress-fill--recommended' },
+  detailed:    { emoji: '🟢', label: 'Detaylı',   cls: 'detailed',    fill: 'knowledge-progress-fill--detailed' },
+};
+
+function labelToKey(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ş/g,'s')
+    .replace(/ı/g,'i').replace(/ö/g,'o').replace(/ç/g,'c')
+    .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+}
+
+function mergeFactsWithTemplates(templates: FactTemplate[], dbFacts: HotelFact[]): MergedFact[] {
+  const dbMap = new Map(dbFacts.map((f) => [f.fact_key, f]));
+  const usedKeys = new Set<string>();
+  const fromTemplates: MergedFact[] = templates.map((tmpl) => {
+    const db = dbMap.get(tmpl.fact_key);
+    usedKeys.add(tmpl.fact_key);
+    if (db) {
+      return {
+        status: db.is_active ? 'filled' : 'inactive',
+        fact_key: tmpl.fact_key, fact_label: tmpl.fact_label, fact_value: db.fact_value,
+        category: tmpl.category, tier: tmpl.tier, is_active: db.is_active,
+        placeholder: tmpl.placeholder, hint: tmpl.hint, display_order: tmpl.display_order,
+        db_id: db.id, applies_to_concepts: tmpl.applies_to_concepts,
+      };
+    }
+    return {
+      status: 'empty', fact_key: tmpl.fact_key, fact_label: tmpl.fact_label, fact_value: null,
+      category: tmpl.category, tier: tmpl.tier, is_active: true,
+      placeholder: tmpl.placeholder, hint: tmpl.hint, display_order: tmpl.display_order,
+      db_id: null, applies_to_concepts: tmpl.applies_to_concepts,
+    };
+  });
+  const fromCustom: MergedFact[] = dbFacts
+    .filter((f) => !usedKeys.has(f.fact_key))
+    .map((f) => ({
+      status: 'custom' as MergedFactStatus, fact_key: f.fact_key, fact_label: f.fact_label,
+      fact_value: f.fact_value, category: f.category, tier: null, is_active: f.is_active,
+      display_order: f.display_order, db_id: f.id, applies_to_concepts: null,
+    }));
+  return [...fromTemplates, ...fromCustom];
+}
+
+function computeProgress(merged: MergedFact[]): ProgressStats {
+  const isFilled = (m: MergedFact) => m.status === 'filled' || m.status === 'inactive';
+  const templateFacts = merged.filter((m) => m.tier !== null);
+  const make = (tier: PriorityTier) => {
+    const s = templateFacts.filter((m) => m.tier === tier);
+    return { filled: s.filter(isFilled).length, total: s.length };
+  };
+  const critical = make('critical'), recommended = make('recommended'), detailed = make('detailed');
+  return { critical, recommended, detailed, total: { filled: critical.filled+recommended.filled+detailed.filled, total: critical.total+recommended.total+detailed.total } };
+}
+
+function sortMerged(list: MergedFact[], filterStatus: FilterStatus): MergedFact[] {
+  return [...list].sort((a, b) => {
+    if (filterStatus === 'empty') {
+      const ta = a.tier ? TIER_ORDER[a.tier] : 99;
+      const tb = b.tier ? TIER_ORDER[b.tier] : 99;
+      if (ta !== tb) return ta - tb;
+      return a.display_order - b.display_order;
+    }
+    if (filterStatus === 'filled') {
+      if (a.category !== b.category) return a.category.localeCompare(b.category);
+      return a.display_order - b.display_order;
+    }
+    // 'all' and 'inactive'
+    const sd = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+    if (sd !== 0) return sd;
+    const ta = a.tier ? TIER_ORDER[a.tier] : 99;
+    const tb = b.tier ? TIER_ORDER[b.tier] : 99;
+    if (ta !== tb) return ta - tb;
+    return a.display_order - b.display_order;
+  });
+}
+
+function pct(filled: number, total: number) {
+  if (total === 0) return 0;
+  return Math.round((filled / total) * 100);
+}
+
+export default function KnowledgeBaseSubTab() {
+  const [facts, setFacts] = useState<HotelFact[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('empty');
+  const [filterCategory, setFilterCategory] = useState<FactCategory | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [keyManuallyEdited, setKeyManuallyEdited] = useState(false);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const { addToast } = useToast(setToasts);
+  const [conceptType, setConceptType] = useState<ConceptType>('all_inclusive');
+
+  const factTemplates = useMemo<FactTemplate[]>(() => getTemplatesForConcept(conceptType), [conceptType]);
+  const mergedFacts = useMemo<MergedFact[]>(() => mergeFactsWithTemplates(factTemplates, facts), [factTemplates, facts]);
+  const progressStats = useMemo<ProgressStats>(() => computeProgress(mergedFacts), [mergedFacts]);
+
+  const fetchFacts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/manager/knowledge', { credentials: 'include' });
+      const json = await res.json();
+      if (res.ok) setFacts(json.facts ?? []);
+      else addToast(json.error ?? 'Veriler getirilemedi', 'error');
+    } catch { addToast('Sunucuya bağlanılamadı', 'error'); }
+    finally { setLoading(false); }
+  }, [addToast]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/manager/hotel-settings', { credentials: 'include' });
+        const json = await res.json();
+        if (res.ok && json.settings?.concept_type) setConceptType(json.settings.concept_type as ConceptType);
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  useEffect(() => { fetchFacts(); }, [fetchFacts]);
+
+  // ── Filtered + sorted list ──────────────────────────────────────────────────
+  const filteredSorted = useMemo<MergedFact[]>(() => {
+    let list = mergedFacts;
+    // status filter
+    if (filterStatus === 'empty')    list = list.filter((m) => m.status === 'empty');
+    else if (filterStatus === 'filled') list = list.filter((m) => m.status === 'filled' || m.status === 'custom');
+    else if (filterStatus === 'inactive') list = list.filter((m) => m.status === 'inactive');
+    // category filter
+    if (filterCategory) list = list.filter((m) => m.category === filterCategory);
+    return sortMerged(list, filterStatus);
+  }, [mergedFacts, filterStatus, filterCategory]);
+
+  // ── Form handlers ──────────────────────────────────────────────────────────
+  const handleLabelChange = (val: string) => {
+    setForm((p) => { const n = { ...p, fact_label: val }; if (!keyManuallyEdited) n.fact_key = labelToKey(val); return n; });
+    setFieldError(null);
+  };
+  const handleKeyChange = (val: string) => {
+    setKeyManuallyEdited(true);
+    setForm((p) => ({ ...p, fact_key: val.toLowerCase().replace(/[^a-z0-9_]/g, '') }));
+    setFieldError(null);
+  };
+  const openNew = () => { setEditingId(null); setForm(EMPTY_FORM); setKeyManuallyEdited(false); setFieldError(null); setPanelOpen(true); };
+  const openEdit = (fact: HotelFact) => {
+    setEditingId(fact.id);
+    setForm({ fact_label: fact.fact_label, fact_key: fact.fact_key, fact_value: fact.fact_value, category: fact.category, is_active: fact.is_active });
+    setKeyManuallyEdited(true); setFieldError(null); setPanelOpen(true);
+  };
+  const closePanel = () => { setPanelOpen(false); setEditingId(null); setFieldError(null); };
+  const canSave = !saving && form.fact_label.trim().length > 0 && form.fact_value.trim().length > 0 && form.fact_key.trim().length > 0;
+
+  const handleSave = useCallback(async () => {
+    if (!canSave) return;
+    setSaving(true); setFieldError(null);
+    const payload = { fact_key: form.fact_key.trim(), fact_label: form.fact_label.trim(), fact_value: form.fact_value.trim(), category: form.category, is_active: form.is_active };
+    try {
+      const url = editingId ? `/api/manager/knowledge/${editingId}` : '/api/manager/knowledge';
+      const method = editingId ? 'PATCH' : 'POST';
+      const res = await fetch(url, { method, credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const json = await res.json();
+      if (!res.ok) { if (res.status === 409) setFieldError('Bu fact_key zaten kullanımda.'); else addToast(json.error ?? 'Bir hata oluştu', 'error'); return; }
+      addToast(editingId ? 'Bilgi güncellendi' : 'Yeni bilgi eklendi', 'success');
+      closePanel(); await fetchFacts();
+    } catch { addToast('Sunucuya bağlanılamadı', 'error'); }
+    finally { setSaving(false); }
+  }, [canSave, editingId, form, addToast, fetchFacts]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/manager/knowledge/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) { const json = await res.json(); addToast(json.error ?? 'Silinemedi', 'error'); return; }
+      addToast('Bilgi silindi', 'success');
+      setFacts((p) => p.filter((f) => f.id !== id));
+    } catch { addToast('Sunucuya bağlanılamadı', 'error'); }
+    finally { setConfirmDeleteId(null); }
+  }, [addToast]);
+
+  return (
+    <div className="knowledge-root">
+      <Toast toasts={toasts} />
+
+      {/* ── Header: Başlık ── */}
+      <div className="knowledge-header">
+        <h2 className="knowledge-title">Bilgi Tabanı</h2>
+      </div>
+
+      {/* ── Progress Bar ── */}
+      <div className="knowledge-progress">
+        {(['critical','recommended','detailed'] as PriorityTier[]).map((tier) => {
+          const meta = TIER_META[tier];
+          const s = progressStats[tier];
+          const p = pct(s.filled, s.total);
+          return (
+            <div key={tier} className="knowledge-progress-row">
+              <span className="knowledge-progress-label">{meta.emoji} {meta.label}</span>
+              <span className="knowledge-progress-count">{s.filled}/{s.total}</span>
+              <div className="knowledge-progress-bar">
+                <div className={`knowledge-progress-fill ${meta.fill}`} style={{ width: `${p}%` }} />
+              </div>
+              <span className="knowledge-progress-pct">%{p}</span>
+            </div>
+          );
+        })}
+        <div className="knowledge-progress-divider" />
+        <div className="knowledge-progress-row">
+          <span className="knowledge-progress-label">⚪ Toplam</span>
+          <span className="knowledge-progress-count">{progressStats.total.filled}/{progressStats.total.total}</span>
+          <div className="knowledge-progress-bar">
+            <div className="knowledge-progress-fill knowledge-progress-fill--total" style={{ width: `${pct(progressStats.total.filled, progressStats.total.total)}%` }} />
+          </div>
+          <span className="knowledge-progress-pct">%{pct(progressStats.total.filled, progressStats.total.total)}</span>
+        </div>
+      </div>
+
+      {/* ── Yeni Bilgi Ekle Butonu ── */}
+      <div className="knowledge-add-row">
+        <button id="knowledge-add-btn" className="knowledge-add-btn" onClick={openNew}>
+          <PlusIcon size={14} /> Yeni Bilgi Ekle
+        </button>
+      </div>
+
+      {/* ── Slide-down panel ── */}
+      {panelOpen && (
+        <div className="knowledge-panel" id="knowledge-panel">
+          <div className="knowledge-panel-header">
+            <span className="knowledge-panel-title">{editingId ? 'Bilgiyi Düzenle' : 'Yeni Bilgi Ekle'}</span>
+          </div>
+          <div className="knowledge-panel-body">
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="kb-fact-label">Başlık <span className="knowledge-required">*</span></label>
+              <input id="kb-fact-label" type="text" className="form-input knowledge-form-input" value={form.fact_label} onChange={(e) => handleLabelChange(e.target.value)} placeholder="örn. Havuz Açılış Saatleri" maxLength={120} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="kb-fact-key">Anahtar (fact_key) <span className="knowledge-required">*</span></label>
+              <input id="kb-fact-key" type="text" className={`form-input knowledge-form-input${fieldError ? ' form-input--error' : ''}`} value={form.fact_key} onChange={(e) => handleKeyChange(e.target.value)} placeholder="örn. pool_open_hours" maxLength={80} />
+              {fieldError && <span className="knowledge-field-error">{fieldError}</span>}
+              <span className="knowledge-key-hint">Sadece küçük harf ve alt çizgi kullanın</span>
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="kb-fact-value">Değer <span className="knowledge-required">*</span></label>
+              <textarea id="kb-fact-value" className="form-input form-textarea knowledge-form-input" value={form.fact_value} onChange={(e) => setForm((p) => ({ ...p, fact_value: e.target.value }))} placeholder="örn. 08:00 - 20:00" maxLength={500} rows={3} />
+              <span className="hotel-info-char-count">{form.fact_value.length} / 500</span>
+            </div>
+            <div className="knowledge-panel-row">
+              <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+                <label className="form-label" htmlFor="kb-category">Kategori</label>
+                <select id="kb-category" className="form-input knowledge-form-input knowledge-select" value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}>
+                  {ALL_FACT_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                </select>
+              </div>
+              <div className="knowledge-toggle-group">
+                <span className="form-label" style={{ marginBottom: 0 }}>Aktif</span>
+                <button id="kb-is-active-toggle" type="button" className={`knowledge-toggle${form.is_active ? ' knowledge-toggle--on' : ''}`} onClick={() => setForm((p) => ({ ...p, is_active: !p.is_active }))} aria-pressed={form.is_active}>
+                  <span className="knowledge-toggle-thumb" />
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="form-card-actions" style={{ padding: '0 20px 18px' }}>
+            <button type="button" className="btn-form-cancel btn-form-cancel--sm" onClick={closePanel} disabled={saving}>İptal</button>
+            <button id="kb-save-btn" type="button" className="btn-form-save btn-form-save--sm" onClick={handleSave} disabled={!canSave}>
+              {saving ? (<><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="hotel-info-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>Kaydediliyor...</>) : 'Kaydet'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Status filter ── */}
+      <div className="knowledge-status-filter" role="group" aria-label="Durum filtresi">
+        {STATUS_CHIPS.map((chip) => (
+          <button key={chip.id} className={`knowledge-status-chip${filterStatus === chip.id ? ' knowledge-status-chip--active' : ''}`} onClick={() => setFilterStatus(chip.id)} aria-pressed={filterStatus === chip.id}>
+            {chip.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Category filter ── */}
+      <div className="knowledge-filter-bar" role="group" aria-label="Kategori filtresi">
+        <button className={`knowledge-chip${filterCategory === null ? ' knowledge-chip--active' : ''}`} onClick={() => setFilterCategory(null)} aria-pressed={filterCategory === null}>Tümü</button>
+        {ALL_FACT_CATEGORIES.map((cat) => (
+          <button key={cat} className={`knowledge-chip${filterCategory === cat ? ' knowledge-chip--active' : ''}`} onClick={() => setFilterCategory(cat)} aria-pressed={filterCategory === cat}>
+            {CATEGORY_LABELS[cat]}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Loading skeleton ── */}
+      {loading && (
+        <div className="knowledge-skeleton-list">
+          {[1,2,3,4].map((i) => <div key={i} className="knowledge-skeleton-card" />)}
+        </div>
+      )}
+
+      {/* ── Empty state ── */}
+      {!loading && filteredSorted.length === 0 && (
+        <div className="knowledge-empty">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'rgba(168,85,247,0.4)' }}>
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+          </svg>
+          <p className="knowledge-empty-text">Bu filtrede kayıt bulunamadı.</p>
+        </div>
+      )}
+
+      {/* ── Facts list ── */}
+      {!loading && filteredSorted.length > 0 && (
+        <ul className="knowledge-list" role="list">
+          {filteredSorted.map((mf) => {
+            const catLabel = CATEGORY_LABELS[mf.category as FactCategory] ?? mf.category;
+
+            // ── Empty placeholder card ──
+            if (mf.status === 'empty') {
+              return (
+                <li key={mf.fact_key} className="knowledge-empty-card" role="listitem">
+                  <div>
+                    <div className="knowledge-empty-card-label">{mf.fact_label}</div>
+                    <div className="knowledge-empty-card-hint">⚪ Henüz doldurulmadı</div>
+                  </div>
+                  <div className="knowledge-empty-card-right">
+                    {mf.tier && (
+                      <span className={`knowledge-tier-badge knowledge-tier-badge--${mf.tier}`}>
+                        {TIER_META[mf.tier].emoji} {TIER_META[mf.tier].label}
+                      </span>
+                    )}
+                    <button className="knowledge-empty-card-add" title="Doldur" aria-label={`${mf.fact_label} doldur`}>+</button>
+                  </div>
+                </li>
+              );
+            }
+
+            // ── Filled / custom / inactive card ──
+            const dbFact = facts.find((f) => f.id === mf.db_id);
+            const isInactive = mf.status === 'inactive';
+            const isCustom = mf.status === 'custom';
+            return (
+              <li key={mf.db_id ?? mf.fact_key}
+                className={`knowledge-card${isInactive ? ' knowledge-card--inactive' : ''}${isCustom ? ' knowledge-card--custom' : ''}`}
+                role="listitem">
+                <div className="knowledge-card-left">
+                  <span className="knowledge-card-label">{mf.fact_label}</span>
+                  <span className="knowledge-card-value">{mf.fact_value ?? ''}</span>
+                </div>
+                <div className="knowledge-card-right">
+                  <div className="knowledge-card-badges">
+                    <span className="knowledge-badge" style={{ color: 'rgba(196,181,253,0.9)', background: 'rgba(168,85,247,0.1)', borderColor: 'rgba(168,85,247,0.25)' }}>
+                      {catLabel}
+                    </span>
+                    {mf.tier && (
+                      <span className={`knowledge-tier-badge knowledge-tier-badge--${mf.tier}`}>
+                        {TIER_META[mf.tier].emoji}
+                      </span>
+                    )}
+                    {isCustom && <span className="knowledge-badge knowledge-badge--custom">Şablon Dışı</span>}
+                    <span className="knowledge-status-dot" title={mf.is_active ? 'Aktif' : 'Pasif'} style={{ background: mf.is_active ? '#4ade80' : 'rgba(255,255,255,0.2)', boxShadow: mf.is_active ? '0 0 6px rgba(74,222,128,0.6)' : 'none' }} />
+                  </div>
+                  <div className="knowledge-card-actions">
+                    <button className="knowledge-action-btn knowledge-action-btn--edit" title="Düzenle" onClick={() => dbFact && openEdit(dbFact)} aria-label={`${mf.fact_label} düzenle`}><EditIcon size={14} /></button>
+                    <button className="knowledge-action-btn knowledge-action-btn--delete" title="Sil" onClick={() => mf.db_id && setConfirmDeleteId(mf.db_id)} aria-label={`${mf.fact_label} sil`}><DeleteIcon size={14} /></button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* ── Confirm Delete ── */}
+      {confirmDeleteId && (
+        <div className="knowledge-overlay" role="dialog" aria-modal="true" aria-label="Silme onayı">
+          <div className="knowledge-confirm">
+            <div className="knowledge-confirm-icon"><DeleteIcon size={22} /></div>
+            <h3 className="knowledge-confirm-title">Bilgiyi Sil</h3>
+            <p className="knowledge-confirm-text">Bu bilgiyi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</p>
+            <div className="knowledge-confirm-actions">
+              <button className="btn-form-cancel btn-form-cancel--sm" onClick={() => setConfirmDeleteId(null)}>İptal</button>
+              <button id="kb-confirm-delete-btn" className="knowledge-btn-delete" onClick={() => handleDelete(confirmDeleteId)}>Evet, Sil</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
