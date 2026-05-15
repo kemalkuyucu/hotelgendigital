@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useId } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 export interface DepartmentStaff {
@@ -60,221 +61,6 @@ function ToastContainer({ toasts }: { toasts: Toast[] }) {
           {t.message}
         </div>
       ))}
-    </div>
-  );
-}
-
-/* ── Add Staff Modal ──────────────────────────────────────────────────────── */
-interface AddModalProps {
-  departmentCode: string;
-  onClose: () => void;
-  onSaved: (staff: DepartmentStaff) => void;
-  onError: (msg: string) => void;
-}
-
-function AddStaffModal({ departmentCode, onClose, onSaved, onError }: AddModalProps) {
-  const uid = useId();
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    full_name: '',
-    role_title: '',
-    telegram_user_id: '',
-    telegram_username: '',
-    whatsapp_id: '',
-  });
-
-  /* ── Body scroll lock ── */
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, []);
-
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((prev) => ({ ...prev, [key]: e.target.value }));
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/manager/departments/${departmentCode}/staff`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          full_name: form.full_name,
-          role_title: form.role_title || undefined,
-          telegram_user_id: Number(form.telegram_user_id),
-          telegram_username: form.telegram_username || undefined,
-          whatsapp_id: form.whatsapp_id || undefined,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        onError(json.error ?? 'Sorumlu eklenemedi');
-        return;
-      }
-      onSaved(json.staff as DepartmentStaff);
-    } catch {
-      onError('Bağlantı hatası. Lütfen tekrar deneyin.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div
-      className="staff-modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={`${uid}-modal-title`}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="staff-modal">
-        <button
-          className="staff-modal-close"
-          onClick={onClose}
-          aria-label="Modalı kapat"
-          type="button"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-
-        <h2 className="staff-modal-title" id={`${uid}-modal-title`}>Yeni Sorumlu Ekle</h2>
-        <p className="staff-modal-subtitle">
-          Bu departmana yeni bir sorumlu kişi ekleyin
-        </p>
-
-        <form onSubmit={handleSubmit} id={`${uid}-add-staff-form`}>
-          {/* Tam İsim */}
-          <div className="form-group">
-            <label className="form-label" htmlFor={`${uid}-full-name`}>
-              TAM İSİM <span className="staff-modal-required">*</span>
-            </label>
-            <div className="form-input-wrapper">
-              <span className="form-input-icon-left">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-                </svg>
-              </span>
-              <input
-                id={`${uid}-full-name`}
-                type="text"
-                className="form-input"
-                placeholder="Örn: Özgür ÖZEN"
-                value={form.full_name}
-                onChange={set('full_name')}
-                required
-                maxLength={100}
-                autoFocus
-              />
-            </div>
-          </div>
-
-          {/* Görev / Uzmanlık */}
-          <div className="form-group">
-            <label className="form-label" htmlFor={`${uid}-role-title`}>
-              GÖREV / UZMANLIK
-            </label>
-            <div className="form-input-wrapper">
-              <span className="form-input-icon-left">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-                </svg>
-              </span>
-              <input
-                id={`${uid}-role-title`}
-                type="text"
-                className="form-input"
-                placeholder="Örn: Elektrik Teknisyeni"
-                value={form.role_title}
-                onChange={set('role_title')}
-              />
-            </div>
-          </div>
-
-          {/* Telegram User ID */}
-          <div className="form-group">
-            <label className="form-label" htmlFor={`${uid}-tg-id`}>
-              TELEGRAM USER ID <span className="staff-modal-required">*</span>
-            </label>
-            <div className="form-input-wrapper">
-              <span className="form-input-icon-left">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-              </span>
-              <input
-                id={`${uid}-tg-id`}
-                type="number"
-                className="form-input"
-                placeholder="Örn: 123456789"
-                value={form.telegram_user_id}
-                onChange={set('telegram_user_id')}
-                required
-              />
-            </div>
-            <p className="staff-modal-hint">Telegram botun mesaj göndermesi için gerekli numerik ID</p>
-          </div>
-
-          {/* Telegram Username + WhatsApp — yan yana */}
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label" htmlFor={`${uid}-tg-username`}>
-                TELEGRAM USERNAME
-              </label>
-              <div className="form-input-wrapper">
-                <span className="form-input-icon-left" style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)' }}>@</span>
-                <input
-                  id={`${uid}-tg-username`}
-                  type="text"
-                  className="form-input"
-                  placeholder="ozgurozen"
-                  value={form.telegram_username}
-                  onChange={set('telegram_username')}
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor={`${uid}-whatsapp`}>
-                WHATSAPP ID
-              </label>
-              <div className="form-input-wrapper">
-                <span className="form-input-icon-left">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
-                  </svg>
-                </span>
-                <input
-                  id={`${uid}-whatsapp`}
-                  type="text"
-                  className="form-input"
-                  placeholder="+905551234567"
-                  value={form.whatsapp_id}
-                  onChange={set('whatsapp_id')}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="staff-modal-actions">
-            <button type="button" className="btn-modal-cancel" onClick={onClose}>
-              İptal
-            </button>
-            <button
-              type="submit"
-              className="btn-modal-save"
-              disabled={saving}
-              id={`${uid}-save-staff-btn`}
-            >
-              {saving ? 'Kaydediliyor...' : 'Kaydet'}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
@@ -361,16 +147,13 @@ export default function StaffManagementTab({ departmentCode }: Props) {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const [showAddModal, setShowAddModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DepartmentStaff | null>(null);
-
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   /* ── Toast helpers ── */
   const addToast = useCallback((message: string, type: Toast['type']) => {
     const id = Math.random().toString(36).slice(2);
     setToasts((prev) => [...prev, { id, message, type }]);
-    // Start exit animation at 2.7s, remove at 3s
     setTimeout(() => {
       setToasts((prev) => prev.map((t) => t.id === id ? { ...t, exiting: true } : t));
     }, 2700);
@@ -406,14 +189,6 @@ export default function StaffManagementTab({ departmentCode }: Props) {
   }, [fetchStaff]);
 
   /* ── Handlers ── */
-  function handleSaved(newStaff: DepartmentStaff) {
-    setStaff((prev) =>
-      [...prev, newStaff].sort((a, b) => a.full_name.localeCompare(b.full_name, 'tr'))
-    );
-    setShowAddModal(false);
-    addToast('Sorumlu başarıyla eklendi', 'success');
-  }
-
   function handleDeleted(id: string) {
     setStaff((prev) => prev.filter((s) => s.id !== id));
     setDeleteTarget(null);
@@ -439,16 +214,17 @@ export default function StaffManagementTab({ departmentCode }: Props) {
             </p>
           )}
         </div>
-        <button
+        {/* "Yeni Sorumlu Ekle" artık Link — modal yok */}
+        <Link
+          href={`/manager/departments/${departmentCode}/staff/new`}
           className="btn-add-staff"
-          onClick={() => setShowAddModal(true)}
           id="btn-add-staff"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
           Yeni Sorumlu Ekle
-        </button>
+        </Link>
       </div>
 
       {/* Loading */}
@@ -563,16 +339,7 @@ export default function StaffManagementTab({ departmentCode }: Props) {
         </div>
       )}
 
-      {/* Modals */}
-      {showAddModal && (
-        <AddStaffModal
-          departmentCode={departmentCode}
-          onClose={() => setShowAddModal(false)}
-          onSaved={handleSaved}
-          onError={handleError}
-        />
-      )}
-
+      {/* Delete Confirm Modal — korundu */}
       {deleteTarget && (
         <ConfirmDeleteDialog
           staff={deleteTarget}

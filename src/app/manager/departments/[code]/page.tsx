@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import CursorGlow from '@/components/landing/CursorGlow';
 import ParticleBackground from '@/components/landing/ParticleBackground';
@@ -63,9 +63,38 @@ const SUB_TABS: { id: SubTab; label: string }[] = [
 ];
 
 /* ── Page component ───────────────────────────────────────────────────────── */
+/* ── Toast (for ?added= redirect feedback) ─────────────────────────────── */
+interface Toast {
+  id: string;
+  message: string;
+  type: 'success' | 'error';
+  exiting?: boolean;
+}
+
+function ToastBanner({ toasts }: { toasts: Toast[] }) {
+  if (toasts.length === 0) return null;
+  return (
+    <div className="toast-container" aria-live="polite">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={`toast toast--${t.type}${t.exiting ? ' toast--exiting' : ''}`}
+          role="status"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><path d="M9 12l2 2 4-4" />
+          </svg>
+          {t.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function DepartmentDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const code = typeof params.code === 'string' ? params.code : '';
 
   const [dept, setDept] = useState<DepartmentInfo | null>(null);
@@ -73,6 +102,32 @@ export default function DepartmentDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<SubTab>('staff');
   const [toggling, setToggling] = useState(false);
+
+  /* ── Added toast state ── */
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const addToast = useCallback((message: string, type: Toast['type']) => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.map((t) => t.id === id ? { ...t, exiting: true } : t));
+    }, 2700);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3000);
+  }, []);
+
+  /* ── Read ?added= query param on mount ── */
+  useEffect(() => {
+    const added = searchParams.get('added');
+    if (added) {
+      addToast(`${decodeURIComponent(added)} başarıyla eklendi`, 'success');
+      // Clean URL so F5 doesn't re-show the toast
+      const url = new URL(window.location.href);
+      url.searchParams.delete('added');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [searchParams, addToast]);
 
   /* ── Auth + department fetch ── */
   const fetchDept = useCallback(async () => {
@@ -174,6 +229,7 @@ export default function DepartmentDetailPage() {
     <div className="landing-root manager-dashboard-root">
       <CursorGlow />
       <ParticleBackground />
+      <ToastBanner toasts={toasts} />
 
       <div className="dept-detail-root">
         {/* ── Sticky Top Bar ── */}
