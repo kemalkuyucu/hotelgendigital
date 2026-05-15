@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Toast, { ToastItem, useToast } from './Toast';
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
@@ -55,6 +55,19 @@ export default function HolidaysTab({
   const [error, setError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const { addToast } = useToast(setToasts);
+  const [isDirty, setIsDirty] = useState(false);
+
+  /* ── beforeunload — kaydedilmemiş değişiklik uyarısı ── */
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Chrome requires returnValue to be set
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   /* ── Inline add form ── */
   const [showAddForm, setShowAddForm] = useState(false);
@@ -82,11 +95,13 @@ export default function HolidaysTab({
       setAddError('Bu tarih zaten ekli'); return;
     }
     setHolidays((prev) => sortHolidays([...prev, { date: newDate, label: newLabel.trim() }]));
+    setIsDirty(true);
     setShowAddForm(false);
   }
 
   function handleDelete(date: string) {
     setHolidays((prev) => prev.filter((h) => h.date !== date));
+    setIsDirty(true);
   }
 
   /* ── Save all ── */
@@ -106,6 +121,7 @@ export default function HolidaysTab({
         return;
       }
       addToast('Tatil günleri güncellendi', 'success');
+      setIsDirty(false);
       onSaved?.(holidays);
     } catch {
       setError('Sunucuya bağlanılamadı');
