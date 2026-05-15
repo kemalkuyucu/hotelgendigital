@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "seed:demo-knowledge": "tsx scripts/seed-demo-knowledge.ts"
+    "seed:demo-knowledge": "tsx scripts/seed-demo-knowledge.ts",
+    "create-admin": "node scripts/create-admin.mjs",
+    "seed-departments": "node scripts/seed-department-users.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -18,6 +20,7 @@
     "@tsparticles/slim": "^3.9.1",
     "@types/pdf-parse": "^1.1.5",
     "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
     "jose": "^6.2.3",
     "mammoth": "^1.12.0",
     "next": "16.1.6",
@@ -26,6 +29,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "resend": "^4.0.0",
+    "ws": "^8.20.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

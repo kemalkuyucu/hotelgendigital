@@ -4,22 +4,23 @@ import { ContinueButton } from './SharedUI';
 
 interface Slide5Props {
   onContinue: () => void;
+  isActive?: boolean;
 }
 
-export default function Slide5({ onContinue }: Slide5Props) {
+export default function Slide5({ onContinue, isActive }: Slide5Props) {
   return (
-    <section id="slide-5" className="slide-section">
+    <section id="slide-5" className={`slide-section ${isActive ? 'is-active' : ''}`}>
       <div className="hero-content">
         <div className="hero-icon-wrapper">
           <div className="hero-icon-glow-pink" />
           <svg
             className="hero-icon-heart"
-            width="64"
-            height="64"
+            width="80"
+            height="80"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="1.8"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
