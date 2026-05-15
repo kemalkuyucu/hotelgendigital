@@ -3567,6 +3567,18 @@ input[type="time"] { color-scheme: dark; }
   flex-shrink: 0;
 }
 
+/* "Yapılandırılmadı" — muted / not-yet-set variant */
+.summary-stat-chip--unconfigured {
+  color: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
+  font-style: italic;
+}
+
+.summary-stat-chip--unconfigured svg {
+  color: rgba(255, 255, 255, 0.2);
+}
+
 /* ── Summary Card Footer ── */
 .summary-card-footer {
   display: flex;

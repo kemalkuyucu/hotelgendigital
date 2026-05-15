@@ -20,6 +20,9 @@ import type { Department } from './DepartmentCard';
 type FetchState = 'loading' | 'error' | 'data';
 
 type WorkingDayEntry = {
+  day?: string;
+  enabled?: boolean;
+  /** legacy field — treated same as enabled */
   is_open?: boolean;
   is_24h?: boolean;
   start?: string;
@@ -28,26 +31,52 @@ type WorkingDayEntry = {
 
 /* ─── Helpers ────────────────────────────────────────────────────────── */
 
-/** Returns "24/7" or "HH:MM-HH:MM" from working_hours JSON */
-function getWorkingHoursSummary(workingHours: Record<string, unknown> | null): string {
-  if (!workingHours) return '24/7';
+/**
+ * Returns a human-readable working-hours summary:
+ *  - "Yapılandırılmadı"  → null / undefined / empty / no enabled day
+ *  - "Kapalı"            → all days explicitly closed
+ *  - "24/7"              → all open days are 24 h
+ *  - "HH:MM-HH:MM"       → first open day with explicit hours
+ */
+function getWorkingHoursSummary(
+  workingHours: Record<string, unknown> | unknown[] | null | undefined,
+): string {
+  // ① null / undefined
+  if (workingHours == null) return 'Yapılandırılmadı';
 
-  const days = Object.values(workingHours) as WorkingDayEntry[];
+  // ② normalise to array
+  const days = (Array.isArray(workingHours)
+    ? workingHours
+    : Object.values(workingHours)) as WorkingDayEntry[];
+
+  // ③ empty array
+  if (days.length === 0) return 'Yapılandırılmadı';
+
+  // ④ check which days are "enabled" (supports both `enabled` and legacy `is_open`)
+  const enabledDays = days.filter((d) => {
+    if (typeof d.enabled === 'boolean') return d.enabled;
+    if (typeof d.is_open === 'boolean') return d.is_open;
+    return true; // assume open when neither field is present
+  });
+
+  // ⑤ no day is enabled → not configured
+  if (enabledDays.length === 0) return 'Yapılandırılmadı';
+
+  // ⑥ check for any explicitly closed days (all closed → Kapalı)
   const openDays = days.filter((d) => d.is_open !== false);
-
   if (openDays.length === 0) return 'Kapalı';
 
-  // If every open day is 24h → show 24/7
-  const all24h = openDays.every((d) => d.is_24h === true);
+  // ⑦ all open days are 24 h
+  //    Guard: enabledDays.every() on empty array = vacuous true → skip
+  const all24h = enabledDays.length > 0 && enabledDays.every((d) => d.is_24h === true);
   if (all24h) return '24/7';
 
-  // Find first open non-24h day with valid start/end
-  const firstWithHours = openDays.find((d) => !d.is_24h && d.start && d.end);
-  if (firstWithHours) {
-    return `${firstWithHours.start}-${firstWithHours.end}`;
-  }
+  // ⑧ first day with explicit hours
+  const firstWithHours = enabledDays.find((d) => !d.is_24h && d.start && d.end);
+  if (firstWithHours) return `${firstWithHours.start}-${firstWithHours.end}`;
 
-  return '24/7';
+  // ⑨ enabled days exist but no 24h flag and no start/end → schedule incomplete
+  return 'Yapılandırılmadı';
 }
 
 /* ─── Icon map (same as DepartmentCard) ─────────────────────────────── */
@@ -214,7 +243,7 @@ function SummaryCard({ dept, index }: SummaryCardProps) {
           <ClockIcon size={12} />
           <span>{sla_minutes ?? '—'} dk</span>
         </div>
-        <div className="summary-stat-chip">
+        <div className={`summary-stat-chip${hoursSummary === 'Yapılandırılmadı' ? ' summary-stat-chip--unconfigured' : ''}`}>
           <CalendarIcon size={12} />
           <span>{hoursSummary}</span>
         </div>
