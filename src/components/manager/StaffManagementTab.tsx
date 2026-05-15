@@ -83,6 +83,13 @@ function AddStaffModal({ departmentCode, onClose, onSaved, onError }: AddModalPr
     whatsapp_id: '',
   });
 
+  /* ── Body scroll lock ── */
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
 
@@ -282,6 +289,13 @@ interface ConfirmProps {
 
 function ConfirmDeleteDialog({ staff, departmentCode, onClose, onDeleted, onError }: ConfirmProps) {
   const [deleting, setDeleting] = useState(false);
+
+  /* ── Body scroll lock ── */
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   async function handleDelete() {
     setDeleting(true);
