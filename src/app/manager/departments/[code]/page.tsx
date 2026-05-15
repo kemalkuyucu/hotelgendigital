@@ -20,12 +20,27 @@ import WorkingHoursTab from '@/components/manager/WorkingHoursTab';
 import HolidaysTab from '@/components/manager/HolidaysTab';
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
+interface WorkingHourDay {
+  day: string;
+  enabled: boolean;
+  start: string | null;
+  end: string | null;
+  is_24h: boolean;
+}
+
+interface Holiday {
+  date: string;
+  label: string;
+}
+
 interface DepartmentInfo {
   id: string;
   code: string;
   display_name: string;
   is_enabled: boolean;
   sla_minutes: number | null;
+  working_hours: WorkingHourDay[] | null;
+  holidays: Holiday[] | null;
 }
 
 type SubTab = 'staff' | 'sla' | 'working-hours' | 'holidays';
@@ -300,9 +315,27 @@ export default function DepartmentDetailPage() {
           {activeTab === 'staff' && (
             <StaffManagementTab departmentCode={dept.code} />
           )}
-          {activeTab === 'sla' && <SLATab />}
-          {activeTab === 'working-hours' && <WorkingHoursTab />}
-          {activeTab === 'holidays' && <HolidaysTab />}
+          {activeTab === 'sla' && (
+            <SLATab
+              departmentCode={dept.code}
+              currentSlaMinutes={dept.sla_minutes ?? 15}
+              onSaved={(m) => setDept((prev) => prev ? { ...prev, sla_minutes: m } : prev)}
+            />
+          )}
+          {activeTab === 'working-hours' && (
+            <WorkingHoursTab
+              departmentCode={dept.code}
+              currentWorkingHours={dept.working_hours}
+              onSaved={(wh) => setDept((prev) => prev ? { ...prev, working_hours: wh } : prev)}
+            />
+          )}
+          {activeTab === 'holidays' && (
+            <HolidaysTab
+              departmentCode={dept.code}
+              currentHolidays={dept.holidays}
+              onSaved={(h) => setDept((prev) => prev ? { ...prev, holidays: h } : prev)}
+            />
+          )}
         </main>
       </div>
     </div>
