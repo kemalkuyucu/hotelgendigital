@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import {
   FrontOfficeIcon,
   FBIcon,
@@ -58,9 +59,6 @@ export default function DepartmentCard({ department, index }: DepartmentCardProp
     staff_count,
   } = department;
 
-  const handleManage = () => {
-    alert("Modül 13.3'te açılacak");
-  };
 
   return (
     <div
@@ -105,16 +103,17 @@ export default function DepartmentCard({ department, index }: DepartmentCardProp
 
       {/* ── Footer ── */}
       <div className="dept-card-footer">
-        <button
+        <Link
+          href={`/manager/departments/${code}`}
           className="dept-manage-btn"
-          onClick={handleManage}
           aria-label={`${display_name} departmanını yönet`}
+          id={`dept-manage-btn-${code}`}
         >
           Yönet
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="9 18 15 12 9 6" />
           </svg>
-        </button>
+        </Link>
       </div>
     </div>
   );
