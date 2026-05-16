@@ -4689,3 +4689,393 @@ input[type="time"] { color-scheme: dark; }
   cursor: help;
   font-size: 14px;
 }
+
+/* ============================================
+   Modül 14.a — DocumentsSubTab
+   ============================================ */
+
+.documents-subtab {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.documents-subtab .subtab-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.documents-subtab .subtab-description {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+/* Drag & Drop */
+.document-dropzone {
+  border: 2px dashed rgba(139, 92, 246, 0.4);
+  border-radius: 0.5rem;
+  padding: 2rem 1rem;
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.document-dropzone:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-elevated);
+}
+
+.document-dropzone.is-dragging {
+  border-color: var(--accent-primary);
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.document-dropzone.has-file {
+  border-style: solid;
+  border-color: var(--accent-primary);
+  background: rgba(139, 92, 246, 0.04);
+}
+
+.dropzone-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dropzone-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.dropzone-empty strong {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.dropzone-hint {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.dropzone-file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dropzone-file strong {
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  word-break: break-all;
+}
+
+.dropzone-file span {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.btn-text-link {
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  text-decoration: underline;
+}
+
+.btn-text-link:hover {
+  color: var(--accent-primary-hover, var(--accent-primary));
+  opacity: 0.85;
+}
+
+/* Form grid (3 dropdown yan yana, dar ekranda alt alta) */
+.document-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.document-form-grid .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.document-form-grid label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* İletim Politikası bölümü */
+.delivery-policy-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+}
+
+.delivery-policy-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 0.25rem 0;
+}
+
+.policy-hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin: 0 0 1rem 0;
+}
+
+.policy-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.policy-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  background: var(--bg-base, transparent);
+  transition: all 0.15s ease;
+}
+
+.policy-option:hover {
+  border-color: var(--accent-primary);
+}
+
+.policy-option.is-selected {
+  border-color: var(--accent-primary);
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.policy-option input[type="radio"] {
+  margin-top: 0.1875rem;
+  flex-shrink: 0;
+  accent-color: var(--accent-primary);
+}
+
+.policy-option > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.policy-option strong {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.policy-option span {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+/* Form mesajları */
+.form-message {
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+.form-message-error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.form-message-success {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+/* Form actions */
+.documents-subtab .form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Textarea */
+.documents-subtab .form-textarea {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.375rem;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.875rem;
+  resize: vertical;
+}
+
+.documents-subtab .form-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+/* Belgeyi Yükle butonu — !important ile spesifisite sorunu çözüldü */
+.documents-subtab .form-actions .btn-primary {
+  background: var(--accent-primary) !important;
+  color: #ffffff !important;
+  border: none !important;
+  padding: 0.625rem 1.5rem !important;
+  border-radius: 0.375rem !important;
+  font-size: 0.9375rem !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: opacity 0.15s ease, box-shadow 0.15s ease !important;
+  opacity: 1 !important;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.35) !important;
+}
+
+.documents-subtab .form-actions .btn-primary:hover:not(:disabled) {
+  opacity: 0.88 !important;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.45) !important;
+}
+
+.documents-subtab .form-actions .btn-primary:disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+}
+
+/* Belge Listesi */
+.documents-list-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-default);
+}
+
+.documents-list-section h3 {
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  margin: 0 0 1rem 0 !important;
+  font-family: 'Plus Jakarta Sans', 'Bricolage Grotesque', sans-serif !important;
+}
+
+.list-empty-message {
+  color: rgba(255, 255, 255, 0.45) !important;
+  font-size: 0.875rem !important;
+  padding: 1.25rem 1rem !important;
+  text-align: center !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px dashed rgba(255, 255, 255, 0.1) !important;
+  border-radius: 0.5rem !important;
+  margin: 0 !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+.documents-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.document-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 0.375rem;
+}
+
+.document-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.document-row-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.document-row-title strong {
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+}
+
+.document-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--accent-primary);
+  border-radius: 0.25rem;
+  font-weight: 500;
+}
+
+.document-badge.policy-manual_only {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.document-badge.policy-auto_file {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+
+.document-badge.policy-auto_text {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.document-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.document-text-preview {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.btn-delete {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-delete:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.btn-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
