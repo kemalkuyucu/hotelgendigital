@@ -174,13 +174,15 @@ export default function KnowledgeBaseSubTab() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('empty');
   const [filterCategory, setFilterCategory] = useState<FactCategory | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelMode, setPanelMode] = useState<'new' | 'fill' | 'edit' | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [fillMf, setFillMf] = useState<MergedFact | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [keyManuallyEdited, setKeyManuallyEdited] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmIgnoreMf, setConfirmIgnoreMf] = useState<MergedFact | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const { addToast } = useToast(setToasts);
   const [conceptType, setConceptType] = useState<ConceptType>('all_inclusive');
@@ -233,40 +235,79 @@ export default function KnowledgeBaseSubTab() {
     setForm((p) => ({ ...p, fact_key: val.toLowerCase().replace(/[^a-z0-9_]/g, '') }));
     setFieldError(null);
   };
-  const openNew = () => { setEditingId(null); setForm(EMPTY_FORM); setKeyManuallyEdited(false); setFieldError(null); setPanelOpen(true); };
-  const openEdit = (fact: HotelFact) => {
-    setEditingId(fact.id);
-    setForm({ fact_label: fact.fact_label, fact_key: fact.fact_key, fact_value: fact.fact_value, category: fact.category, is_active: fact.is_active });
-    setKeyManuallyEdited(true); setFieldError(null); setPanelOpen(true);
+  const openNew = () => { setEditingId(null); setFillMf(null); setForm(EMPTY_FORM); setKeyManuallyEdited(false); setFieldError(null); setPanelMode('new'); };
+  const openFill = (mf: MergedFact) => {
+    setFillMf(mf); setEditingId(null);
+    setForm({ fact_key: mf.fact_key, fact_label: mf.fact_label, fact_value: '', category: mf.category, is_active: true });
+    setKeyManuallyEdited(true); setFieldError(null); setPanelMode('fill');
   };
-  const closePanel = () => { setPanelOpen(false); setEditingId(null); setFieldError(null); };
+  const openEdit = (mf: MergedFact) => {
+    const dbFact = facts.find((f) => f.id === mf.db_id);
+    if (!dbFact) return;
+    setEditingId(dbFact.id); setFillMf(mf);
+    setForm({ fact_label: dbFact.fact_label, fact_key: dbFact.fact_key, fact_value: dbFact.fact_value, category: dbFact.category, is_active: dbFact.is_active });
+    setKeyManuallyEdited(true); setFieldError(null); setPanelMode('edit');
+  };
+  const closePanel = () => { setPanelMode(null); setEditingId(null); setFillMf(null); setFieldError(null); setForm(EMPTY_FORM); };
   const canSave = !saving && form.fact_label.trim().length > 0 && form.fact_value.trim().length > 0 && form.fact_key.trim().length > 0;
+  const panelTitle = panelMode === 'edit' ? 'Bilgiyi Düzenle' : panelMode === 'fill' ? `${fillMf?.fact_label ?? ''} Doldur` : 'Yeni Bilgi Ekle';
+  const isReadOnly = panelMode === 'fill';
 
   const handleSave = useCallback(async () => {
     if (!canSave) return;
     setSaving(true); setFieldError(null);
     const payload = { fact_key: form.fact_key.trim(), fact_label: form.fact_label.trim(), fact_value: form.fact_value.trim(), category: form.category, is_active: form.is_active };
     try {
-      const url = editingId ? `/api/manager/knowledge/${editingId}` : '/api/manager/knowledge';
-      const method = editingId ? 'PATCH' : 'POST';
+      const isEdit = panelMode === 'edit' && editingId;
+      const url = isEdit ? `/api/manager/knowledge/${editingId}` : '/api/manager/knowledge';
+      const method = isEdit ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const json = await res.json();
       if (!res.ok) { if (res.status === 409) setFieldError('Bu fact_key zaten kullanımda.'); else addToast(json.error ?? 'Bir hata oluştu', 'error'); return; }
-      addToast(editingId ? 'Bilgi güncellendi' : 'Yeni bilgi eklendi', 'success');
+      addToast(isEdit ? 'Bilgi güncellendi' : 'Yeni bilgi eklendi', 'success');
       closePanel(); await fetchFacts();
     } catch { addToast('Sunucuya bağlanılamadı', 'error'); }
     finally { setSaving(false); }
-  }, [canSave, editingId, form, addToast, fetchFacts]);
+  }, [canSave, panelMode, editingId, form, addToast, fetchFacts]);
 
-  const handleDelete = useCallback(async (id: string) => {
+  const handleDelete = useCallback(async (mf: MergedFact) => {
+    if (!mf.db_id) return;
     try {
-      const res = await fetch(`/api/manager/knowledge/${id}`, { method: 'DELETE', credentials: 'include' });
-      if (!res.ok) { const json = await res.json(); addToast(json.error ?? 'Silinemedi', 'error'); return; }
-      addToast('Bilgi silindi', 'success');
-      setFacts((p) => p.filter((f) => f.id !== id));
+      if (mf.tier !== null) {
+        const res = await fetch(`/api/manager/knowledge/${mf.db_id}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: false }) });
+        if (!res.ok) { const json = await res.json(); addToast(json.error ?? 'İşlem başarısız', 'error'); return; }
+        addToast('Yok sayıldı', 'success');
+      } else {
+        const res = await fetch(`/api/manager/knowledge/${mf.db_id}`, { method: 'DELETE', credentials: 'include' });
+        if (!res.ok) { const json = await res.json(); addToast(json.error ?? 'Silinemedi', 'error'); return; }
+        addToast('Bilgi silindi', 'success');
+      }
+      await fetchFacts();
     } catch { addToast('Sunucuya bağlanılamadı', 'error'); }
-    finally { setConfirmDeleteId(null); }
-  }, [addToast]);
+    finally { setConfirmDeleteId(null); setConfirmIgnoreMf(null); }
+  }, [addToast, fetchFacts]);
+
+  const handleIgnore = useCallback(async (mf: MergedFact) => {
+    try {
+      const payload = { fact_key: mf.fact_key, fact_label: mf.fact_label, fact_value: '—', category: mf.category, is_active: false, display_order: mf.display_order };
+      const res = await fetch('/api/manager/knowledge', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!res.ok) { const json = await res.json(); addToast(json.error ?? 'İşlem başarısız', 'error'); return; }
+      addToast('Yok sayıldı', 'success');
+      await fetchFacts();
+    } catch { addToast('Sunucuya bağlanılamadı', 'error'); }
+    finally { setConfirmIgnoreMf(null); }
+  }, [addToast, fetchFacts]);
+
+  const handleReactivate = useCallback(async (mf: MergedFact) => {
+    if (!mf.db_id) return;
+    try {
+      const prevValue = mf.fact_value && mf.fact_value !== '—' ? mf.fact_value : '';
+      const res = await fetch(`/api/manager/knowledge/${mf.db_id}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: true, fact_value: prevValue }) });
+      if (!res.ok) { const json = await res.json(); addToast(json.error ?? 'İşlem başarısız', 'error'); return; }
+      addToast('Geri etkinleştirildi', 'success');
+      await fetchFacts();
+    } catch { addToast('Sunucuya bağlanılamadı', 'error'); }
+  }, [addToast, fetchFacts]);
 
   return (
     <div className="knowledge-root">
@@ -313,33 +354,43 @@ export default function KnowledgeBaseSubTab() {
       </div>
 
       {/* ── Slide-down panel ── */}
-      {panelOpen && (
+      {panelMode !== null && (
         <div className="knowledge-panel" id="knowledge-panel">
           <div className="knowledge-panel-header">
-            <span className="knowledge-panel-title">{editingId ? 'Bilgiyi Düzenle' : 'Yeni Bilgi Ekle'}</span>
+            <span className="knowledge-panel-title">{panelTitle}</span>
           </div>
           <div className="knowledge-panel-body">
+            {isReadOnly && fillMf?.placeholder && (
+              <div className="knowledge-fill-hint">
+                <span>💡 Örnek: <em>{fillMf.placeholder}</em></span>
+                {fillMf.hint && <span className="knowledge-fill-hint-info" title={fillMf.hint}> ℹ️</span>}
+              </div>
+            )}
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" htmlFor="kb-fact-label">Başlık <span className="knowledge-required">*</span></label>
-              <input id="kb-fact-label" type="text" className="form-input knowledge-form-input" value={form.fact_label} onChange={(e) => handleLabelChange(e.target.value)} placeholder="örn. Havuz Açılış Saatleri" maxLength={120} />
+              <input id="kb-fact-label" type="text" className={`form-input knowledge-form-input${isReadOnly ? ' form-input--readonly' : ''}`} value={form.fact_label} onChange={(e) => !isReadOnly && handleLabelChange(e.target.value)} readOnly={isReadOnly} title={isReadOnly ? 'Bu alan şablondan geliyor' : undefined} placeholder="örn. Havuz Açılış Saatleri" maxLength={120} />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" htmlFor="kb-fact-key">Anahtar (fact_key) <span className="knowledge-required">*</span></label>
-              <input id="kb-fact-key" type="text" className={`form-input knowledge-form-input${fieldError ? ' form-input--error' : ''}`} value={form.fact_key} onChange={(e) => handleKeyChange(e.target.value)} placeholder="örn. pool_open_hours" maxLength={80} />
+              <input id="kb-fact-key" type="text" className={`form-input knowledge-form-input${fieldError ? ' form-input--error' : ''}${isReadOnly ? ' form-input--readonly' : ''}`} value={form.fact_key} onChange={(e) => !isReadOnly && handleKeyChange(e.target.value)} readOnly={isReadOnly} title={isReadOnly ? 'Bu alan şablondan geliyor' : undefined} placeholder="örn. pool_open_hours" maxLength={80} />
               {fieldError && <span className="knowledge-field-error">{fieldError}</span>}
-              <span className="knowledge-key-hint">Sadece küçük harf ve alt çizgi kullanın</span>
+              {!isReadOnly && <span className="knowledge-key-hint">Sadece küçük harf ve alt çizgi kullanın</span>}
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" htmlFor="kb-fact-value">Değer <span className="knowledge-required">*</span></label>
-              <textarea id="kb-fact-value" className="form-input form-textarea knowledge-form-input" value={form.fact_value} onChange={(e) => setForm((p) => ({ ...p, fact_value: e.target.value }))} placeholder="örn. 08:00 - 20:00" maxLength={500} rows={3} />
+              <textarea id="kb-fact-value" className="form-input form-textarea knowledge-form-input" value={form.fact_value} onChange={(e) => setForm((p) => ({ ...p, fact_value: e.target.value }))} placeholder={isReadOnly && fillMf?.placeholder ? fillMf.placeholder : 'örn. 08:00 - 20:00'} maxLength={500} rows={3} />
               <span className="hotel-info-char-count">{form.fact_value.length} / 500</span>
             </div>
             <div className="knowledge-panel-row">
               <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
                 <label className="form-label" htmlFor="kb-category">Kategori</label>
-                <select id="kb-category" className="form-input knowledge-form-input knowledge-select" value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}>
-                  {ALL_FACT_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-                </select>
+                {isReadOnly ? (
+                  <input id="kb-category" type="text" className="form-input knowledge-form-input form-input--readonly" value={CATEGORY_LABELS[form.category as FactCategory] ?? form.category} readOnly title="Bu alan şablondan geliyor" />
+                ) : (
+                  <select id="kb-category" className="form-input knowledge-form-input knowledge-select" value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}>
+                    {ALL_FACT_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                  </select>
+                )}
               </div>
               <div className="knowledge-toggle-group">
                 <span className="form-label" style={{ marginBottom: 0 }}>Aktif</span>
@@ -414,14 +465,16 @@ export default function KnowledgeBaseSubTab() {
                         {TIER_META[mf.tier].emoji} {TIER_META[mf.tier].label}
                       </span>
                     )}
-                    <button className="knowledge-empty-card-add" title="Doldur" aria-label={`${mf.fact_label} doldur`}>+</button>
+                    <div className="knowledge-card-actions" style={{ opacity: 1 }}>
+                      <button className="knowledge-empty-card-add" title="Doldur" aria-label={`${mf.fact_label} doldur`} onClick={() => openFill(mf)}>+</button>
+                      <button className="knowledge-btn-yoksay" title="Yok Say" aria-label={`${mf.fact_label} yok say`} onClick={() => setConfirmIgnoreMf(mf)}>🚫</button>
+                    </div>
                   </div>
                 </li>
               );
             }
 
             // ── Filled / custom / inactive card ──
-            const dbFact = facts.find((f) => f.id === mf.db_id);
             const isInactive = mf.status === 'inactive';
             const isCustom = mf.status === 'custom';
             return (
@@ -446,8 +499,14 @@ export default function KnowledgeBaseSubTab() {
                     <span className="knowledge-status-dot" title={mf.is_active ? 'Aktif' : 'Pasif'} style={{ background: mf.is_active ? '#4ade80' : 'rgba(255,255,255,0.2)', boxShadow: mf.is_active ? '0 0 6px rgba(74,222,128,0.6)' : 'none' }} />
                   </div>
                   <div className="knowledge-card-actions">
-                    <button className="knowledge-action-btn knowledge-action-btn--edit" title="Düzenle" onClick={() => dbFact && openEdit(dbFact)} aria-label={`${mf.fact_label} düzenle`}><EditIcon size={14} /></button>
-                    <button className="knowledge-action-btn knowledge-action-btn--delete" title="Sil" onClick={() => mf.db_id && setConfirmDeleteId(mf.db_id)} aria-label={`${mf.fact_label} sil`}><DeleteIcon size={14} /></button>
+                    {isInactive ? (
+                      <button className="knowledge-btn-reactivate" title="Geri Etkinleştir" aria-label={`${mf.fact_label} geri etkinleştir`} onClick={() => handleReactivate(mf)}>↻ Geri Etkinleştir</button>
+                    ) : (
+                      <>
+                        <button className="knowledge-action-btn knowledge-action-btn--edit" title="Düzenle" onClick={() => openEdit(mf)} aria-label={`${mf.fact_label} düzenle`}><EditIcon size={14} /></button>
+                        <button className="knowledge-action-btn knowledge-action-btn--delete" title={mf.tier !== null ? 'Yok Say' : 'Sil'} onClick={() => setConfirmIgnoreMf(mf)} aria-label={`${mf.fact_label} ${mf.tier !== null ? 'yok say' : 'sil'}`}><DeleteIcon size={14} /></button>
+                      </>
+                    )}
                   </div>
                 </div>
               </li>
@@ -456,16 +515,24 @@ export default function KnowledgeBaseSubTab() {
         </ul>
       )}
 
-      {/* ── Confirm Delete ── */}
-      {confirmDeleteId && (
-        <div className="knowledge-overlay" role="dialog" aria-modal="true" aria-label="Silme onayı">
+      {/* ── Confirm Delete/Ignore ── */}
+      {confirmIgnoreMf && (
+        <div className="knowledge-overlay" role="dialog" aria-modal="true" aria-label="Onay">
           <div className="knowledge-confirm">
-            <div className="knowledge-confirm-icon"><DeleteIcon size={22} /></div>
-            <h3 className="knowledge-confirm-title">Bilgiyi Sil</h3>
-            <p className="knowledge-confirm-text">Bu bilgiyi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</p>
+            <div className="knowledge-confirm-icon" style={{ background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)', color: '#9ca3af' }}>🚫</div>
+            <h3 className="knowledge-confirm-title">{confirmIgnoreMf.status === 'empty' ? 'Yok Say' : (confirmIgnoreMf.tier !== null ? 'Yok Say' : 'Sil')}</h3>
+            <p className="knowledge-confirm-text">
+              {confirmIgnoreMf.status === 'empty'
+                ? 'Bu bilgi otelinizde mevcut değil olarak işaretlenecek. Onaylıyor musunuz?'
+                : confirmIgnoreMf.tier !== null
+                  ? "Bu bilgi 'yok sayıldı' olarak işaretlenecek. Onaylıyor musunuz?"
+                  : 'Bu bilgiyi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'}
+            </p>
             <div className="knowledge-confirm-actions">
-              <button className="btn-form-cancel btn-form-cancel--sm" onClick={() => setConfirmDeleteId(null)}>İptal</button>
-              <button id="kb-confirm-delete-btn" className="knowledge-btn-delete" onClick={() => handleDelete(confirmDeleteId)}>Evet, Sil</button>
+              <button className="btn-form-cancel btn-form-cancel--sm" onClick={() => setConfirmIgnoreMf(null)}>İptal</button>
+              <button id="kb-confirm-action-btn" className="knowledge-btn-delete" style={{ background: confirmIgnoreMf.status !== 'empty' && confirmIgnoreMf.tier === null ? undefined : 'linear-gradient(135deg,#4b5563 0%,#1f2937 100%)' }} onClick={() => confirmIgnoreMf.status === 'empty' ? handleIgnore(confirmIgnoreMf) : handleDelete(confirmIgnoreMf)}>
+                {confirmIgnoreMf.status !== 'empty' && confirmIgnoreMf.tier === null ? 'Evet, Sil' : 'Evet, Yok Say'}
+              </button>
             </div>
           </div>
         </div>
