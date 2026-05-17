@@ -47,7 +47,7 @@ export async function buildHotelContext(
   let locationInfo = '';
   const { data: settingsRow } = await supabase
     .from('hotel_settings')
-    .select('location_info')
+    .select('location_info, hotel_name')
     .limit(1)
     .maybeSingle();
 
@@ -59,7 +59,7 @@ export async function buildHotelContext(
       (Array.isArray(loc['details']) && (loc['details'] as unknown[]).length > 0);
 
     if (hasContent) {
-      locationInfo = formatLocationDocument(loc);
+      locationInfo = formatLocationDocument(loc, settingsRow.hotel_name ?? undefined);
     }
   }
 
@@ -135,7 +135,10 @@ async function fetchKnowledgeFacts(supabase: SupabaseClient): Promise<string> {
 /**
  * structured_data'sı {type: "location"} olan belgeyi insan okunur metne çevirir.
  */
-function formatLocationDocument(structured: Record<string, unknown>): string {
+function formatLocationDocument(
+  structured: Record<string, unknown>,
+  hotelName?: string,
+): string {
   if (!structured) return '';
   const sections: string[] = [];
 
@@ -158,6 +161,10 @@ function formatLocationDocument(structured: Record<string, unknown>): string {
 
   if (structured['maps_link']) {
     sections.push(`Google Maps: ${String(structured['maps_link'])}`);
+  }
+
+  if (hotelName) {
+    sections.push(`\n— ${hotelName}`);
   }
 
   return sections.join('\n\n');
@@ -287,6 +294,7 @@ Misafir "nasil gelirim", "adres", "konum", "yol tarifi", "nerede" gibi sorular s
 - Yol tarifini ve dikkat notunu ayri satirlarda yaz
 - En altta "Google Maps:" satiri
 - Paragraflar arasinda BIR BOS SATIR birak
+- En sonda otel adi imzasini koru (--- <otel adi> formatinda)
 
 ${ctx.locationInfo}`);
   }
