@@ -137,24 +137,30 @@ async function fetchKnowledgeFacts(supabase: SupabaseClient): Promise<string> {
  */
 function formatLocationDocument(structured: Record<string, unknown>): string {
   if (!structured) return '';
-  const lines: string[] = [];
-  if (structured['maps_link']) lines.push(`Google Maps: ${structured['maps_link']}`);
+  const sections: string[] = [];
+
+  sections.push('=== KONUM BILGISI ===');
+
   if (structured['general_directions']) {
-    lines.push('');
-    lines.push(`Genel Yön Tarifi:\n${structured['general_directions']}`);
+    sections.push(String(structured['general_directions']));
   }
+
   const details = structured['details'];
   if (Array.isArray(details) && details.length > 0) {
-    lines.push('');
-    lines.push('Yön Bazlı Detaylar:');
-    (details as Record<string, unknown>[]).forEach((d, i) => {
-      lines.push('');
-      lines.push(`${i + 1}. ${d['from_direction']}`);
-      if (d['route']) lines.push(`   Yol: ${d['route']}`);
-      if (d['warnings']) lines.push(`   Dikkat: ${d['warnings']}`);
+    (details as Record<string, unknown>[]).forEach((d) => {
+      const block: string[] = [];
+      block.push(`--- ${String(d['from_direction'] ?? '')} ---`);
+      if (d['route']) block.push(`Yol tarifi: ${String(d['route'])}`);
+      if (d['warnings']) block.push(`Dikkat: ${String(d['warnings'])}`);
+      sections.push(block.join('\n'));
     });
   }
-  return lines.join('\n');
+
+  if (structured['maps_link']) {
+    sections.push(`Google Maps: ${String(structured['maps_link'])}`);
+  }
+
+  return sections.join('\n\n');
 }
 
 /**
@@ -275,7 +281,12 @@ export function formatContextForPrompt(ctx: HotelContext): string {
 
   if (ctx.locationInfo && ctx.locationInfo.trim().length > 0) {
     blocks.push(`=== OTELE NASIL GELINIR (KONUM BILGISI) ===
-Misafir "nasil gelirim", "adres", "konum", "yol tarifi", "nerede" gibi sorular sordugunda ASAGIDAKI bilgileri kullan. Maps linkini MUTLAKA yolla. Yon detaylarini olabildigince koru, Dikkat notlarini ATLAMA.
+Misafir "nasil gelirim", "adres", "konum", "yol tarifi", "nerede" gibi sorular sordugunda asagidaki bilgileri AYNI YAPIDA cevapla:
+- Once genel adres/mesafe paragrafi
+- Her yon detayini AYRI PARAGRAF olarak, basinda "<Yon adi>'ndan/dan geliyorsaniz:" baslik cumlesi
+- Yol tarifini ve dikkat notunu ayri satirlarda yaz
+- En altta "Google Maps:" satiri
+- Paragraflar arasinda BIR BOS SATIR birak
 
 ${ctx.locationInfo}`);
   }
