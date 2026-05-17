@@ -33,6 +33,19 @@ interface HotelSettings {
   general_rules: string;
 }
 
+// ── Location types ─────────────────────────────────────────────────────────────
+interface LocationDetail {
+  from_direction: string;
+  route: string;
+  warnings: string;
+}
+
+const EMPTY_LOCATION_DETAIL: LocationDetail = {
+  from_direction: '',
+  route: '',
+  warnings: '',
+};
+
 const EMPTY: HotelSettings = {
   hotel_name: '',
   contact_phone: '',
@@ -65,6 +78,11 @@ export default function HotelInfoSubTab() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const { addToast } = useToast(setToasts);
 
+  // ── Location state ────────────────────────────────────────────────────────
+  const [locationMapsLink, setLocationMapsLink] = useState('');
+  const [locationGeneralDirections, setLocationGeneralDirections] = useState('');
+  const [locationDetails, setLocationDetails] = useState<LocationDetail[]>([]);
+
   // ── Derived validations ──
   const emailValid =
     form.contact_email.trim() === '' || EMAIL_RE.test(form.contact_email.trim());
@@ -93,6 +111,14 @@ export default function HotelInfoSubTab() {
               check_out_time:s.check_out_time?? '12:00',
               general_rules: s.general_rules ?? '',
             });
+            // Populate location state from JSONB
+            if (s.location_info) {
+              setLocationMapsLink(s.location_info.maps_link ?? '');
+              setLocationGeneralDirections(s.location_info.general_directions ?? '');
+              setLocationDetails(
+                Array.isArray(s.location_info.details) ? s.location_info.details : []
+              );
+            }
           }
           setLoading(false);
         }
@@ -115,6 +141,48 @@ export default function HotelInfoSubTab() {
     []
   );
 
+  // ── Location detail handlers ──────────────────────────────────────────────
+  const addLocationDetail = useCallback(() => {
+    setLocationDetails((prev) => [...prev, { ...EMPTY_LOCATION_DETAIL }]);
+  }, []);
+
+  const removeLocationDetail = useCallback((idx: number) => {
+    setLocationDetails((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const updateLocationDetail = useCallback(
+    (idx: number, field: keyof LocationDetail, value: string) => {
+      setLocationDetails((prev) => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], [field]: value };
+        return next;
+      });
+    },
+    []
+  );
+
+  // ── Build location_info JSONB ─────────────────────────────────────────────
+  const buildLocationInfo = useCallback(() => {
+    const mapsLink = locationMapsLink.trim() || null;
+    const generalDirections = locationGeneralDirections.trim() || null;
+    const details = locationDetails
+      .filter(
+        (d) =>
+          d.from_direction.trim() || d.route.trim() || d.warnings.trim()
+      )
+      .map((d) => ({
+        from_direction: d.from_direction.trim(),
+        route: d.route.trim(),
+        warnings: d.warnings.trim(),
+      }));
+
+    // All empty → send NULL
+    if (!mapsLink && !generalDirections && details.length === 0) {
+      return null;
+    }
+    return { maps_link: mapsLink, general_directions: generalDirections, details };
+  }, [locationMapsLink, locationGeneralDirections, locationDetails]);
+
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -136,6 +204,7 @@ export default function HotelInfoSubTab() {
             check_in_time: form.check_in_time || '14:00',
             check_out_time:form.check_out_time || '12:00',
             general_rules: form.general_rules.trim() || null,
+            location_info: buildLocationInfo(),
           }),
         });
         const json = await res.json();
@@ -152,7 +221,7 @@ export default function HotelInfoSubTab() {
         setSaving(false);
       }
     },
-    [canSubmit, form, addToast]
+    [canSubmit, form, addToast, buildLocationInfo]
   );
 
   // ── Loading skeleton ───────────────────────────────────────────────────────
@@ -333,7 +402,7 @@ export default function HotelInfoSubTab() {
               </div>
             </div>
 
-            {/* 7. Genel Kurallar */}
+            {/* 8. Genel Kurallar */}
             <div className="form-group">
               <label className="form-label" htmlFor="general_rules">
                 Genel Kurallar
@@ -353,6 +422,121 @@ export default function HotelInfoSubTab() {
               </span>
             </div>
 
+          </div>
+
+          {/* ── Konum & Ulaşım Tarifi Kartı ──────────────────────────────── */}
+          <div className="location-form-section">
+            <div className="location-form-section-header">
+              <h3 className="location-form-section-title">📍 Konum &amp; Ulaşım Tarifi</h3>
+              <p className="location-form-section-desc">
+                Misafirler &quot;nasıl gelirim&quot; diye sorduğunda AI bu bilgiyi kullanır.
+              </p>
+            </div>
+
+            {/* Google Maps Linki */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="location_maps_link">
+                Google Maps Linki <span className="hotel-info-optional">(opsiyonel)</span>
+              </label>
+              <input
+                id="location_maps_link"
+                type="url"
+                className="form-input"
+                value={locationMapsLink}
+                onChange={(e) => setLocationMapsLink(e.target.value)}
+                placeholder="https://maps.google.com/..."
+              />
+            </div>
+
+            {/* Genel Yön Tarifi */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="location_general_directions">
+                Genel Yön Tarifi <span className="hotel-info-optional">(opsiyonel)</span>
+              </label>
+              <textarea
+                id="location_general_directions"
+                className="form-input form-textarea"
+                value={locationGeneralDirections}
+                onChange={(e) => setLocationGeneralDirections(e.target.value)}
+                placeholder="Otelin genel konumu ve yakın çevre hakkında kısa bir açıklama..."
+                rows={3}
+              />
+            </div>
+
+            {/* Yön Bazlı Detay blokları */}
+            <div className="location-details-section">
+              <label className="form-label">
+                Yön Bazlı Detay <span className="hotel-info-optional">(opsiyonel)</span>
+              </label>
+              <p className="form-hint">
+                Farklı yönlerden gelenler için ayrı yol tarifi ekleyebilirsiniz.
+              </p>
+
+              {locationDetails.map((detail, idx) => (
+                <div key={idx} className="location-detail-card">
+                  <div className="location-detail-card-header">
+                    <strong>Yön {idx + 1}</strong>
+                    <button
+                      type="button"
+                      className="btn-text-link location-detail-remove"
+                      onClick={() => removeLocationDetail(idx)}
+                    >
+                      Sil
+                    </button>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor={`loc_from_${idx}`}>
+                      Hangi yönden geliyor?
+                    </label>
+                    <input
+                      id={`loc_from_${idx}`}
+                      type="text"
+                      className="form-input"
+                      value={detail.from_direction}
+                      onChange={(e) => updateLocationDetail(idx, 'from_direction', e.target.value)}
+                      placeholder="örn. Antalya Havalimanı'ndan, Kemer'den, İstanbul'dan..."
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor={`loc_route_${idx}`}>
+                      Yol tarifi
+                    </label>
+                    <textarea
+                      id={`loc_route_${idx}`}
+                      className="form-input form-textarea"
+                      value={detail.route}
+                      onChange={(e) => updateLocationDetail(idx, 'route', e.target.value)}
+                      placeholder="Adım adım yol tarifi..."
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor={`loc_warn_${idx}`}>
+                      Dikkat edilecekler
+                    </label>
+                    <textarea
+                      id={`loc_warn_${idx}`}
+                      className="form-input form-textarea"
+                      value={detail.warnings}
+                      onChange={(e) => updateLocationDetail(idx, 'warnings', e.target.value)}
+                      placeholder="Sık yapılan hatalar, dikkat noktaları..."
+                      rows={2}
+                    />
+                  </div>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                className="btn-secondary location-add-btn"
+                onClick={addLocationDetail}
+              >
+                + Yön Ekle
+              </button>
+            </div>
           </div>
 
           {/* Actions */}

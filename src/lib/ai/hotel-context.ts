@@ -16,8 +16,9 @@ export type HotelContext = {
   generalRules: string;
   knowledgeFacts: string;
   documents: string;
-  locationInfo: string;
   nearbyPlaces: string;
+  /** hotel_settings.location_info JSONB'sinden formatlanmış konum metni; boş olabilir */
+  locationInfo: string;
 };
 
 /**
@@ -33,18 +34,36 @@ export async function buildHotelContext(
     generalRules,
     knowledgeFacts,
     documents,
-    locationInfo,
     nearbyPlaces,
   ] = await Promise.all([
     fetchHotelInfo(supabase),
     fetchGeneralRules(supabase),
     fetchKnowledgeFacts(supabase),
     fetchDocuments(supabase, options.departmentHint),
-    fetchLocationDocuments(supabase, options.departmentHint),
     fetchNearbyPlaces(supabase, options.perplexityInterestHint),
   ]);
 
-  return { hotelInfo, generalRules, knowledgeFacts, documents, locationInfo, nearbyPlaces };
+  // hotel_settings.location_info JSONB'sini oku ve formatla
+  let locationInfo = '';
+  const { data: settingsRow } = await supabase
+    .from('hotel_settings')
+    .select('location_info')
+    .limit(1)
+    .maybeSingle();
+
+  if (settingsRow?.location_info) {
+    const loc = settingsRow.location_info as Record<string, unknown>;
+    const hasContent =
+      Boolean(loc['maps_link']) ||
+      Boolean(loc['general_directions']) ||
+      (Array.isArray(loc['details']) && (loc['details'] as unknown[]).length > 0);
+
+    if (hasContent) {
+      locationInfo = formatLocationDocument(loc);
+    }
+  }
+
+  return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo };
 }
 
 /**
@@ -143,7 +162,6 @@ function formatLocationDocument(structured: Record<string, unknown>): string {
  * - delivery_policy='auto_text' olanlar: display_text doğrudan kullanılır
  * - delivery_policy='auto_file' olanlar: AI bilir, "şu belgeyi gönderebilirim" diyebilir
  * - delivery_policy='manual_only' olanlar: AI "önbüroya yönlendiriniz" der
- * NOT: structured_data'sı {type:"location"} olan belgeler ayrı fetchLocationDocuments ile işlenir.
  */
 async function fetchDocuments(
   supabase: SupabaseClient,
@@ -163,10 +181,6 @@ async function fetchDocuments(
 
   const blocks: string[] = [];
   for (const doc of data) {
-    // structured_data'sı location olan belgeler ayrı bölümde işlenir — burada atla
-    const sd = doc.structured_data as Record<string, unknown> | null;
-    if (sd && sd['type'] === 'location') continue;
-
     const tag = `[${doc.document_type}/${doc.language}]`;
     if (doc.delivery_policy === 'auto_text' && doc.display_text) {
       blocks.push(`${tag} (yazıyla gönderilebilir)\n${doc.display_text}`);
@@ -180,41 +194,6 @@ async function fetchDocuments(
   return blocks.length > 0 ? `BELGELER:\n${blocks.join('\n\n')}` : '';
 }
 
-/**
- * hotel_documents tablosundan type='location' AND delivery_policy='auto_text'
- * AND structured_data dolu olan belgeleri çekip özel formata çevirir.
- * Graceful: hiç kayıt yoksa boş string döner, hata vermez.
- */
-async function fetchLocationDocuments(
-  supabase: SupabaseClient,
-  departmentHint?: string | null,
-): Promise<string> {
-  let query = supabase
-    .from('hotel_documents')
-    .select('document_type, structured_data')
-    .eq('is_active', true)
-    .eq('document_type', 'location')
-    .eq('delivery_policy', 'auto_text')
-    .not('structured_data', 'is', null);
-
-  if (departmentHint) {
-    query = query.or(`department_code.is.null,department_code.eq.${departmentHint}`);
-  }
-
-  const { data } = await query;
-  if (!data || data.length === 0) return '';
-
-  const locationBlocks: string[] = [];
-  for (const doc of data) {
-    const sd = doc.structured_data as Record<string, unknown> | null;
-    if (!sd || sd['type'] !== 'location') continue;
-    const formatted = formatLocationDocument(sd);
-    if (formatted) locationBlocks.push(formatted);
-  }
-
-  if (locationBlocks.length === 0) return '';
-  return locationBlocks.join('\n\n---\n\n');
-}
 
 /**
  * Perplexity discovery sonuçlarını metin formatına çevirir.
@@ -286,25 +265,20 @@ export function detectInterestTag(message: string): string | null {
  * AI system prompt'una eklenmek için hazır.
  */
 export function formatContextForPrompt(ctx: HotelContext): string {
-  const locationSection = ctx.locationInfo.trim().length > 0
-    ? [
-        '=== OTELE NASIL GELİNİR (KONUM BİLGİSİ) ===',
-        'Misafir "nasıl gelirim", "adres", "konum", "yol tarifi", "nerede" gibi sorular sorduğunda',
-        'AŞAĞIDAKI bilgileri kullan. Maps linkini MUTLAKA yolla. Yön detaylarını olabildiğince koru,',
-        'Dikkat notlarını ATLAMA.',
-        '',
-        ctx.locationInfo,
-      ].join('\n')
-    : '';
-
   const blocks = [
     ctx.hotelInfo,
     ctx.generalRules,
     ctx.knowledgeFacts,
     ctx.documents,
-    locationSection,
     ctx.nearbyPlaces,
   ].filter((b) => b.trim().length > 0);
+
+  if (ctx.locationInfo && ctx.locationInfo.trim().length > 0) {
+    blocks.push(`=== OTELE NASIL GELINIR (KONUM BILGISI) ===
+Misafir "nasil gelirim", "adres", "konum", "yol tarifi", "nerede" gibi sorular sordugunda ASAGIDAKI bilgileri kullan. Maps linkini MUTLAKA yolla. Yon detaylarini olabildigince koru, Dikkat notlarini ATLAMA.
+
+${ctx.locationInfo}`);
+  }
 
   if (blocks.length === 0) return '';
   return blocks.join('\n\n---\n\n');

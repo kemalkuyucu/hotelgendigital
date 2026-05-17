@@ -4,7 +4,20 @@ import { getDemoHotelSupabase } from '@/lib/supabase-client'
 
 // hotel_settings is a singleton table — no hotel_id column exists.
 
-// ── Shape of the 7 fields we manage in this step ──────────────────────────────
+// ── Location info schema ───────────────────────────────────────────────────────
+interface LocationDetail {
+  from_direction: string
+  route: string
+  warnings: string
+}
+
+interface LocationInfo {
+  maps_link: string | null
+  general_directions: string | null
+  details: LocationDetail[]
+}
+
+// ── Shape of the fields we manage ─────────────────────────────────────────────
 interface HotelSettingsPayload {
   hotel_name: string
   contact_phone?: string | null
@@ -14,6 +27,36 @@ interface HotelSettingsPayload {
   check_in_time?: string | null
   check_out_time?: string | null
   general_rules?: string | null
+  location_info?: LocationInfo | null
+}
+
+// ── Validate location_info structure ──────────────────────────────────────────
+function validateLocationInfo(val: unknown): LocationInfo | null | { error: string } {
+  if (val === null || val === undefined) return null
+  if (typeof val !== 'object' || Array.isArray(val)) {
+    return { error: 'location_info geçersiz format' }
+  }
+  const obj = val as Record<string, unknown>
+  if (!Array.isArray(obj.details)) {
+    return { error: 'location_info.details dizi olmalı' }
+  }
+  for (const d of obj.details as unknown[]) {
+    if (
+      typeof d !== 'object' ||
+      d === null ||
+      typeof (d as Record<string, unknown>).from_direction !== 'string' ||
+      typeof (d as Record<string, unknown>).route !== 'string' ||
+      typeof (d as Record<string, unknown>).warnings !== 'string'
+    ) {
+      return { error: 'location_info.details öğeleri geçersiz' }
+    }
+  }
+  return {
+    maps_link: typeof obj.maps_link === 'string' ? obj.maps_link : null,
+    general_directions:
+      typeof obj.general_directions === 'string' ? obj.general_directions : null,
+    details: obj.details as LocationDetail[],
+  }
 }
 
 // ── GET /api/manager/hotel-settings ──────────────────────────────────────────
@@ -29,7 +72,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from('hotel_settings')
       .select(
-        'id, hotel_name, contact_phone, contact_email, address, concept_type, check_in_time, check_out_time, general_rules'
+        'id, hotel_name, contact_phone, contact_email, address, concept_type, check_in_time, check_out_time, general_rules, location_info'
       )
       .maybeSingle()
 
@@ -67,6 +110,12 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Otel adı zorunludur' }, { status: 400 })
     }
 
+    // Validate location_info
+    const locationResult = validateLocationInfo(body.location_info ?? null)
+    if (locationResult !== null && 'error' in locationResult) {
+      return NextResponse.json({ error: locationResult.error }, { status: 400 })
+    }
+
     const supabase = getDemoHotelSupabase()
 
     // Check if a row already exists (singleton table — no hotel_id column)
@@ -92,6 +141,7 @@ export async function PUT(req: NextRequest) {
       check_in_time: body.check_in_time || '14:00',
       check_out_time: body.check_out_time || '12:00',
       general_rules: body.general_rules?.trim() || null,
+      location_info: locationResult,
       updated_at: new Date().toISOString(),
     }
 
