@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, ChangeEvent, DragEvent } from 'react';
 
 type DocumentType =
-  | 'concept' | 'fact_sheet' | 'price_list' | 'day_use' | 'map' | 'iban'
+  | 'concept' | 'fact_sheet' | 'price_list' | 'day_use' | 'map' | 'location' | 'iban'
   | 'bar_menu' | 'room_service_menu' | 'spa_services' | 'a_la_carte'
   | 'wifi_info' | 'dnd_list' | 'agency_list' | 'general_rules'
   | 'taxi_info' | 'parking_info' | 'other';
@@ -22,6 +22,7 @@ const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   price_list: 'Fiyat Listesi',
   day_use: 'Day Use',
   map: 'Harita',
+  location: 'Konum / Lokasyon',
   iban: 'IBAN Bilgisi',
   bar_menu: 'Bar Menüsü',
   room_service_menu: 'Oda Servisi Menüsü',
@@ -83,6 +84,22 @@ export default function DocumentsSubTab() {
   };
 
   const [ibanAccounts, setIbanAccounts] = useState<IbanAccount[]>([EMPTY_IBAN_ACCOUNT]);
+
+  type LocationDetail = {
+    fromDirection: string;
+    route: string;
+    warnings: string;
+  };
+
+  const EMPTY_LOCATION_DETAIL: LocationDetail = {
+    fromDirection: '',
+    route: '',
+    warnings: '',
+  };
+
+  const [locationMapsLink, setLocationMapsLink] = useState('');
+  const [locationGeneralDirections, setLocationGeneralDirections] = useState('');
+  const [locationDetails, setLocationDetails] = useState<LocationDetail[]>([{ ...EMPTY_LOCATION_DETAIL }]);
 
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -215,6 +232,9 @@ export default function DocumentsSubTab() {
     setDisplayText('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     setIbanAccounts([EMPTY_IBAN_ACCOUNT]);
+    setLocationMapsLink('');
+    setLocationGeneralDirections('');
+    setLocationDetails([{ ...EMPTY_LOCATION_DETAIL }]);
   }
 
   async function handleSubmit() {
@@ -222,6 +242,7 @@ export default function DocumentsSubTab() {
     setSuccess(null);
 
     const isIbanStructured = documentType === 'iban' && deliveryPolicy === 'auto_text';
+    const isLocationStructured = documentType === 'location' && deliveryPolicy === 'auto_text';
 
     if (fileRequired && !file) {
       setError('Dosya zorunludur (yazılı cevap modu hariç).');
@@ -234,6 +255,15 @@ export default function DocumentsSubTab() {
       );
       if (!hasValid) {
         setError('En az bir hesap için Banka, IBAN ve Hesap Sahibi alanları zorunlu.');
+        return;
+      }
+    } else if (isLocationStructured) {
+      if (!locationMapsLink.trim()) {
+        setError('Google Maps Linki zorunludur.');
+        return;
+      }
+      if (!locationGeneralDirections.trim()) {
+        setError('Genel Yön Tarifi zorunludur.');
         return;
       }
     } else if (deliveryPolicy === 'auto_text' && displayText.trim().length === 0) {
@@ -268,6 +298,39 @@ export default function DocumentsSubTab() {
           )
           .join('\n---\n');
         formData.append('display_text', textRepresentation);
+      } else if (isLocationStructured) {
+        // Boş satırları temizle
+        const validDetails = locationDetails.filter(
+          (d) => d.fromDirection.trim() || d.route.trim(),
+        );
+        formData.append(
+          'structured_data',
+          JSON.stringify({
+            type: 'location',
+            maps_link: locationMapsLink.trim(),
+            general_directions: locationGeneralDirections.trim(),
+            details: validDetails.map((d) => ({
+              from_direction: d.fromDirection.trim(),
+              route: d.route.trim(),
+              warnings: d.warnings.trim(),
+            })),
+          }),
+        );
+
+        // AI'ın okuyabileceği text temsilini de gönder (fallback)
+        const locationTextFallback =
+          `Konum: ${locationMapsLink.trim()}\n\n` +
+          `Genel: ${locationGeneralDirections.trim()}` +
+          (validDetails.length > 0
+            ? '\n\n' + validDetails
+                .map(
+                  (d) =>
+                    `${d.fromDirection.trim()}:\nYol: ${d.route.trim()}` +
+                    (d.warnings.trim() ? `\nDikkat: ${d.warnings.trim()}` : ''),
+                )
+                .join('\n\n')
+            : '');
+        formData.append('display_text', locationTextFallback);
       } else if (deliveryPolicy === 'auto_text') {
         formData.append('display_text', displayText);
       }
@@ -553,7 +616,111 @@ export default function DocumentsSubTab() {
           </div>
         )}
 
-        {deliveryPolicy === 'auto_text' && documentType !== 'iban' && (
+        {deliveryPolicy === 'auto_text' && documentType === 'location' && (
+          <div className="iban-form-section">
+            <label>Konum Bilgileri *</label>
+            <p className="form-hint">Otele ulaşım bilgilerini yapısal olarak girin. AI bu bilgiyi misafire doğrudan iletecek.</p>
+
+            <div className="form-field" style={{ marginTop: '0.75rem' }}>
+              <label>Google Maps Linki *</label>
+              <input
+                type="url"
+                className="form-input"
+                value={locationMapsLink}
+                placeholder="https://maps.google.com/?q=..."
+                onChange={(e) => { setLocationMapsLink(e.target.value); clearMessages(); }}
+              />
+            </div>
+
+            <div className="form-field" style={{ marginTop: '0.75rem' }}>
+              <label>Genel Yön Tarifi *</label>
+              <textarea
+                className="form-textarea"
+                rows={3}
+                value={locationGeneralDirections}
+                placeholder="Örn: Oteli bulmak için Lara Caddesi'nden gidin, Migros'un karşısındaki ilk solda otelimiz yer almaktadır."
+                onChange={(e) => { setLocationGeneralDirections(e.target.value); clearMessages(); }}
+              />
+            </div>
+
+            <div style={{ marginTop: '1rem' }}>
+              <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.5rem' }}>Yön Bazlı Detay</label>
+              <p className="form-hint">Farklı güzergahlardan gelenler için ayrı talimat ekleyin.</p>
+
+              {locationDetails.map((detail, idx) => (
+                <div key={idx} className="iban-account-card">
+                  <div className="iban-account-header">
+                    <strong>Güzergah {idx + 1}</strong>
+                    {locationDetails.length > 1 && (
+                      <button
+                        type="button"
+                        className="btn-text-link"
+                        onClick={() => setLocationDetails(prev => prev.filter((_, i) => i !== idx))}
+                      >
+                        Kaldır
+                      </button>
+                    )}
+                  </div>
+                  <div className="form-field">
+                    <label>Hangi yönden geliyor?</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={detail.fromDirection}
+                      placeholder="Örn: Antalya merkez yönü"
+                      onChange={(e) => {
+                        const next = [...locationDetails];
+                        next[idx] = { ...next[idx], fromDirection: e.target.value };
+                        setLocationDetails(next);
+                        clearMessages();
+                      }}
+                    />
+                  </div>
+                  <div className="form-field" style={{ marginTop: '0.5rem' }}>
+                    <label>Yol tarifi</label>
+                    <textarea
+                      className="form-textarea"
+                      rows={3}
+                      value={detail.route}
+                      placeholder="Adım adım yol tarifi..."
+                      onChange={(e) => {
+                        const next = [...locationDetails];
+                        next[idx] = { ...next[idx], route: e.target.value };
+                        setLocationDetails(next);
+                        clearMessages();
+                      }}
+                    />
+                  </div>
+                  <div className="form-field" style={{ marginTop: '0.5rem' }}>
+                    <label>Dikkat edilecekler</label>
+                    <textarea
+                      className="form-textarea"
+                      rows={2}
+                      value={detail.warnings}
+                      placeholder="Örn: Kavşakta tabelayı kaçırmayın, GPS bazen hatalı yönlendirebilir."
+                      onChange={(e) => {
+                        const next = [...locationDetails];
+                        next[idx] = { ...next[idx], warnings: e.target.value };
+                        setLocationDetails(next);
+                        clearMessages();
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setLocationDetails(prev => [...prev, { ...EMPTY_LOCATION_DETAIL }])}
+              >
+                + Yön Ekle
+              </button>
+            </div>
+          </div>
+        )}
+
+        {deliveryPolicy === 'auto_text' && documentType !== 'iban' && documentType !== 'location' && (
           <div className="form-field" style={{ marginTop: '1rem' }}>
             <label>Gönderilecek Metin *</label>
             <textarea

@@ -8,7 +8,7 @@ const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
 
 const VALID_DOCUMENT_TYPES = [
-  'concept', 'fact_sheet', 'price_list', 'day_use', 'map', 'iban',
+  'concept', 'fact_sheet', 'price_list', 'day_use', 'map', 'location', 'iban',
   'bar_menu', 'room_service_menu', 'spa_services', 'a_la_carte',
   'wifi_info', 'dnd_list', 'agency_list', 'general_rules',
   'taxi_info', 'parking_info', 'other'
