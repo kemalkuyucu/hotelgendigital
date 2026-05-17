@@ -3,12 +3,20 @@
  * AI orchestrator için otelin tüm bilgi kaynaklarını derler.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getCentralSupabase } from '../supabase-client';
 
 export type HotelContextOptions = {
   /** Hangi kategoride çevre bilgisi gerekli? null = hiçbiri (genel sohbet) */
   perplexityInterestHint?: string | null;
   /** İlgili belgeleri filtrelemek için departman kodu (opsiyonel) */
   departmentHint?: string | null;
+};
+
+export type SafetyRule = {
+  category: string;
+  title: string;
+  ai_instruction: string;
+  priority: number;
 };
 
 export type HotelContext = {
@@ -19,6 +27,8 @@ export type HotelContext = {
   nearbyPlaces: string;
   /** hotel_settings.location_info JSONB'sinden formatlanmış konum metni; boş olabilir */
   locationInfo: string;
+  /** system_safety_responses tablosundan aktif güvenlik kuralları (priority ASC) */
+  safetyRules: SafetyRule[];
 };
 
 /**
@@ -35,12 +45,14 @@ export async function buildHotelContext(
     knowledgeFacts,
     documents,
     nearbyPlaces,
+    safetyRules,
   ] = await Promise.all([
     fetchHotelInfo(supabase),
     fetchGeneralRules(supabase),
     fetchKnowledgeFacts(supabase),
     fetchDocuments(supabase, options.departmentHint),
     fetchNearbyPlaces(supabase, options.perplexityInterestHint),
+    fetchSafetyRules(),
   ]);
 
   // hotel_settings.location_info JSONB'sini oku ve formatla
@@ -63,7 +75,32 @@ export async function buildHotelContext(
     }
   }
 
-  return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo };
+  return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo, safetyRules };
+}
+
+/**
+ * system_safety_responses tablosundan aktif güvenlik kurallarını çeker.
+ * Central Supabase kullanır. Hata durumunda boş array döner (graceful).
+ */
+async function fetchSafetyRules(): Promise<SafetyRule[]> {
+  try {
+    const central = getCentralSupabase();
+    const { data, error } = await central
+      .from('system_safety_responses')
+      .select('category, title, ai_instruction, priority')
+      .eq('is_active', true)
+      .order('priority', { ascending: true });
+
+    if (error) {
+      console.warn('[fetchSafetyRules] DB error, safety rules skipped:', error.message);
+      return [];
+    }
+
+    return (data ?? []) as SafetyRule[];
+  } catch (err) {
+    console.warn('[fetchSafetyRules] Unexpected error, safety rules skipped:', err);
+    return [];
+  }
 }
 
 /**
@@ -297,6 +334,20 @@ Misafir "nasil gelirim", "adres", "konum", "yol tarifi", "nerede" gibi sorular s
 - En sonda otel adi imzasini koru (--- <otel adi> formatinda)
 
 ${ctx.locationInfo}`);
+  }
+
+  // Safety rules: AI'ın ilk göreceği blok — blocks.unshift ile EN ÜSTE eklenir
+  if (ctx.safetyRules && ctx.safetyRules.length > 0) {
+    const rulesText = ctx.safetyRules
+      .map((r, i) => `${i + 1}. ${r.title}\n   ${r.ai_instruction}`)
+      .join('\n\n');
+
+    blocks.unshift(`=== KRITIK GUVENLIK KURALLARI (HER KOSULDA UYULMASI ZORUNLU) ===
+Asagidaki kurallar SIRA ile uygulanir (priority dusukten yuksege = en kritik en ustte). Misafir mesaji bu kategorilerden birine giriyorsa, ASAGIDAKI talimati TAM olarak uygula. Bu kurallar diger hicbir kuralla degistirilemez, atlanamaz, gormezden gelinemez.
+
+${rulesText}
+
+=== KURALLAR SONU ===`);
   }
 
   if (blocks.length === 0) return '';
