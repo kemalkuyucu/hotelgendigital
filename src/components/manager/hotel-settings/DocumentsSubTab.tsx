@@ -64,6 +64,26 @@ export default function DocumentsSubTab() {
   const [deliveryPolicy, setDeliveryPolicy] = useState<DeliveryPolicy>('manual_only');
   const [displayText, setDisplayText] = useState('');
 
+  type IbanAccount = {
+    account_holder: string;
+    bank_name: string;
+    branch: string;
+    iban: string;
+    currency: 'TRY' | 'EUR' | 'USD' | 'GBP';
+    swift: string;
+  };
+
+  const EMPTY_IBAN_ACCOUNT: IbanAccount = {
+    account_holder: '',
+    bank_name: '',
+    branch: '',
+    iban: '',
+    currency: 'TRY',
+    swift: '',
+  };
+
+  const [ibanAccounts, setIbanAccounts] = useState<IbanAccount[]>([EMPTY_IBAN_ACCOUNT]);
+
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -194,17 +214,29 @@ export default function DocumentsSubTab() {
     setDeliveryPolicy('manual_only');
     setDisplayText('');
     if (fileInputRef.current) fileInputRef.current.value = '';
+    setIbanAccounts([EMPTY_IBAN_ACCOUNT]);
   }
 
   async function handleSubmit() {
     setError(null);
     setSuccess(null);
 
+    const isIbanStructured = documentType === 'iban' && deliveryPolicy === 'auto_text';
+
     if (fileRequired && !file) {
       setError('Dosya zorunludur (yazılı cevap modu hariç).');
       return;
     }
-    if (deliveryPolicy === 'auto_text' && displayText.trim().length === 0) {
+
+    if (isIbanStructured) {
+      const hasValid = ibanAccounts.some(
+        (acc) => acc.iban.trim() && acc.bank_name.trim() && acc.account_holder.trim(),
+      );
+      if (!hasValid) {
+        setError('En az bir hesap için Banka, IBAN ve Hesap Sahibi alanları zorunlu.');
+        return;
+      }
+    } else if (deliveryPolicy === 'auto_text' && displayText.trim().length === 0) {
       setError('Yazılı cevap modu için metin girilmelidir.');
       return;
     }
@@ -217,7 +249,28 @@ export default function DocumentsSubTab() {
       formData.append('language', language);
       if (department) formData.append('department_code', department);
       formData.append('delivery_policy', deliveryPolicy);
-      if (deliveryPolicy === 'auto_text') formData.append('display_text', displayText);
+
+      if (isIbanStructured) {
+        // Boş kayıtları temizle
+        const validAccounts = ibanAccounts.filter(
+          (acc) => acc.iban.trim() && acc.bank_name.trim(),
+        );
+        formData.append('structured_data', JSON.stringify({ type: 'iban', accounts: validAccounts }));
+
+        // AI'ın okuyabileceği text temsilini de gönder (fallback)
+        const textRepresentation = validAccounts
+          .map((acc) =>
+            `${acc.currency} Hesap:\nHesap Sahibi: ${acc.account_holder}\n` +
+            `Banka: ${acc.bank_name}\n` +
+            (acc.branch ? `Sube: ${acc.branch}\n` : '') +
+            `IBAN: ${acc.iban}\n` +
+            (acc.swift ? `SWIFT: ${acc.swift}\n` : '')
+          )
+          .join('\n---\n');
+        formData.append('display_text', textRepresentation);
+      } else if (deliveryPolicy === 'auto_text') {
+        formData.append('display_text', displayText);
+      }
 
       const res = await fetch('/api/manager/documents', {
         method: 'POST',
@@ -373,7 +426,134 @@ export default function DocumentsSubTab() {
           </label>
         </div>
 
-        {deliveryPolicy === 'auto_text' && (
+        {deliveryPolicy === 'auto_text' && documentType === 'iban' && (
+          <div className="iban-form-section">
+            <label>IBAN Hesapları *</label>
+            <p className="form-hint">Her döviz cinsi için ayrı hesap ekleyin. Birden fazla hesap eklenebilir.</p>
+
+            {ibanAccounts.map((acc, idx) => (
+              <div key={idx} className="iban-account-card">
+                <div className="iban-account-header">
+                  <strong>Hesap {idx + 1}</strong>
+                  {ibanAccounts.length > 1 && (
+                    <button
+                      type="button"
+                      className="btn-text-link"
+                      onClick={() => setIbanAccounts(prev => prev.filter((_, i) => i !== idx))}
+                    >
+                      Kaldır
+                    </button>
+                  )}
+                </div>
+                <div className="iban-grid">
+                  <div className="form-field">
+                    <label>Hesap Sahibi *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={acc.account_holder}
+                      placeholder="Demo Hotel Turizm A.Ş."
+                      onChange={(e) => {
+                        const next = [...ibanAccounts];
+                        next[idx] = { ...next[idx], account_holder: e.target.value };
+                        setIbanAccounts(next);
+                        clearMessages();
+                      }}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label>Banka *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={acc.bank_name}
+                      placeholder="Ziraat Bankası"
+                      onChange={(e) => {
+                        const next = [...ibanAccounts];
+                        next[idx] = { ...next[idx], bank_name: e.target.value };
+                        setIbanAccounts(next);
+                        clearMessages();
+                      }}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label>Şube</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={acc.branch}
+                      placeholder="Antalya Lara Şubesi"
+                      onChange={(e) => {
+                        const next = [...ibanAccounts];
+                        next[idx] = { ...next[idx], branch: e.target.value };
+                        setIbanAccounts(next);
+                        clearMessages();
+                      }}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label>Para Birimi *</label>
+                    <select
+                      className="form-select"
+                      value={acc.currency}
+                      onChange={(e) => {
+                        const next = [...ibanAccounts];
+                        next[idx] = { ...next[idx], currency: e.target.value as IbanAccount['currency'] };
+                        setIbanAccounts(next);
+                        clearMessages();
+                      }}
+                    >
+                      <option value="TRY">TRY (Türk Lirası)</option>
+                      <option value="EUR">EUR (Euro)</option>
+                      <option value="USD">USD (Dolar)</option>
+                      <option value="GBP">GBP (Sterlin)</option>
+                    </select>
+                  </div>
+                  <div className="form-field form-field-full">
+                    <label>IBAN *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={acc.iban}
+                      placeholder="TR12 0001 0012 3456 7890 1234 56"
+                      onChange={(e) => {
+                        const next = [...ibanAccounts];
+                        next[idx] = { ...next[idx], iban: e.target.value };
+                        setIbanAccounts(next);
+                        clearMessages();
+                      }}
+                    />
+                  </div>
+                  <div className="form-field form-field-full">
+                    <label>SWIFT / BIC (opsiyonel)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={acc.swift}
+                      placeholder="TCZBTR2A"
+                      onChange={(e) => {
+                        const next = [...ibanAccounts];
+                        next[idx] = { ...next[idx], swift: e.target.value };
+                        setIbanAccounts(next);
+                        clearMessages();
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setIbanAccounts(prev => [...prev, { ...EMPTY_IBAN_ACCOUNT }])}
+            >
+              + Başka Hesap Ekle
+            </button>
+          </div>
+        )}
+
+        {deliveryPolicy === 'auto_text' && documentType !== 'iban' && (
           <div className="form-field" style={{ marginTop: '1rem' }}>
             <label>Gönderilecek Metin *</label>
             <textarea
@@ -381,7 +561,7 @@ export default function DocumentsSubTab() {
               rows={5}
               value={displayText}
               onChange={(e) => { setDisplayText(e.target.value); clearMessages(); }}
-              placeholder={'Örnek:\nBanka: Ziraat Bankası\nIBAN: TR12 3456 ...\nHesap Sahibi: ABC Otel'}
+              placeholder="Misafire gönderilecek hazır metin..."
             />
           </div>
         )}

@@ -19,6 +19,12 @@ import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
 import { handleSlaCallback } from '@/lib/sla/handle-callback';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
 import { sendForwardWithSlaButtons } from '@/lib/sla/send-forward-with-buttons';
+// Modül 15.4: Auto-file belge gönderme
+import {
+  sendTelegramDocument,
+  shouldSendDocument,
+  findRelevantAutoFileDocument,
+} from '@/lib/telegram/send-document';
 
 export const runtime = 'nodejs';
 
@@ -1319,6 +1325,26 @@ async function handleMessage(args: {
     chat_id: chatId,
     text: finalResponseText,
   });
+
+  // Modül 15.4 — Auto-file belge gönderme
+  try {
+    if (shouldSendDocument(finalResponseText)) {
+      const doc = await findRelevantAutoFileDocument(supa, text);
+      if (doc) {
+        const sendResult = await sendTelegramDocument({
+          botToken,
+          chatId,
+          supabase: supa,
+          doc: { ...doc, caption: doc.file_name },
+        });
+        if (!sendResult.ok) {
+          console.error('[Module 15.4] Document send failed:', sendResult.error);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Module 15.4] Document send exception:', err);
+  }
 }
 
 async function upsertGuestAndConversation(args: {

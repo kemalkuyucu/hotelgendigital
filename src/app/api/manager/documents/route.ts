@@ -48,6 +48,16 @@ export async function POST(request: Request) {
   const delivery_policy = (formData.get('delivery_policy') as string | null) ?? 'manual_only';
   const display_text = formData.get('display_text') as string | null;
 
+  const structured_data_raw = formData.get('structured_data') as string | null;
+  let structured_data: unknown = null;
+  if (structured_data_raw) {
+    try {
+      structured_data = JSON.parse(structured_data_raw);
+    } catch {
+      return NextResponse.json({ error: 'Geçersiz yapısal veri' }, { status: 400 });
+    }
+  }
+
   // Validasyon
   if (!document_type || !VALID_DOCUMENT_TYPES.includes(document_type)) {
     return NextResponse.json({ error: 'Geçersiz belge türü' }, { status: 400 });
@@ -61,7 +71,10 @@ export async function POST(request: Request) {
   if (!VALID_POLICIES.includes(delivery_policy)) {
     return NextResponse.json({ error: 'Geçersiz iletim politikası' }, { status: 400 });
   }
-  if (delivery_policy === 'auto_text' && (!display_text || display_text.trim().length === 0)) {
+  // IBAN yapısal modunda display_text, frontend tarafından otomatik oluşturulduğundan
+  // structured_data varsa display_text validasyonunu atla
+  const isIbanStructured = document_type === 'iban' && structured_data !== null;
+  if (delivery_policy === 'auto_text' && !isIbanStructured && (!display_text || display_text.trim().length === 0)) {
     return NextResponse.json({ error: 'Yazılı cevap modu için metin girilmelidir' }, { status: 400 });
   }
 
@@ -112,6 +125,7 @@ export async function POST(request: Request) {
       department_code: department_code || null,
       delivery_policy,
       display_text: delivery_policy === 'auto_text' ? display_text : null,
+      structured_data: structured_data,
       file_url,
       file_name,
       file_size_bytes,
