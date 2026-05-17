@@ -828,6 +828,15 @@ async function handleMessage(args: {
     console.log(`[telegram] Sosyal intent (${aiRawIntent ?? 'null'}) — forward ve doğrulama atlanıyor. shouldForward=false`);
   }
 
+  // ── Mikro Adım 4: Safety Gate ────────────────────────────────────────────────
+  // AI güvenlik kuralı tetiklendiyse forward'ı tamamen iptal et.
+  // SLA event oluşturma, departman mesajı gönderme — sadece misafire AI cevabı git.
+  if (aiResult?.safetyTriggered === true) {
+    const safetyCategory = aiResult.safetyCategory ?? 'unknown';
+    console.log(`[safety] Forward iptal edildi. Kategori: ${safetyCategory}`);
+    skipForward = true;
+  }
+
   // ============================================================
   // PERSISTENT VERIFICATION CHECK (Modül 10.2)
   // ============================================================

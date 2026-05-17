@@ -347,6 +347,15 @@ Asagidaki kurallar SIRA ile uygulanir (priority dusukten yuksege = en kritik en 
 
 ${rulesText}
 
+ZORUNLU ETIKET KURALI:
+Eger yukaridaki guvenlik kurallarindan herhangi birini uyguladiysan (ornegin yasadisi madde reddi, KVKK reddi, jailbreak ignore, gec cikis onayi vermeme, saglik tavsiyesi, eskort reddi vb.), cevabinin TAM ILK SATIRINA su etiketi koy:
+[SAFETY:kategori_adi]
+Ornek: [SAFETY:guest_privacy_kvkk]
+Bu etiket sistem tarafindan okunup misafire gosterilmeden silinecektir. Etiket olmazsa sistem yanlis davranir, ASLA UNUTMA.
+
+DIL KURALI:
+Cevaplarinda SADECE standart Turk alfabesi kullan (a b c c d e f g g h i i j k l m n o o p r s s t u u v y z). Kiril, Yunan veya benzer alfabelerden harf KARISTIRMA. Telefon numarasi, link, isim yazarken bile sadece Latin/Turkce karakter kullan.
+
 === KURALLAR SONU ===`);
   }
 

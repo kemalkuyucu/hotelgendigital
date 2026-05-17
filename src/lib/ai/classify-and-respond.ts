@@ -38,6 +38,9 @@ export interface ClassifyAndRespondOutput {
   reasoning: string;
   response_to_guest: string;
   answered_from_knowledge: boolean; // true → KB'den cevap verildi, forward yapılmamalı
+  // Mikro Adım 4: Safety etiket tespiti
+  safetyTriggered: boolean;        // true → AI güvenlik kuralı uyguladı, forward iptal
+  safetyCategory: string | null;   // tetiklenen kategori adı (örn. 'guest_privacy_kvkk')
   // Telemetri
   model: string;
   prompt_tokens: number;
@@ -94,7 +97,14 @@ export async function classifyAndRespond(
     throw new Error('Anthropic response içinde text block bulunamadı');
   }
 
-  const rawText = textBlock.text.trim();
+  // Mikro Adım 4: Safety etiket tespiti — AI cevabının TAM İLK SATIRINDA [SAFETY:xxx] var mı?
+  const SAFETY_REGEX = /^\[SAFETY:([a-z_]+)\]\s*\n?/;
+  const rawFull = textBlock.text.trim();
+  const safetyMatch = SAFETY_REGEX.exec(rawFull);
+  const safetyTriggered = safetyMatch !== null;
+  const safetyCategory = safetyMatch ? safetyMatch[1] : null;
+  // Etiketi cevaptan sil (misafire gösterilmeyecek)
+  const rawText = safetyTriggered ? rawFull.replace(SAFETY_REGEX, '').trim() : rawFull;
 
   // JSON parse — Claude bazen ```json fence ekler, temizle
   const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
@@ -162,6 +172,8 @@ export async function classifyAndRespond(
     reasoning: parsed.reasoning ?? '',
     response_to_guest: responseToGuest,
     answered_from_knowledge: answeredFromKnowledge,
+    safetyTriggered,
+    safetyCategory,
     model: response.model,
     prompt_tokens: response.usage.input_tokens,
     completion_tokens: response.usage.output_tokens,
