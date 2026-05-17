@@ -1,6 +1,13 @@
 import { getAnthropicClient, DEFAULT_MODEL, DEFAULT_MAX_TOKENS } from './anthropic-client';
 import { buildOrchestratorSystemPrompt, DepartmentInfo } from './system-prompts';
 import { getCachedSummary } from '@/lib/knowledge/cache';
+import { getHotelClient } from '@/lib/tenant/get-hotel-client';
+// Modül 15.3 — Hotel context
+import {
+  buildHotelContext,
+  detectInterestTag,
+  formatContextForPrompt,
+} from './hotel-context';
 
 export interface ConversationContextMessage {
   direction: 'inbound' | 'outbound';
@@ -47,6 +54,17 @@ export async function classifyAndRespond(
   const knowledgeSummary = await getCachedSummary(input.hotelId);
   const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments, knowledgeSummary);
 
+  // Modül 15.3 — Hotel context ekle
+  const interestTag = detectInterestTag(input.guestMessage);
+  const hotelSupabase = await getHotelClient(input.hotelId);
+  const hotelContext = hotelSupabase
+    ? await buildHotelContext(hotelSupabase, { perplexityInterestHint: interestTag })
+    : null;
+  const hotelContextText = hotelContext ? formatContextForPrompt(hotelContext) : '';
+  const finalSystemPrompt = systemPrompt + (hotelContextText
+    ? `\n\n=== OTEL BILGI KAYNAKLARI ===\n${hotelContextText}\n=== SON ===\n\nYukaridaki bilgileri kullanarak misafirin sorusuna kisa, net, sicak bir cevap ver. Bilgi kaynaklarinda yoksa "Bu konuyu netlestirmek icin onburoya yonlendirecegim" de.`
+    : '');
+
   // Context mesajlarını Anthropic message formatına çevir
   const messages = input.context.map((m) => ({
     role: m.direction === 'inbound' ? ('user' as const) : ('assistant' as const),
@@ -64,7 +82,7 @@ export async function classifyAndRespond(
     model: DEFAULT_MODEL,
     max_tokens: DEFAULT_MAX_TOKENS,
     temperature: 0.3,
-    system: systemPrompt,
+    system: finalSystemPrompt,
     messages,
   });
 
