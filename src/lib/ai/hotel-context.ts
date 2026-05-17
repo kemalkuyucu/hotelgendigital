@@ -136,7 +136,7 @@ async function fetchKnowledgeFacts(supabase: SupabaseClient): Promise<string> {
  * structured_data'sı {type: "location"} olan belgeyi insan okunur metne çevirir.
  */
 function formatLocationDocument(structured: Record<string, unknown>): string {
-  if (!structured || structured['type'] !== 'location') return '';
+  if (!structured) return '';
   const lines: string[] = [];
   if (structured['maps_link']) lines.push(`Google Maps: ${structured['maps_link']}`);
   if (structured['general_directions']) {
