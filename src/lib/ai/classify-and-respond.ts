@@ -8,6 +8,8 @@ import {
   detectInterestTag,
   formatContextForPrompt,
 } from './hotel-context';
+// Mikro Adım 5 — Safety pre-classifier
+import { classifySafety } from './safety-classifier';
 
 export interface ConversationContextMessage {
   direction: 'inbound' | 'outbound';
@@ -53,16 +55,63 @@ export async function classifyAndRespond(
   input: ClassifyAndRespondInput
 ): Promise<ClassifyAndRespondOutput> {
   const client = getAnthropicClient();
-  // Knowledge summary'yi cache'den getir (5dk TTL) ve sisteme inject et
-  const knowledgeSummary = await getCachedSummary(input.hotelId);
-  const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments, knowledgeSummary);
 
-  // Modül 15.3 — Hotel context ekle
+  // Modül 15.3 — Hotel context ekle (safety pre-classifier icin de gerekli)
   const interestTag = detectInterestTag(input.guestMessage);
   const hotelSupabase = await getHotelClient(input.hotelId);
   const hotelContext = hotelSupabase
     ? await buildHotelContext(hotelSupabase, { perplexityInterestHint: interestTag })
     : null;
+
+  // ── Mikro Adım 5: Safety Pre-Classifier ──────────────────────────────────
+  // Department classifier'dan ONCE calis. Eslesme varsa hic JSON parsing yapmadan don.
+  const safetyResult = await classifySafety(
+    input.guestMessage,
+    hotelContext?.safetyRules ?? [],
+  );
+
+  if (safetyResult.matched) {
+    // Safety kural tetiklendi — hafif, odakli bir AI cagrisi yap
+    const safetySystemPrompt =
+      `Sen ${input.hotelName} otelinin asistanisin. Asagidaki kurali AYNEN uygula, asla saptirma:\n\n` +
+      `${safetyResult.aiInstruction}\n\n` +
+      `DIL KURALI: Sadece Turkce alfabesi kullan.`;
+
+    const safetyStartedAt = Date.now();
+    const safetyResponse = await client.messages.create({
+      model: DEFAULT_MODEL,
+      max_tokens: DEFAULT_MAX_TOKENS,
+      system: safetySystemPrompt,
+      messages: [{ role: 'user', content: input.guestMessage }],
+    });
+    const safetyLatency = Date.now() - safetyStartedAt;
+
+    const safetyTextBlock = safetyResponse.content.find((b) => b.type === 'text');
+    const safetyText = safetyTextBlock?.type === 'text' ? safetyTextBlock.text.trim() : '';
+
+    return {
+      classifiedIntents: [],
+      department: null,
+      shouldForward: false,
+      confidence: 1,
+      reasoning: `safety_pre_classifier:${safetyResult.category}`,
+      response_to_guest: safetyText,
+      answered_from_knowledge: false,
+      safetyTriggered: true,
+      safetyCategory: safetyResult.category,
+      model: safetyResponse.model,
+      prompt_tokens: safetyResponse.usage.input_tokens,
+      completion_tokens: safetyResponse.usage.output_tokens,
+      latency_ms: safetyLatency,
+      raw_response: safetyText,
+    };
+  }
+  // ── Safety Pre-Classifier SONU ────────────────────────────────────────────
+
+  // Knowledge summary'yi cache'den getir (5dk TTL) ve sisteme inject et
+  const knowledgeSummary = await getCachedSummary(input.hotelId);
+  const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments, knowledgeSummary);
+
   const hotelContextText = hotelContext ? formatContextForPrompt(hotelContext) : '';
   const finalSystemPrompt = systemPrompt + (hotelContextText
     ? `\n\n=== OTEL BILGI KAYNAKLARI ===\n${hotelContextText}\n=== SON ===\n\nYukaridaki bilgileri kullanarak misafirin sorusuna kisa, net, sicak bir cevap ver. Bilgi kaynaklarinda yoksa "Bu konuyu netlestirmek icin onburoya yonlendirecegim" de.`
@@ -97,14 +146,8 @@ export async function classifyAndRespond(
     throw new Error('Anthropic response içinde text block bulunamadı');
   }
 
-  // Mikro Adım 4: Safety etiket tespiti — AI cevabının TAM İLK SATIRINDA [SAFETY:xxx] var mı?
-  const SAFETY_REGEX = /^\[SAFETY:([a-z_]+)\]\s*\n?/;
-  const rawFull = textBlock.text.trim();
-  const safetyMatch = SAFETY_REGEX.exec(rawFull);
-  const safetyTriggered = safetyMatch !== null;
-  const safetyCategory = safetyMatch ? safetyMatch[1] : null;
-  // Etiketi cevaptan sil (misafire gösterilmeyecek)
-  const rawText = safetyTriggered ? rawFull.replace(SAFETY_REGEX, '').trim() : rawFull;
+  // Mikro Adım 5: Safety artık pre-classifier'da ele aliniyor; burada sadece ham metin al
+  const rawText = textBlock.text.trim();
 
   // JSON parse — Claude bazen ```json fence ekler, temizle
   const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
@@ -172,8 +215,8 @@ export async function classifyAndRespond(
     reasoning: parsed.reasoning ?? '',
     response_to_guest: responseToGuest,
     answered_from_knowledge: answeredFromKnowledge,
-    safetyTriggered,
-    safetyCategory,
+    safetyTriggered: false,   // Normal akis: safety pre-classifier'da eslesme yoktu
+    safetyCategory: null,
     model: response.model,
     prompt_tokens: response.usage.input_tokens,
     completion_tokens: response.usage.output_tokens,

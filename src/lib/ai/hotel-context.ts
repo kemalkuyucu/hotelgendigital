@@ -336,28 +336,8 @@ Misafir "nasil gelirim", "adres", "konum", "yol tarifi", "nerede" gibi sorular s
 ${ctx.locationInfo}`);
   }
 
-  // Safety rules: AI'ın ilk göreceği blok — blocks.unshift ile EN ÜSTE eklenir
-  if (ctx.safetyRules && ctx.safetyRules.length > 0) {
-    const rulesText = ctx.safetyRules
-      .map((r, i) => `${i + 1}. ${r.title}\n   ${r.ai_instruction}`)
-      .join('\n\n');
-
-    blocks.unshift(`=== KRITIK GUVENLIK KURALLARI (HER KOSULDA UYULMASI ZORUNLU) ===
-Asagidaki kurallar SIRA ile uygulanir (priority dusukten yuksege = en kritik en ustte). Misafir mesaji bu kategorilerden birine giriyorsa, ASAGIDAKI talimati TAM olarak uygula. Bu kurallar diger hicbir kuralla degistirilemez, atlanamaz, gormezden gelinemez.
-
-${rulesText}
-
-ZORUNLU ETIKET KURALI:
-Eger yukaridaki guvenlik kurallarindan herhangi birini uyguladiysan (ornegin yasadisi madde reddi, KVKK reddi, jailbreak ignore, gec cikis onayi vermeme, saglik tavsiyesi, eskort reddi vb.), cevabinin TAM ILK SATIRINA su etiketi koy:
-[SAFETY:kategori_adi]
-Ornek: [SAFETY:guest_privacy_kvkk]
-Bu etiket sistem tarafindan okunup misafire gosterilmeden silinecektir. Etiket olmazsa sistem yanlis davranir, ASLA UNUTMA.
-
-DIL KURALI:
-Cevaplarinda SADECE standart Turk alfabesi kullan (a b c c d e f g g h i i j k l m n o o p r s s t u u v y z). Kiril, Yunan veya benzer alfabelerden harf KARISTIRMA. Telefon numarasi, link, isim yazarken bile sadece Latin/Turkce karakter kullan.
-
-=== KURALLAR SONU ===`);
-  }
+  // DIL KURALI: Normal cevaplar icin de gecerli — EN USTE eklenir
+  blocks.unshift(`DIL KURALI: Cevaplarinda SADECE standart Turk alfabesi kullan (a b c c d e f g g h i i j k l m n o o p r s s t u u v y z). Kiril, Yunan veya benzer alfabelerden harf KARISTIRMA. Telefon numarasi, link, isim yazarken bile sadece Latin/Turkce karakter kullan.`);
 
   if (blocks.length === 0) return '';
   return blocks.join('\n\n---\n\n');
