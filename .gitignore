@@ -58,3 +58,6 @@ logs/
 
 .vercel
 .env*.local
+
+# Local development helper scripts
+scripts/

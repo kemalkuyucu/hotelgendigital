@@ -4,13 +4,15 @@ import { useState } from 'react';
 import HotelInfoSubTab from './hotel-settings/HotelInfoSubTab';
 import KnowledgeBaseSubTab from './hotel-settings/KnowledgeBaseSubTab';
 import DocumentsSubTab from './hotel-settings/DocumentsSubTab';
+import PerplexityDiscoverySubTab from './hotel-settings/PerplexityDiscoverySubTab';
 
-type SubTab = 'info' | 'knowledge' | 'documents';
+type SubTab = 'info' | 'knowledge' | 'documents' | 'discovery';
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'info',      label: 'Otel Bilgileri' },
   { id: 'knowledge', label: 'Bilgi Tabanı' },
   { id: 'documents', label: 'Belgeler' },
+  { id: 'discovery', label: 'Çevre Keşfi' },
 ];
 
 export default function HotelSettingsTab() {
@@ -56,6 +58,7 @@ export default function HotelSettingsTab() {
         {activeSubTab === 'info'      && <HotelInfoSubTab />}
         {activeSubTab === 'knowledge' && <KnowledgeBaseSubTab />}
         {activeSubTab === 'documents' && <DocumentsSubTab />}
+        {activeSubTab === 'discovery' && <PerplexityDiscoverySubTab />}
       </div>
     </div>
   );
