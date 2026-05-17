@@ -90,6 +90,11 @@ export default function DocumentsSubTab() {
 
   const fileRequired = deliveryPolicy !== 'auto_text';
 
+  function clearMessages() {
+    setError(null);
+    setSuccess(null);
+  }
+
   function validateFile(f: File): string | null {
     if (f.size > MAX_SIZE) return 'Dosya 10 MB sınırını aşıyor.';
     if (!ALLOWED_MIME.includes(f.type)) return 'Geçersiz dosya türü (PDF/JPG/PNG/WEBP).';
@@ -222,6 +227,8 @@ export default function DocumentsSubTab() {
       if (!res.ok) throw new Error(data.error ?? 'Yükleme başarısız');
 
       setSuccess('Belge başarıyla yüklendi.');
+      // 4 saniye sonra başarı mesajını otomatik temizle
+      setTimeout(() => setSuccess(null), 4000);
       await fetchDocuments();
       resetForm();
     } catch (err) {
@@ -281,7 +288,7 @@ export default function DocumentsSubTab() {
           <select
             className="form-select"
             value={documentType}
-            onChange={(e) => setDocumentType(e.target.value as DocumentType)}
+            onChange={(e) => { setDocumentType(e.target.value as DocumentType); clearMessages(); }}
           >
             {Object.entries(DOCUMENT_TYPE_LABELS).map(([key, label]) => (
               <option key={key} value={key}>{label}</option>
@@ -294,7 +301,7 @@ export default function DocumentsSubTab() {
           <select
             className="form-select"
             value={language}
-            onChange={(e) => setLanguage(e.target.value as Language)}
+            onChange={(e) => { setLanguage(e.target.value as Language); clearMessages(); }}
           >
             {Object.entries(LANGUAGE_LABELS).map(([key, label]) => (
               <option key={key} value={key}>{label}</option>
@@ -307,7 +314,7 @@ export default function DocumentsSubTab() {
           <select
             className="form-select"
             value={department}
-            onChange={(e) => setDepartment(e.target.value as Department | '')}
+            onChange={(e) => { setDepartment(e.target.value as Department | ''); clearMessages(); }}
           >
             <option value="">Belirtilmemiş</option>
             {Object.entries(DEPARTMENT_LABELS).map(([key, label]) => (
@@ -329,7 +336,7 @@ export default function DocumentsSubTab() {
               name="delivery_policy"
               value="manual_only"
               checked={deliveryPolicy === 'manual_only'}
-              onChange={() => setDeliveryPolicy('manual_only')}
+              onChange={() => { setDeliveryPolicy('manual_only'); clearMessages(); }}
             />
             <div>
               <strong>Manuel</strong>
@@ -343,7 +350,7 @@ export default function DocumentsSubTab() {
               name="delivery_policy"
               value="auto_file"
               checked={deliveryPolicy === 'auto_file'}
-              onChange={() => setDeliveryPolicy('auto_file')}
+              onChange={() => { setDeliveryPolicy('auto_file'); clearMessages(); }}
             />
             <div>
               <strong>Dosya Gönder</strong>
@@ -357,7 +364,7 @@ export default function DocumentsSubTab() {
               name="delivery_policy"
               value="auto_text"
               checked={deliveryPolicy === 'auto_text'}
-              onChange={() => setDeliveryPolicy('auto_text')}
+              onChange={() => { setDeliveryPolicy('auto_text'); clearMessages(); }}
             />
             <div>
               <strong>Yazılı Cevap</strong>
@@ -373,7 +380,7 @@ export default function DocumentsSubTab() {
               className="form-textarea"
               rows={5}
               value={displayText}
-              onChange={(e) => setDisplayText(e.target.value)}
+              onChange={(e) => { setDisplayText(e.target.value); clearMessages(); }}
               placeholder={'Örnek:\nBanka: Ziraat Bankası\nIBAN: TR12 3456 ...\nHesap Sahibi: ABC Otel'}
             />
           </div>
