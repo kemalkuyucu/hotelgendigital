@@ -14,7 +14,7 @@ type Department =
   | 'front_office' | 'housekeeping' | 'technical' | 'fb'
   | 'guest_relation' | 'spa' | 'animation';
 
-type DeliveryPolicy = 'manual_only' | 'auto_file' | 'auto_text';
+type DeliveryPolicy = 'manual' | 'auto_file' | 'auto_text';
 
 const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   concept: 'Konsept',
@@ -61,7 +61,7 @@ export default function DocumentsSubTab() {
   const [documentType, setDocumentType] = useState<DocumentType>('concept');
   const [language, setLanguage] = useState<Language>('tr');
   const [department, setDepartment] = useState<Department | ''>('');
-  const [deliveryPolicy, setDeliveryPolicy] = useState<DeliveryPolicy>('manual_only');
+  const [deliveryPolicy, setDeliveryPolicy] = useState<DeliveryPolicy>('manual');
   const [displayText, setDisplayText] = useState('');
 
   type IbanAccount = {
@@ -207,7 +207,7 @@ export default function DocumentsSubTab() {
   }
 
   const POLICY_LABELS: Record<string, string> = {
-    manual_only: 'Manuel',
+    manual: 'Manuel',
     auto_file: 'Dosya Gönder',
     auto_text: 'Yazılı Cevap',
   };
@@ -217,7 +217,7 @@ export default function DocumentsSubTab() {
     setDocumentType('concept');
     setLanguage('tr');
     setDepartment('');
-    setDeliveryPolicy('manual_only');
+    setDeliveryPolicy('manual');
     setDisplayText('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     setIbanAccounts([EMPTY_IBAN_ACCOUNT]);
@@ -229,7 +229,9 @@ export default function DocumentsSubTab() {
     setDocumentType(doc.document_type as DocumentType);
     setLanguage(doc.language as Language);
     setDepartment((doc.department_code ?? '') as Department | '');
-    setDeliveryPolicy(doc.delivery_policy as DeliveryPolicy);
+    // DB'de eski kayıtlar 'manual_only' olabilir → 'manual'e normalize et
+    const normalizedPolicy = doc.delivery_policy === 'manual_only' ? 'manual' : doc.delivery_policy;
+    setDeliveryPolicy(normalizedPolicy as DeliveryPolicy);
     setDisplayText(doc.display_text ?? '');
     setFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -250,6 +252,50 @@ export default function DocumentsSubTab() {
     clearMessages();
     // Formun görünür olduğu üst kısma scroll
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
+
+  /** Aşama 1+2: Presign al → PUT ile Supabase'e yükle → path döndür */
+  async function uploadFileToStorage(
+    f: File,
+  ): Promise<{ file_url: string; file_name: string; file_size_bytes: number; file_mime: string }> {
+    // 1) Presign URL al
+    const presignRes = await fetch('/api/manager/documents/presign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: f.name, fileMime: f.type, fileSize: f.size }),
+    });
+    if (!presignRes.ok) {
+      const d = await presignRes.json().catch(() => ({})) as { error?: string };
+      throw new Error(d.error ?? 'Signed URL alınamadı');
+    }
+    const presignJson = await presignRes.json() as {
+      signedUrl: string;
+      token: string;
+      path: string;
+      bucket: string;
+    };
+    const { signedUrl, token, path: storagePath } = presignJson;
+
+    // 2) Supabase signed upload URL'ye PUT
+    const putRes = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': f.type,
+        Authorization: `Bearer ${token}`,
+      },
+      body: f,
+    });
+    if (!putRes.ok) {
+      const text = await putRes.text().catch(() => '');
+      throw new Error(`Dosya yükleme hatası (${putRes.status}): ${text.substring(0, 120)}`);
+    }
+
+    return {
+      file_url: storagePath,
+      file_name: f.name,
+      file_size_bytes: f.size,
+      file_mime: f.type,
+    };
   }
 
   async function handleSubmit() {
@@ -278,19 +324,34 @@ export default function DocumentsSubTab() {
 
     setIsSubmitting(true);
     try {
-      const formData = new FormData();
-      if (file) formData.append('file', file);
-      formData.append('document_type', documentType);
-      formData.append('language', language);
-      if (department) formData.append('department_code', department);
-      formData.append('delivery_policy', deliveryPolicy);
+      // --- Aşama 1+2: Dosya varsa Storage'a yükle ---
+      let fileFields: {
+        file_url?: string;
+        file_name?: string;
+        file_size_bytes?: number;
+        file_mime?: string;
+      } = {};
+
+      if (file) {
+        const uploaded = await uploadFileToStorage(file);
+        fileFields = {
+          file_url: uploaded.file_url,
+          file_name: uploaded.file_name,
+          file_size_bytes: uploaded.file_size_bytes,
+          file_mime: uploaded.file_mime,
+        };
+      }
+
+      // --- display_text hesapla ---
+      let computedDisplayText: string | undefined;
+      let computedStructuredData: unknown;
 
       if (isIbanStructured) {
         const validAccounts = ibanAccounts.filter(
           (acc) => acc.iban.trim() && acc.bank_name.trim(),
         );
-        formData.append('structured_data', JSON.stringify({ type: 'iban', accounts: validAccounts }));
-        const textRepresentation = validAccounts
+        computedStructuredData = { type: 'iban', accounts: validAccounts };
+        computedDisplayText = validAccounts
           .map((acc) =>
             `${acc.currency} Hesap:\nHesap Sahibi: ${acc.account_holder}\n` +
             `Banka: ${acc.bank_name}\n` +
@@ -299,31 +360,35 @@ export default function DocumentsSubTab() {
             (acc.swift ? `SWIFT: ${acc.swift}\n` : '')
           )
           .join('\n---\n');
-        formData.append('display_text', textRepresentation);
       } else if (deliveryPolicy === 'auto_text') {
-        formData.append('display_text', displayText);
+        computedDisplayText = displayText;
       }
 
-      if (isEditMode) {
-        // PATCH — güncelleme
-        const res = await fetch(`/api/manager/documents/${editingDocId}`, {
-          method: 'PATCH',
-          body: formData,
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? 'Güncelleme başarısız');
-        setSuccess('Belge başarıyla güncellendi.');
-      } else {
-        // POST — yeni kayıt
-        const res = await fetch('/api/manager/documents', {
-          method: 'POST',
-          body: formData,
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? 'Yükleme başarısız');
-        setSuccess('Belge başarıyla yüklendi.');
-      }
+      // --- Aşama 3: JSON metadata POST / PATCH ---
+      const jsonBody = {
+        document_type: documentType,
+        language,
+        department_code: department || undefined,
+        delivery_policy: deliveryPolicy,
+        display_text: computedDisplayText,
+        structured_data: computedStructuredData,
+        ...fileFields,
+      };
 
+      const url = isEditMode
+        ? `/api/manager/documents/${editingDocId}`
+        : '/api/manager/documents';
+      const method = isEditMode ? 'PATCH' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(jsonBody),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? (isEditMode ? 'Güncelleme başarısız' : 'Yükleme başarısız'));
+
+      setSuccess(isEditMode ? 'Belge başarıyla güncellendi.' : 'Belge başarıyla yüklendi.');
       setTimeout(() => setSuccess(null), 4000);
       await fetchDocuments();
       resetForm();
@@ -435,13 +500,13 @@ export default function DocumentsSubTab() {
         <p className="policy-hint">Bu belge sorulduğunda sistem nasıl davransın?</p>
 
         <div className="policy-options">
-          <label className={`policy-option ${deliveryPolicy === 'manual_only' ? 'is-selected' : ''}`}>
+          <label className={`policy-option ${deliveryPolicy === 'manual' ? 'is-selected' : ''}`}>
             <input
               type="radio"
               name="delivery_policy"
-              value="manual_only"
-              checked={deliveryPolicy === 'manual_only'}
-              onChange={() => { setDeliveryPolicy('manual_only'); clearMessages(); }}
+              value="manual"
+              checked={deliveryPolicy === 'manual'}
+              onChange={() => { setDeliveryPolicy('manual'); clearMessages(); }}
             />
             <div>
               <strong>Manuel</strong>
@@ -632,7 +697,7 @@ export default function DocumentsSubTab() {
           disabled={isSubmitting}
         >
           {isSubmitting
-            ? (isEditMode ? 'Güncelleniyor...' : 'Yükleniyor...')
+            ? (file ? 'Dosya yükleniyor...' : (isEditMode ? 'Güncelleniyor...' : 'Yükleniyor...'))
             : (isEditMode ? 'Belgeyi Güncelle' : 'Belgeyi Yükle')}
         </button>
         {isEditMode && (
