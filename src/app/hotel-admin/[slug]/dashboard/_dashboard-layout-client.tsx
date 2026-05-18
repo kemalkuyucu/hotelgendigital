@@ -13,12 +13,29 @@ interface Props {
   children: React.ReactNode
 }
 
+type NavItemKey =
+  | DepartmentKey
+  | 'dashboard'
+  | 'fo-list'
+  | 'fo-upload'
+  | 'fo-history'
+  | 'bilgi-otel'
+  | 'bilgi-tabani'
+  | 'belgeler'
+  | 'cevre-kesfi'
+
 interface NavItem {
-  key: DepartmentKey | 'dashboard' | 'guests' | 'fo-list' | 'fo-upload' | 'fo-history'
+  key: NavItemKey
   label: string
   href: string
   isSubItem?: boolean
 }
+
+/** Hangi roller ön büro alt menüsünü görür */
+const FRONT_OFFICE_ROLES: HotelAdminRole[] = ['hotel_owner', 'front_office_manager']
+
+/** Hangi roller bilgi yönetimi bölümünü görür */
+const BILGI_ROLES: HotelAdminRole[] = ['hotel_owner']
 
 export default function DashboardLayoutClient({ slug, adminName, adminRole, children }: Props) {
   const pathname = usePathname()
@@ -27,9 +44,9 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
 
   const allowedDepts = getAllowedDepartments(adminRole)
 
+  // Ana nav: Dashboard + departmanlar (Misafirler kaldırıldı)
   const navItems: NavItem[] = [
     { key: 'dashboard', label: '📊 Dashboard', href: `/hotel-admin/${slug}/dashboard` },
-    { key: 'guests', label: '🛎️ Misafirler', href: `/hotel-admin/${slug}/guests` },
     ...allowedDepts.map((dept) => ({
       key: dept,
       label: deptLabel(dept),
@@ -37,11 +54,21 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
     })),
   ]
 
-  // Ön Büro alt menü linkleri (front-office modülü)
+  // Ön Büro alt menü (sadece hotel_owner ve front_office_manager)
+  const showFrontOffice = FRONT_OFFICE_ROLES.includes(adminRole)
   const frontOfficeItems: NavItem[] = [
     { key: 'fo-list',    label: 'In-House Listesi', href: `/hotel-admin/${slug}/front-office`,         isSubItem: true },
     { key: 'fo-upload', label: 'Excel Yükle',       href: `/hotel-admin/${slug}/front-office/upload`,  isSubItem: true },
     { key: 'fo-history',label: 'Bildirim Geçmişi',  href: `/hotel-admin/${slug}/front-office/history`, isSubItem: true },
+  ]
+
+  // Bilgi Yönetimi alt menü (sadece hotel_owner)
+  const showBilgiYonetimi = BILGI_ROLES.includes(adminRole)
+  const bilgiItems: NavItem[] = [
+    { key: 'bilgi-otel',  label: 'Otel Bilgileri', href: `/hotel-admin/${slug}/bilgi-yonetimi/otel-bilgileri`, isSubItem: true },
+    { key: 'bilgi-tabani',label: 'Bilgi Tabanı',   href: `/hotel-admin/${slug}/bilgi-yonetimi/bilgi-tabani`,  isSubItem: true },
+    { key: 'belgeler',    label: 'Belgeler',        href: `/hotel-admin/${slug}/bilgi-yonetimi/belgeler`,      isSubItem: true },
+    { key: 'cevre-kesfi', label: 'Çevre Keşfi',    href: `/hotel-admin/${slug}/bilgi-yonetimi/cevre-kesfi`,   isSubItem: true },
   ]
 
   async function handleLogout() {
@@ -49,6 +76,38 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
     await fetch('/api/hotel-admin/logout', { method: 'POST' })
     router.push(`/hotel-admin/${slug}/login`)
   }
+
+  const linkStyle = (isActive: boolean, isSubItem?: boolean): React.CSSProperties => ({
+    display: 'block',
+    padding: isSubItem ? '8px 14px 8px 24px' : '10px 14px',
+    borderRadius: '10px',
+    fontSize: isSubItem ? '13px' : '13.5px',
+    fontWeight: isActive ? 600 : 400,
+    color: isActive ? (isSubItem ? '#7dd3fc' : '#a5b4fc') : '#94a3b8',
+    background: isActive
+      ? isSubItem ? 'rgba(56,189,248,0.12)' : 'rgba(99,102,241,0.15)'
+      : 'transparent',
+    border: isActive
+      ? isSubItem ? '1px solid rgba(56,189,248,0.2)' : '1px solid rgba(99,102,241,0.25)'
+      : '1px solid transparent',
+    textDecoration: 'none',
+    transition: 'all 0.15s',
+  })
+
+  const sectionLabel = (emoji: string, text: string) => (
+    <div style={{ marginTop: '12px', marginBottom: '4px', padding: '0 6px' }}>
+      <p style={{
+        fontSize: '10px',
+        fontWeight: 700,
+        color: '#475569',
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        margin: 0,
+      }}>
+        {emoji} {text}
+      </p>
+    </div>
+  )
 
   return (
     <div
@@ -71,12 +130,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
         }}
       >
         {/* Logo */}
-        <div
-          style={{
-            padding: '28px 24px',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
-          }}
-        >
+        <div style={{ padding: '28px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div
               style={{
@@ -97,14 +151,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
               <p style={{ color: '#f1f5f9', fontSize: '15px', fontWeight: 700, margin: 0 }}>
                 HotelGen
               </p>
-              <p
-                style={{
-                  color: '#64748b',
-                  fontSize: '11px',
-                  margin: 0,
-                  fontFamily: 'monospace',
-                }}
-              >
+              <p style={{ color: '#64748b', fontSize: '11px', margin: 0, fontFamily: 'monospace' }}>
                 {slug}
               </p>
             </div>
@@ -113,79 +160,53 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto' }}>
+
+          {/* Ana menü öğeleri (Dashboard + departmanlar) */}
           {navItems.map((item) => {
-            const isActive =
-              item.key === 'dashboard'
-                ? pathname === item.href
-                : pathname.startsWith(item.href)
-
+            const isActive = item.key === 'dashboard'
+              ? pathname === item.href
+              : pathname.startsWith(item.href)
             return (
-              <Link
-                key={item.key}
-                href={item.href}
-                style={{
-                  display: 'block',
-                  padding: '10px 14px',
-                  borderRadius: '10px',
-                  fontSize: '13.5px',
-                  fontWeight: isActive ? 600 : 400,
-                  color: isActive ? '#a5b4fc' : '#94a3b8',
-                  background: isActive ? 'rgba(99,102,241,0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(99,102,241,0.25)' : '1px solid transparent',
-                  textDecoration: 'none',
-                  transition: 'all 0.15s',
-                }}
-              >
+              <Link key={item.key} href={item.href} style={linkStyle(isActive, false)}>
                 {item.label}
               </Link>
             )
           })}
 
-          {/* Ön Büro Bölümü */}
-          <div style={{ marginTop: '12px', marginBottom: '4px', padding: '0 6px' }}>
-            <p style={{
-              fontSize: '10px',
-              fontWeight: 700,
-              color: '#475569',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              margin: 0,
-            }}>
-              🏨 Ön Büro
-            </p>
-          </div>
-          {frontOfficeItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-            return (
-              <Link
-                key={item.key}
-                href={item.href}
-                style={{
-                  display: 'block',
-                  padding: '8px 14px 8px 24px',
-                  borderRadius: '10px',
-                  fontSize: '13px',
-                  fontWeight: isActive ? 600 : 400,
-                  color: isActive ? '#7dd3fc' : '#94a3b8',
-                  background: isActive ? 'rgba(56,189,248,0.12)' : 'transparent',
-                  border: isActive ? '1px solid rgba(56,189,248,0.2)' : '1px solid transparent',
-                  textDecoration: 'none',
-                  transition: 'all 0.15s',
-                }}
-              >
-                {item.label}
-              </Link>
-            )
-          })}
+          {/* 🏨 Ön Büro Bölümü — sadece hotel_owner ve front_office_manager */}
+          {showFrontOffice && (
+            <>
+              {sectionLabel('🏨', 'Ön Büro')}
+              {frontOfficeItems.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                return (
+                  <Link key={item.key} href={item.href} style={linkStyle(isActive, true)}>
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </>
+          )}
+
+          {/* 📚 Bilgi Yönetimi — sadece hotel_owner */}
+          {showBilgiYonetimi && (
+            <>
+              {sectionLabel('📚', 'Bilgi Yönetimi')}
+              {bilgiItems.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                return (
+                  <Link key={item.key} href={item.href} style={linkStyle(isActive, true)}>
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </>
+          )}
+
         </nav>
 
         {/* Footer */}
-        <div
-          style={{
-            padding: '16px 12px',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-          }}
-        >
+        <div style={{ padding: '16px 12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <div
             style={{
               padding: '12px 14px',

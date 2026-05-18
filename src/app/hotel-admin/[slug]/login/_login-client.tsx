@@ -7,7 +7,10 @@ interface Props {
   slug: string
 }
 
+type LoginMode = 'manager' | 'staff'
+
 export default function LoginClient({ slug }: Props) {
+  const [mode, setMode] = useState<LoginMode>('manager')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -58,6 +61,24 @@ export default function LoginClient({ slug }: Props) {
     transition: 'border-color 0.2s',
   }
 
+  const modeTabStyle = (active: boolean, color: string): React.CSSProperties => ({
+    flex: 1,
+    padding: '14px 12px',
+    borderRadius: '12px',
+    border: active ? `2px solid ${color}` : '2px solid rgba(255,255,255,0.08)',
+    background: active ? `${color}18` : 'rgba(255,255,255,0.03)',
+    color: active ? color : '#64748b',
+    fontSize: '13.5px',
+    fontWeight: active ? 700 : 500,
+    cursor: 'pointer',
+    textAlign: 'center',
+    transition: 'all 0.2s',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '6px',
+  })
+
   return (
     <div
       style={{
@@ -73,7 +94,7 @@ export default function LoginClient({ slug }: Props) {
       <div
         style={{
           width: '100%',
-          maxWidth: '400px',
+          maxWidth: '420px',
           background: 'rgba(255,255,255,0.05)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(255,255,255,0.1)',
@@ -83,7 +104,7 @@ export default function LoginClient({ slug }: Props) {
         }}
       >
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div
             style={{
               width: '64px',
@@ -130,10 +151,69 @@ export default function LoginClient({ slug }: Props) {
           </span>
         </div>
 
+        {/* 2 Sekme: Yönetici / Personel */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '10px',
+            marginBottom: '28px',
+            padding: '6px',
+            background: 'rgba(0,0,0,0.2)',
+            borderRadius: '16px',
+          }}
+        >
+          <button
+            id="login-tab-manager"
+            type="button"
+            onClick={() => setMode('manager')}
+            style={modeTabStyle(mode === 'manager', '#22c55e')}
+          >
+            <span style={{ fontSize: '22px' }}>🟢</span>
+            <span>Yönetici Girişi</span>
+          </button>
+          <button
+            id="login-tab-staff"
+            type="button"
+            onClick={() => setMode('staff')}
+            style={modeTabStyle(mode === 'staff', '#3b82f6')}
+          >
+            <span style={{ fontSize: '22px' }}>🔵</span>
+            <span>Personel Girişi</span>
+          </button>
+        </div>
+
+        {/* Hint metni */}
+        <div
+          style={{
+            padding: '12px 16px',
+            marginBottom: '24px',
+            background:
+              mode === 'manager'
+                ? 'rgba(34,197,94,0.08)'
+                : 'rgba(59,130,246,0.08)',
+            border: `1px solid ${mode === 'manager' ? 'rgba(34,197,94,0.2)' : 'rgba(59,130,246,0.2)'}`,
+            borderRadius: '10px',
+            fontSize: '13px',
+            color: mode === 'manager' ? '#86efac' : '#93c5fd',
+          }}
+        >
+          {mode === 'manager'
+            ? '💼 Otel sahibi veya yönetici hesabınızla giriş yapın'
+            : '👤 Departman çalışan hesabınızla giriş yapın (ör: fo_user, fb_user)'}
+        </div>
+
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div>
-            <label style={{ display: 'block', color: '#cbd5e1', fontSize: '13px', fontWeight: 500, marginBottom: '8px' }}>
+            <label
+              style={{
+                display: 'block',
+                color: '#cbd5e1',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: '8px',
+              }}
+            >
               Kullanıcı Adı
             </label>
             <input
@@ -143,15 +223,23 @@ export default function LoginClient({ slug }: Props) {
               onChange={(e) => setUsername(e.target.value)}
               required
               autoComplete="username"
-              placeholder="kullanici_adi"
+              placeholder={mode === 'manager' ? 'demo_owner' : 'fo_user'}
               style={inputStyle}
-              onFocus={(e) => (e.target.style.borderColor = '#6366f1')}
+              onFocus={(e) => (e.target.style.borderColor = mode === 'manager' ? '#22c55e' : '#3b82f6')}
               onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.15)')}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', color: '#cbd5e1', fontSize: '13px', fontWeight: 500, marginBottom: '8px' }}>
+            <label
+              style={{
+                display: 'block',
+                color: '#cbd5e1',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: '8px',
+              }}
+            >
               Şifre
             </label>
             <input
@@ -163,7 +251,7 @@ export default function LoginClient({ slug }: Props) {
               autoComplete="current-password"
               placeholder="••••••••"
               style={inputStyle}
-              onFocus={(e) => (e.target.style.borderColor = '#6366f1')}
+              onFocus={(e) => (e.target.style.borderColor = mode === 'manager' ? '#22c55e' : '#3b82f6')}
               onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.15)')}
             />
           </div>
@@ -190,7 +278,9 @@ export default function LoginClient({ slug }: Props) {
             style={{
               background: loading
                 ? 'rgba(99,102,241,0.5)'
-                : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                : mode === 'manager'
+                ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                : 'linear-gradient(135deg, #3b82f6, #2563eb)',
               color: '#fff',
               border: 'none',
               borderRadius: '10px',
@@ -199,11 +289,19 @@ export default function LoginClient({ slug }: Props) {
               fontWeight: 600,
               cursor: loading ? 'not-allowed' : 'pointer',
               transition: 'all 0.2s',
-              boxShadow: loading ? 'none' : '0 4px 20px rgba(99,102,241,0.4)',
+              boxShadow: loading
+                ? 'none'
+                : mode === 'manager'
+                ? '0 4px 20px rgba(34,197,94,0.3)'
+                : '0 4px 20px rgba(59,130,246,0.3)',
               width: '100%',
             }}
           >
-            {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+            {loading
+              ? 'Giriş yapılıyor...'
+              : mode === 'manager'
+              ? '🟢 Yönetici Olarak Giriş Yap'
+              : '🔵 Personel Olarak Giriş Yap'}
           </button>
         </form>
 
