@@ -14,9 +14,10 @@ interface Props {
 }
 
 interface NavItem {
-  key: DepartmentKey | 'dashboard' | 'guests'
+  key: DepartmentKey | 'dashboard' | 'guests' | 'fo-list' | 'fo-upload' | 'fo-history'
   label: string
   href: string
+  isSubItem?: boolean
 }
 
 export default function DashboardLayoutClient({ slug, adminName, adminRole, children }: Props) {
@@ -34,6 +35,13 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
       label: deptLabel(dept),
       href: `/hotel-admin/${slug}/dashboard/${dept}`,
     })),
+  ]
+
+  // Ön Büro alt menü linkleri (front-office modülü)
+  const frontOfficeItems: NavItem[] = [
+    { key: 'fo-list',    label: 'In-House Listesi', href: `/hotel-admin/${slug}/front-office`,         isSubItem: true },
+    { key: 'fo-upload', label: 'Excel Yükle',       href: `/hotel-admin/${slug}/front-office/upload`,  isSubItem: true },
+    { key: 'fo-history',label: 'Bildirim Geçmişi',  href: `/hotel-admin/${slug}/front-office/history`, isSubItem: true },
   ]
 
   async function handleLogout() {
@@ -104,13 +112,12 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <nav style={{ flex: 1, padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto' }}>
           {navItems.map((item) => {
             const isActive =
               item.key === 'dashboard'
                 ? pathname === item.href
                 : pathname.startsWith(item.href)
-
 
             return (
               <Link
@@ -125,6 +132,43 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
                   color: isActive ? '#a5b4fc' : '#94a3b8',
                   background: isActive ? 'rgba(99,102,241,0.15)' : 'transparent',
                   border: isActive ? '1px solid rgba(99,102,241,0.25)' : '1px solid transparent',
+                  textDecoration: 'none',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {item.label}
+              </Link>
+            )
+          })}
+
+          {/* Ön Büro Bölümü */}
+          <div style={{ marginTop: '12px', marginBottom: '4px', padding: '0 6px' }}>
+            <p style={{
+              fontSize: '10px',
+              fontWeight: 700,
+              color: '#475569',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              margin: 0,
+            }}>
+              🏨 Ön Büro
+            </p>
+          </div>
+          {frontOfficeItems.map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+            return (
+              <Link
+                key={item.key}
+                href={item.href}
+                style={{
+                  display: 'block',
+                  padding: '8px 14px 8px 24px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? '#7dd3fc' : '#94a3b8',
+                  background: isActive ? 'rgba(56,189,248,0.12)' : 'transparent',
+                  border: isActive ? '1px solid rgba(56,189,248,0.2)' : '1px solid transparent',
                   textDecoration: 'none',
                   transition: 'all 0.15s',
                 }}
