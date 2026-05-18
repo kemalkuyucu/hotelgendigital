@@ -274,9 +274,12 @@ export async function POST(
     const sheetName = workbook.SheetNames[0]
     const sheet = workbook.Sheets[sheetName]
 
+    // raw: true -> tarih hücreleri Date objesi veya Excel serial olarak gelir.
+    // raw: false kullanmak tarihleri locale-dependent string'e çevirir (ör. "13.05.2026")
+    // ve parseFlexibleDate devreye girmeden önce ay/gün yer değiştirebilir.
     const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
       defval: '',
-      raw: false,
+      raw: true,
     })
 
     total_rows = rawRows.length
