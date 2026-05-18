@@ -4,7 +4,7 @@
  * Modul 17a — Excel Yukleme Sayfasi (Client Component)
  * 1. Surukle-birak veya dosya sec ile .xlsx / .xls kabul eder
  * 2. /api/hotel-admin/[slug]/inhouse/parse-excel'e POST eder
- * 3. Haiku'nun tahmini mapping'ini kullaniciya gosterir, onay alir
+ * 3. Kullanici Mapping Onay ekranini gorur, mapping'i onayla veya degistir
  * 4. /api/hotel-admin/[slug]/inhouse/import'a POST eder
  * 5. Sonucu gosterir
  */
@@ -292,79 +292,153 @@ export default function UploadPage() {
       {/* ---- STEP: MAPPING ---- */}
       {step === 'mapping' && parseResult && (
         <div>
+          {/* Onay Banner */}
+          {parseResult.saved_mapping ? (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: '14px',
+              padding: '16px 20px', marginBottom: '20px',
+              background: 'rgba(16,185,129,0.07)',
+              border: '1.5px solid rgba(16,185,129,0.3)',
+              borderRadius: '14px',
+            }}>
+              <span style={{ fontSize: '24px', lineHeight: 1 }}>💾</span>
+              <div>
+                <p style={{ margin: '0 0 2px', fontWeight: 700, fontSize: '14px', color: '#065f46' }}>
+                  Kayıtlı eşleştirme yüklendi
+                </p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#047857' }}>
+                  Bu otel için daha önce onaylanmış bir kolon eşleştirmesi bulundu ve otomatik seçildi.
+                  Gerekirse aşağıdan değiştirebilirsiniz.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: '14px',
+              padding: '16px 20px', marginBottom: '20px',
+              background: 'rgba(139,92,246,0.07)',
+              border: '1.5px solid rgba(139,92,246,0.25)',
+              borderRadius: '14px',
+            }}>
+              <span style={{ fontSize: '24px', lineHeight: 1 }}>🤖</span>
+              <div>
+                <p style={{ margin: '0 0 2px', fontWeight: 700, fontSize: '14px', color: '#5b21b6' }}>
+                  Haiku AI önerisi — lütfen kontrol edin
+                </p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#6d28d9' }}>
+                  Bu otelden ilk yükleme yapılıyor. Yapay zeka kolon eşleştirmesi yaptı;
+                  onbüro lütfen aşağıdaki tabloyu doğrulayın.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Dosya bilgisi */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', padding: '14px 18px', background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)', borderRadius: '12px' }}>
-            <span style={{ fontSize: '24px' }}>📄</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', padding: '12px 16px', background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)', borderRadius: '12px' }}>
+            <span style={{ fontSize: '22px' }}>📄</span>
             <div>
               <p style={{ margin: 0, fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{file?.name}</p>
               <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{parseResult.headers.length} kolon • {parseResult.sample_rows.length} örnek satır</p>
             </div>
           </div>
 
-          {/* Kolon Mapping */}
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
-              🤖 Kolon Eşleştirme
-            </h2>
-            <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px' }}>
-              Haiku AI önerilerini gözden geçirin ve gerekirse değiştirin.
-            </p>
+          {/* ---- Mapping Onay Tablosu ---- */}
+          <div style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden', marginBottom: '20px' }}>
+            {/* Tablo başlığı */}
+            <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #f1f5f9' }}>
+              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
+                📋 Mapping Onay
+              </h2>
+              <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+                Sistemin hangi Excel kolonunu hangi alana eşleştirdiğini kontrol edin. Yıldız (*) ile işaretli alanlar zorunludur.
+              </p>
+            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {(Object.keys(FIELD_LABELS) as Array<keyof ColumnMapping>).map((field) => {
-                const isRequired = FIELD_REQUIRED[field]
-                const selectedCol = mapping[field]
-                const isMatched = !!selectedCol
+            {/* Tablo */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', width: '35%' }}>Bizim Alan</th>
+                  <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Excel Kolonu</th>
+                  <th style={{ padding: '10px 20px', textAlign: 'center', fontWeight: 600, color: '#64748b', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', width: '80px' }}>Durum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(Object.keys(FIELD_LABELS) as Array<keyof ColumnMapping>).map((field, idx) => {
+                  const isRequired = FIELD_REQUIRED[field]
+                  const selectedCol = mapping[field]
+                  const isMatched = !!selectedCol
 
-                return (
-                  <div
-                    key={field}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      alignItems: 'center',
-                      gap: '12px',
-                      padding: '12px 16px',
-                      borderRadius: '10px',
-                      background: isMatched ? 'rgba(16,185,129,0.04)' : isRequired ? 'rgba(239,68,68,0.03)' : '#fafafa',
-                      border: isMatched ? '1px solid rgba(16,185,129,0.2)' : isRequired ? '1px solid rgba(239,68,68,0.15)' : '1px solid #f1f5f9',
-                    }}
-                  >
-                    <div>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
-                        {FIELD_LABELS[field]}
-                      </span>
-                      {isRequired && (
-                        <span style={{ marginLeft: '4px', fontSize: '10px', color: '#ef4444', fontWeight: 700 }}>*</span>
-                      )}
-                    </div>
-                    <select
-                      value={selectedCol ?? ''}
-                      onChange={(e) => setMapping(prev => ({ ...prev, [field]: e.target.value || null }))}
+                  return (
+                    <tr
+                      key={field}
                       style={{
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        border: `1px solid ${isMatched ? 'rgba(16,185,129,0.3)' : '#e2e8f0'}`,
-                        fontSize: '13px',
-                        color: isMatched ? '#065f46' : '#94a3b8',
-                        background: '#fff',
-                        outline: 'none',
-                        cursor: 'pointer',
-                        fontWeight: isMatched ? 600 : 400,
+                        borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none',
+                        background: isMatched ? 'rgba(16,185,129,0.025)' : isRequired ? 'rgba(239,68,68,0.025)' : '#fff',
                       }}
                     >
-                      <option value="">— Eşleştirme yok —</option>
-                      {parseResult.headers.map((h) => (
-                        <option key={h} value={h}>{h}</option>
-                      ))}
-                    </select>
-                  </div>
-                )
-              })}
-            </div>
+                      {/* Alan adı */}
+                      <td style={{ padding: '12px 20px', verticalAlign: 'middle' }}>
+                        <span style={{ fontWeight: 600, color: '#334155', fontSize: '13px' }}>
+                          {FIELD_LABELS[field]}
+                        </span>
+                        {isRequired && (
+                          <span style={{ marginLeft: '4px', fontSize: '11px', color: '#ef4444', fontWeight: 700 }}>*</span>
+                        )}
+                        {!isRequired && (
+                          <span style={{ marginLeft: '6px', fontSize: '10px', color: '#94a3b8', fontWeight: 500 }}>(opsiyonel)</span>
+                        )}
+                      </td>
+
+                      {/* Dropdown */}
+                      <td style={{ padding: '10px 20px', verticalAlign: 'middle' }}>
+                        <select
+                          value={selectedCol ?? ''}
+                          onChange={(e) => setMapping(prev => ({ ...prev, [field]: e.target.value || null }))}
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            border: `1.5px solid ${
+                              isMatched
+                                ? 'rgba(16,185,129,0.4)'
+                                : isRequired
+                                ? 'rgba(239,68,68,0.3)'
+                                : '#e2e8f0'
+                            }`,
+                            fontSize: '13px',
+                            color: isMatched ? '#065f46' : isRequired ? '#b91c1c' : '#94a3b8',
+                            background: '#fff',
+                            outline: 'none',
+                            cursor: 'pointer',
+                            fontWeight: isMatched ? 600 : 400,
+                          }}
+                        >
+                          <option value="">{isRequired ? '— Seçilmedi (zorunlu) —' : '— Eşleştirme yok —'}</option>
+                          {parseResult.headers.map((h) => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </td>
+
+                      {/* Durum ikonu */}
+                      <td style={{ padding: '12px 20px', textAlign: 'center', verticalAlign: 'middle' }}>
+                        {isMatched ? (
+                          <span title="Eşleşti" style={{ fontSize: '18px' }}>✅</span>
+                        ) : isRequired ? (
+                          <span title="Zorunlu alan eşleştirilmedi" style={{ fontSize: '18px' }}>⚠️</span>
+                        ) : (
+                          <span title="Opsiyonel, boş bırakılabilir" style={{ fontSize: '16px', opacity: 0.4 }}>➖</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
 
-          {/* Örnek Veri */}
+          {/* Örnek Veri Önizleme */}
           {parseResult.sample_rows.length > 0 && (
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', marginBottom: '24px', overflowX: 'auto' }}>
               <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', margin: '0 0 14px' }}>

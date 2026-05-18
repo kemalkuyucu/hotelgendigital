@@ -7,6 +7,7 @@
  * Islemi:
  * 1. excel_column_mapping tablosuna mapping'i UPSERT eder (otel bazinda hatirlama)
  * 2. Excel'i parse eder, mapping'e gore 6 alani cikarir
+ *    - Tarih parse HATASI: TUM upload iptal edilir (ya hep ya hic)
  * 3. inhouse_guests_v2'ye toplu islem:
  *    - Yeni room_number + check_in_date -> INSERT
  *    - Mevcut active ama Excel'de yok -> status=archived
@@ -41,60 +42,122 @@ interface GuestRow {
 }
 
 // ---------------------------------------------------------------------------
-// Tarih parse yardimcisi
-// Excel serial number veya string tarih kabul eder
+// Turkce ve Ingilizce ay isimleri (buyuk/kucuk harf duyarsiz)
 // ---------------------------------------------------------------------------
-function parseDate(val: unknown): string | null {
-  if (!val) return null
+const MONTH_MAP: Record<string, number> = {
+  // Turkce
+  ocak: 1,  subat: 2,  mart: 3,   nisan: 4,  mayis: 5,  haziran: 6,
+  temmuz: 7, agustos: 8, eylul: 9, ekim: 10, kasim: 11, aralik: 12,
+  // Ingilizce (3-harf kisaltma)
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+}
 
-  // Excel serial number (number)
+// ---------------------------------------------------------------------------
+// parseFlexibleDate — gercek PMS Excel formatlarini destekler
+//
+// Kabul edilenler:
+//   1. JavaScript Date objesi
+//   2. YYYY-MM-DD
+//   3. DD.MM.YYYY
+//   4. DD/MM/YYYY
+//   5. DD-MM-YYYY  (gun-ay-yil, tire ile)
+//   6. DD Ay YYYY  (Turkce veya Ingilizce ay adi)
+//   7. Excel serial number (number)
+//
+// Reddedilenler:
+//   - MM/DD/YYYY (Amerikan format — belirsizlik riski)
+//   - Parse edilemeyen her turlu deger -> hata firlatir
+// ---------------------------------------------------------------------------
+function parseFlexibleDate(val: unknown, context?: string): string {
+  const ctx = context ?? String(val)
+
+  const fail = () => {
+    throw new Error(
+      `Tarih formati anlasilmadi: '${ctx}'. Lutfen DD.MM.YYYY veya YYYY-MM-DD formati kullanin.`
+    )
+  }
+
+  // 1. JavaScript Date objesi
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) fail()
+    const y = val.getFullYear()
+    const m = String(val.getMonth() + 1).padStart(2, '0')
+    const d = String(val.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  // 7. Excel serial number (number)
   if (typeof val === 'number') {
     const jsDate = XLSX.SSF.parse_date_code(val)
-    if (jsDate) {
-      const y = jsDate.y
-      const m = String(jsDate.m).padStart(2, '0')
-      const d = String(jsDate.d).padStart(2, '0')
-      return `${y}-${m}-${d}`
-    }
+    if (!jsDate) fail()
+    const y = jsDate.y
+    const m = String(jsDate.m).padStart(2, '0')
+    const d = String(jsDate.d).padStart(2, '0')
+    return `${y}-${m}-${d}`
   }
 
-  // Date object
-  if (val instanceof Date) {
-    const iso = val.toISOString().split('T')[0]
-    return iso
+  if (typeof val !== 'string') fail()
+
+  const s = (val as string).trim()
+  if (!s) fail()
+
+  // 2. YYYY-MM-DD  (ISO format)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return s
   }
 
-  // String - cesitli formatlar: DD.MM.YYYY, DD/MM/YYYY, YYYY-MM-DD
-  if (typeof val === 'string') {
-    const s = val.trim()
-    if (!s) return null
-
-    // YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-
-    // DD.MM.YYYY veya DD/MM/YYYY
-    const m1 = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/)
-    if (m1) {
-      const [, d, mo, y] = m1
-      return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`
-    }
-
-    // D.M.YYYY
-    const m2 = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2})$/)
-    if (m2) {
-      const [, d, mo, y] = m2
-      const fullY = parseInt(y) < 50 ? `20${y}` : `19${y}`
-      return `${fullY}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`
-    }
+  // 3 & 4. DD.MM.YYYY  veya  DD/MM/YYYY
+  //    Not: tire (DD-MM-YYYY) formati asagida ayri yakalanir
+  const dotSlash = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/)
+  if (dotSlash) {
+    const [, d, mo, y] = dotSlash
+    return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`
   }
 
-  return null
+  // 5. DD-MM-YYYY  (tire ile, gun-ay-yil)
+  //    YYYY-MM-DD zaten yukarda yakalanmis, dolayisiyla burada
+  //    sadece 1-2 haneli gun ile baslayanlar kalmis olur.
+  const dashDMY = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (dashDMY) {
+    const [, d, mo, y] = dashDMY
+    return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+
+  // 6. DD Ay YYYY  (Turkce veya Ingilizce ay adi)
+  const textMonth = s.match(/^(\d{1,2})\s+([A-Za-zçğıöşüÇĞİÖŞÜ]+)\s+(\d{4})$/)
+  if (textMonth) {
+    const [, d, monthStr, y] = textMonth
+    const monthNum = MONTH_MAP[monthStr.toLowerCase()]
+    if (!monthNum) fail()
+    return `${y}-${String(monthNum).padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+
+  // 2 haneli yil destegi (opsiyonel ek): DD.MM.YY
+  const twoDigitYear = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2})$/)
+  if (twoDigitYear) {
+    const [, d, mo, y] = twoDigitYear
+    const fullY = parseInt(y) < 50 ? `20${y}` : `19${y}`
+    return `${fullY}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+
+  fail()
+  // TypeScript icin — asla buraya gelinmez
+  return ''
 }
 
 // ---------------------------------------------------------------------------
 // Excel row -> GuestRow donusumu
+// rowIndex: 0-tabanli veri satir indeksi (baslik haric); hata mesajinda gosterilir
+// Hata firlatir — caller tum upload'i iptal eder (ya hep ya hic)
 // ---------------------------------------------------------------------------
-function extractGuest(row: Record<string, unknown>, mapping: ColumnMapping): GuestRow | null {
+function extractGuest(
+  row: Record<string, unknown>,
+  mapping: ColumnMapping,
+  rowIndex: number,
+): GuestRow {
+  const rowLabel = `${rowIndex + 2}. satir` // Excel'de 1. satir baslik, veri 2'den baslar
+
   const roomRaw = mapping.room_number ? row[mapping.room_number] : null
   const nameRaw = mapping.guest_name ? row[mapping.guest_name] : null
   const checkInRaw = mapping.check_in ? row[mapping.check_in] : null
@@ -102,11 +165,31 @@ function extractGuest(row: Record<string, unknown>, mapping: ColumnMapping): Gue
 
   const room_number = String(roomRaw ?? '').trim()
   const guest_name = String(nameRaw ?? '').trim()
-  const check_in_date = parseDate(checkInRaw)
-  const check_out_date = parseDate(checkOutRaw)
 
-  // Zorunlu alanlar bos veya null ise satiri atla
-  if (!room_number || !guest_name || !check_in_date || !check_out_date) return null
+  // Bos satirlari sessizce atla (tamamen bos satirlar olabilir)
+  if (!room_number && !guest_name) {
+    throw new SkipRowError()
+  }
+
+  let check_in_date: string
+  let check_out_date: string
+
+  try {
+    check_in_date = parseFlexibleDate(checkInRaw, String(checkInRaw ?? ''))
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    throw new Error(`${rowLabel}: ${msg}`)
+  }
+
+  try {
+    check_out_date = parseFlexibleDate(checkOutRaw, String(checkOutRaw ?? ''))
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    throw new Error(`${rowLabel}: ${msg}`)
+  }
+
+  if (!room_number) throw new Error(`${rowLabel}: Oda numarasi bos.`)
+  if (!guest_name) throw new Error(`${rowLabel}: Misafir adi bos.`)
 
   const agencyRaw = mapping.agency ? row[mapping.agency] : null
   const countRaw = mapping.guest_count ? row[mapping.guest_count] : null
@@ -120,6 +203,11 @@ function extractGuest(row: Record<string, unknown>, mapping: ColumnMapping): Gue
     check_in_date,
     check_out_date,
   }
+}
+
+// Bos satirlari isaretlemek icin ozel hata sinifi
+class SkipRowError extends Error {
+  constructor() { super('skip') }
 }
 
 // ---------------------------------------------------------------------------
@@ -194,10 +282,18 @@ export async function POST(
     total_rows = rawRows.length
     console.log('[import] Total raw rows:', total_rows)
 
-    // Gecerli satirlari cikar
-    const guestRows: GuestRow[] = rawRows
-      .map((row) => extractGuest(row, mapping))
-      .filter((g): g is GuestRow => g !== null)
+    // Gecerli satirlari cikar — HATA VARSA TUM UPLOAD IPTAL EDILIR (ya hep ya hic)
+    const guestRows: GuestRow[] = []
+    for (let i = 0; i < rawRows.length; i++) {
+      try {
+        const guest = extractGuest(rawRows[i], mapping, i)
+        guestRows.push(guest)
+      } catch (e) {
+        if (e instanceof SkipRowError) continue // tamamen bos satir, atla
+        // Gercek hata — tum upload'i durdur
+        throw e
+      }
+    }
 
     console.log('[import] Valid guest rows:', guestRows.length)
 
