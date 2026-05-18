@@ -96,6 +96,7 @@ export default function DocumentsSubTab() {
     department_code: string | null;
     delivery_policy: string;
     display_text: string | null;
+    structured_data: unknown | null;
     file_url: string | null;
     file_name: string | null;
     file_size_bytes: number | null;
@@ -107,8 +108,13 @@ export default function DocumentsSubTab() {
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
 
-  const fileRequired = deliveryPolicy !== 'auto_text';
+  const formRef = useRef<HTMLDivElement>(null);
+
+  const isEditMode = editingDocId !== null;
+  // Edit modunda dosya zorunlu değil; create modunda auto_text harici zorunlu
+  const fileRequired = !isEditMode && deliveryPolicy !== 'auto_text';
 
   function clearMessages() {
     setError(null);
@@ -215,6 +221,35 @@ export default function DocumentsSubTab() {
     setDisplayText('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     setIbanAccounts([EMPTY_IBAN_ACCOUNT]);
+    setEditingDocId(null);
+  }
+
+  function handleEditClick(doc: DocumentRow) {
+    setEditingDocId(doc.id);
+    setDocumentType(doc.document_type as DocumentType);
+    setLanguage(doc.language as Language);
+    setDepartment((doc.department_code ?? '') as Department | '');
+    setDeliveryPolicy(doc.delivery_policy as DeliveryPolicy);
+    setDisplayText(doc.display_text ?? '');
+    setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // IBAN structured_data varsa mevcut hesapları geri yükle
+    if (
+      doc.document_type === 'iban' &&
+      doc.structured_data !== null &&
+      typeof doc.structured_data === 'object' &&
+      'accounts' in (doc.structured_data as object)
+    ) {
+      const sd = doc.structured_data as { type: string; accounts: IbanAccount[] };
+      setIbanAccounts(sd.accounts.length > 0 ? sd.accounts : [{ ...EMPTY_IBAN_ACCOUNT }]);
+    } else {
+      setIbanAccounts([{ ...EMPTY_IBAN_ACCOUNT }]);
+    }
+
+    clearMessages();
+    // Formun görünür olduğu üst kısma scroll
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
 
   async function handleSubmit() {
@@ -251,13 +286,10 @@ export default function DocumentsSubTab() {
       formData.append('delivery_policy', deliveryPolicy);
 
       if (isIbanStructured) {
-        // Boş kayıtları temizle
         const validAccounts = ibanAccounts.filter(
           (acc) => acc.iban.trim() && acc.bank_name.trim(),
         );
         formData.append('structured_data', JSON.stringify({ type: 'iban', accounts: validAccounts }));
-
-        // AI'ın okuyabileceği text temsilini de gönder (fallback)
         const textRepresentation = validAccounts
           .map((acc) =>
             `${acc.currency} Hesap:\nHesap Sahibi: ${acc.account_holder}\n` +
@@ -272,15 +304,26 @@ export default function DocumentsSubTab() {
         formData.append('display_text', displayText);
       }
 
-      const res = await fetch('/api/manager/documents', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Yükleme başarısız');
+      if (isEditMode) {
+        // PATCH — güncelleme
+        const res = await fetch(`/api/manager/documents/${editingDocId}`, {
+          method: 'PATCH',
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Güncelleme başarısız');
+        setSuccess('Belge başarıyla güncellendi.');
+      } else {
+        // POST — yeni kayıt
+        const res = await fetch('/api/manager/documents', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Yükleme başarısız');
+        setSuccess('Belge başarıyla yüklendi.');
+      }
 
-      setSuccess('Belge başarıyla yüklendi.');
-      // 4 saniye sonra başarı mesajını otomatik temizle
       setTimeout(() => setSuccess(null), 4000);
       await fetchDocuments();
       resetForm();
@@ -292,10 +335,14 @@ export default function DocumentsSubTab() {
   }
 
   return (
-    <div className="form-card form-card--wide documents-subtab">
-      <h2 className="subtab-title">Belgeler</h2>
+    <div className="form-card form-card--wide documents-subtab" ref={formRef}>
+      <h2 className="subtab-title">
+        {isEditMode ? '✏️ Belgeyi Düzenle' : 'Belgeler'}
+      </h2>
       <p className="subtab-description">
-        Otel belgelerini yükle ve misafire iletim politikasını belirle.
+        {isEditMode
+          ? 'Belge bilgilerini güncelleyin. Dosya yüklemezseniz mevcut dosya korunur.'
+          : 'Otel belgelerini yükle ve misafire iletim politikasını belirle.'}
       </p>
 
       {/* Drag & Drop */}
@@ -330,6 +377,11 @@ export default function DocumentsSubTab() {
             <span className="dropzone-icon">📄</span>
             <strong>Dosyayı buraya sürükle veya tıkla</strong>
             <span className="dropzone-hint">PDF, JPG, PNG, WEBP · Max 10 MB</span>
+            {isEditMode && (
+              <span className="dropzone-hint" style={{ color: 'var(--color-warning, #f59e0b)', marginTop: '4px' }}>
+                Mevcut dosya korunur. Yeni dosya yüklerseniz eskisi silinir.
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -579,8 +631,21 @@ export default function DocumentsSubTab() {
           onClick={handleSubmit}
           disabled={isSubmitting}
         >
-          {isSubmitting ? 'Yükleniyor...' : 'Belgeyi Yükle'}
+          {isSubmitting
+            ? (isEditMode ? 'Güncelleniyor...' : 'Yükleniyor...')
+            : (isEditMode ? 'Belgeyi Güncelle' : 'Belgeyi Yükle')}
         </button>
+        {isEditMode && (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => { resetForm(); clearMessages(); }}
+            disabled={isSubmitting}
+            style={{ marginLeft: '0.75rem' }}
+          >
+            İptal
+          </button>
+        )}
       </div>
 
       {/* Yüklenmiş Belgeler Listesi */}
@@ -614,14 +679,25 @@ export default function DocumentsSubTab() {
                     <span>{formatDate(doc.uploaded_at)}</span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="btn-delete"
-                  onClick={() => handleDelete(doc.id)}
-                  disabled={deletingId === doc.id}
-                >
-                  {deletingId === doc.id ? 'Siliniyor...' : '🗑️ Sil'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleEditClick(doc)}
+                    disabled={!!deletingId}
+                    style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                  >
+                    ✏️ Düzenle
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-delete"
+                    onClick={() => handleDelete(doc.id)}
+                    disabled={deletingId === doc.id}
+                  >
+                    {deletingId === doc.id ? 'Siliniyor...' : '🗑️ Sil'}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
