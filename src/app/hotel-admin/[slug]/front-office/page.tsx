@@ -1,13 +1,17 @@
 /**
- * Modul 17a — In-House Ana Sayfa
- * inhouse_guests_v2 tablosundan aktif misafir sayisini gosterir.
- * Excel yukleme icin yonlendirme butonu icerir.
+ * Modul 17b — In-House Ana Sayfa (refactored)
+ *
+ * Server component: Aktif Misafir + Son Yukleme kartlari
+ * Client component: <InhouseListClient /> - tarih filtre, tablo, checkbox, aksiyon
+ *
+ * Yetki: hotel_owner | front_office_manager
  */
 
 import { redirect } from 'next/navigation'
 import { getHotelAdminFromCookie } from '@/lib/hotel-admin/auth'
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
 import Link from 'next/link'
+import InhouseListClient from './_inhouse-list-client'
 
 const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager']
 
@@ -53,9 +57,10 @@ export default async function FrontOfficePage({
   const hasGuests = guestCount > 0
 
   return (
-    <div style={{ padding: '40px', fontFamily: "'Inter', system-ui, sans-serif", maxWidth: '900px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '36px' }}>
+    <div style={{ padding: '40px', fontFamily: "'Inter', system-ui, sans-serif", maxWidth: '960px' }}>
+
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             🏨 In-House Misafir Listesi
@@ -85,8 +90,9 @@ export default async function FrontOfficePage({
         </Link>
       </div>
 
-      {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+      {/* ── Stats Cards ────────────────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '40px' }}>
+
         {/* Aktif Misafir Kartı */}
         <div style={{
           background: hasGuests ? 'linear-gradient(135deg, #0f172a, #1e3a5f)' : '#f8fafc',
@@ -139,45 +145,18 @@ export default async function FrontOfficePage({
         )}
       </div>
 
-      {/* Empty State / CTA */}
-      {!hasGuests && (
-        <div style={{
-          textAlign: 'center',
-          padding: '60px 40px',
-          background: '#f8fafc',
-          borderRadius: '20px',
-          border: '1px dashed #cbd5e1',
-        }}>
-          <div style={{ fontSize: '56px', marginBottom: '16px' }}>📋</div>
-          <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', margin: '0 0 10px' }}>
-            Misafir Listesi Boş
-          </h2>
-          <p style={{ color: '#64748b', fontSize: '14px', maxWidth: '400px', margin: '0 auto 24px' }}>
-            Bu liste Excel yüklemesi yapıldıktan sonra dolacak. Günlük misafir listesini Excel formatında yükleyin.
-          </p>
-          <Link
-            href={`/hotel-admin/${slug}/front-office/upload`}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
-              color: '#fff',
-              textDecoration: 'none',
-              padding: '14px 28px',
-              borderRadius: '12px',
-              fontSize: '15px',
-              fontWeight: 600,
-              boxShadow: '0 4px 16px rgba(14,165,233,0.3)',
-            }}
-          >
-            ↑ Excel Yükle
-          </Link>
-        </div>
-      )}
+      {/* ── Divider ────────────────────────────────────────────────────────── */}
+      <div style={{
+        height: '1px',
+        background: 'linear-gradient(90deg, #e2e8f0, transparent)',
+        marginBottom: '32px',
+      }} />
 
-      {/* Gecmis linki */}
-      <div style={{ marginTop: '24px', textAlign: 'right' }}>
+      {/* ── In-House List Client Component ─────────────────────────────────── */}
+      <InhouseListClient slug={slug} />
+
+      {/* ── Geçmiş linki ───────────────────────────────────────────────────── */}
+      <div style={{ marginTop: '32px', textAlign: 'right' }}>
         <Link
           href={`/hotel-admin/${slug}/front-office/history`}
           style={{ fontSize: '13px', color: '#6366f1', textDecoration: 'none', fontWeight: 500 }}
