@@ -46,6 +46,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           >
             <span>🛡️</span> Güvenlik Kuralları
           </Link>
+          <Link
+            href="/admin/migrations"
+            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 text-gray-300 hover:text-white transition-colors text-sm"
+          >
+            <span>🗄️</span> Veritabanı Sürümleri
+          </Link>
         </nav>
 
         <div className="p-4 border-t border-gray-800">
