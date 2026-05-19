@@ -16,6 +16,12 @@ import { useEffect, useState, useCallback } from 'react'
 
 type FilterType = 'today' | 'tomorrow' | 'range'
 
+interface LastNotification {
+  notification_date: string
+  status: string
+  sent_at: string | null
+}
+
 interface InhouseGuest {
   id: string
   room_number: string
@@ -27,12 +33,14 @@ interface InhouseGuest {
   telegram_id: string | null
   whatsapp_id: string | null
   status: string
+  last_notification: LastNotification | null
 }
 
 interface ListMeta {
-  filter: FilterType
-  dateStart: string
-  dateEnd: string
+  filter?: FilterType
+  view?: string
+  dateStart?: string
+  dateEnd?: string
   count: number
 }
 
@@ -142,6 +150,50 @@ function badgeStyle(color: string): React.CSSProperties {
   }
 }
 
+// ─── Notification Badge ───────────────────────────────────────────────────────
+
+function formatNotifTime(sent_at: string | null): string {
+  if (!sent_at) return ''
+  const d = new Date(sent_at)
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${dd}.${mm} ${hh}:${min}`
+}
+
+function NotificationBadge({
+  notif,
+  filterDate,
+}: {
+  notif: LastNotification | null
+  filterDate?: string
+}) {
+  if (!notif) {
+    return (
+      <span style={{ fontSize: '11px', color: '#94a3b8', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+        🔔 Henüz gönderilmedi
+      </span>
+    )
+  }
+  const sameDay = filterDate && notif.notification_date === filterDate
+  return (
+    <span
+      title={sameDay ? 'Bu misafire bu tarih için daha önce bildirim gönderildi' : undefined}
+      style={{
+        fontSize: '11px',
+        color: sameDay ? '#16a34a' : '#0369a1',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        fontWeight: 600,
+      }}
+    >
+      ✅ {formatNotifTime(notif.sent_at)} gönderildi
+    </span>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface InhouseListClientProps {
@@ -166,14 +218,20 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
   // Toast
   const [toast, setToast] = useState<string | null>(null)
 
-  // ── Fetch ────────────────────────────────────────────────────────────────
+  // Accordion (Bolum 2 - Tum Misafirler)
+  const [accordionOpen, setAccordionOpen] = useState(false)
+  const [allGuests, setAllGuests] = useState<InhouseGuest[]>([])
+  const [allGuestsLoading, setAllGuestsLoading] = useState(false)
+  const [allGuestsSearch, setAllGuestsSearch] = useState('')
+
+  // ── Fetch (Bolum 1 - filtreli) ───────────────────────────────────────────
 
   const fetchGuests = useCallback(async () => {
     setLoading(true)
     setError(null)
-    setSelectedIds([]) // Filtre degisince secimi sifirla
+    setSelectedIds([])
 
-    let url = `/api/hotel-admin/${slug}/inhouse/list?filter=${filter}`
+    let url = `/api/hotel-admin/${slug}/inhouse/list?view=filter&filter=${filter}`
     if (filter === 'range') {
       if (!rangeStart || !rangeEnd) {
         setError('Lütfen başlangıç ve bitiş tarihlerini seçin.')
@@ -205,24 +263,60 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
     }
   }, [slug, filter, rangeStart, rangeEnd])
 
+  // ── Fetch (Bolum 2 - tum misafirler) ────────────────────────────────────
+
+  const fetchAllGuests = useCallback(async () => {
+    setAllGuestsLoading(true)
+    try {
+      const res = await fetch(`/api/hotel-admin/${slug}/inhouse/list?view=all`)
+      const json = await res.json()
+      if (res.ok) {
+        setAllGuests(json.guests ?? [])
+      }
+    } catch {
+      // silent fail - accordion shows empty
+    } finally {
+      setAllGuestsLoading(false)
+    }
+  }, [slug])
+
   // Sayfa ilk acilisinda ve filtre degisince fetch
   useEffect(() => {
     if (filter !== 'range') {
       fetchGuests()
     }
-    // range ise kullanici "Listele" butonuna basacak
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter])
 
+  // Accordion acildiginda fetch
+  useEffect(() => {
+    if (accordionOpen && allGuests.length === 0) {
+      fetchAllGuests()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accordionOpen])
+
+  // ── Current filter date (for disabled check) ─────────────────────────────
+
+  const currentFilterDate: string | undefined =
+    meta?.dateStart === meta?.dateEnd ? meta?.dateStart : undefined
+
+  // Disabled = same-day notification already sent
+  function isDisabled(g: InhouseGuest): boolean {
+    if (!currentFilterDate) return false
+    return !!g.last_notification && g.last_notification.notification_date === currentFilterDate
+  }
+
   // ── Checkbox helpers ─────────────────────────────────────────────────────
 
-  const allSelected = guests.length > 0 && selectedIds.length === guests.length
+  const enabledGuests = guests.filter((g) => !isDisabled(g))
+  const allSelected = enabledGuests.length > 0 && selectedIds.length === enabledGuests.length
 
   function toggleAll() {
     if (allSelected) {
       setSelectedIds([])
     } else {
-      setSelectedIds(guests.map((g) => g.id))
+      setSelectedIds(enabledGuests.map((g) => g.id))
     }
   }
 
@@ -253,7 +347,7 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
   // ── Render ────────────────────────────────────────────────────────────────
 
   const dateLabel = meta
-    ? formatDateLabel(meta.dateStart, meta.dateEnd)
+    ? formatDateLabel(meta.dateStart ?? '', meta.dateEnd ?? '')
     : filter === 'today'
     ? formatDateLabel(getTodayISO(), getTodayISO())
     : filter === 'tomorrow'
@@ -424,9 +518,18 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
                 fontWeight: 600,
               }}>
                 ✓ {selectedIds.length} misafir seçildi
+                {enabledGuests.length < guests.length && (
+                  <span style={{ fontSize: '11px', fontWeight: 400, color: '#3b82f6' }}>
+                    (toplam {enabledGuests.length} gönderilebilir)
+                  </span>
+                )}
               </span>
             ) : (
-              <span style={{ color: '#94a3b8' }}>Henüz seçim yapılmadı</span>
+              <span style={{ color: '#94a3b8' }}>
+                {enabledGuests.length < guests.length
+                  ? `${guests.length - enabledGuests.length} satır devre dışı (zaten gönderildi)`
+                  : 'Henüz seçim yapılmadı'}
+              </span>
             )}
           </div>
 
@@ -572,21 +675,26 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
                         <th style={thStyle()}>Giriş</th>
                         <th style={thStyle()}>Çıkış</th>
                         <th style={thStyle()}>İletişim</th>
+                        <th style={thStyle()}>Son Bildirim</th>
                       </tr>
                     </thead>
                     <tbody>
                       {guests.map((guest, idx) => {
                         const isSelected = selectedIds.includes(guest.id)
+                        const disabled = isDisabled(guest)
                         return (
                           <tr
                             key={guest.id}
                             className={`inhouse-row${isSelected ? ' selected' : ''}`}
-                            onClick={() => toggleOne(guest.id)}
+                            onClick={() => !disabled && toggleOne(guest.id)}
                             style={{
-                              background: isSelected ? '#eff6ff' : idx % 2 === 0 ? '#fff' : '#fafafa',
+                              background: disabled
+                                ? '#f8fafc'
+                                : isSelected ? '#eff6ff' : idx % 2 === 0 ? '#fff' : '#fafafa',
                               borderBottom: '1px solid #f1f5f9',
-                              cursor: 'pointer',
+                              cursor: disabled ? 'default' : 'pointer',
                               transition: 'background 0.1s',
+                              opacity: disabled ? 0.7 : 1,
                             }}
                           >
                             {/* Checkbox */}
@@ -595,9 +703,11 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
                                 type="checkbox"
                                 className="cb-custom"
                                 checked={isSelected}
+                                disabled={disabled}
                                 onChange={() => toggleOne(guest.id)}
                                 onClick={(e) => e.stopPropagation()}
-                                style={{ accentColor: '#0ea5e9' }}
+                                title={disabled ? 'Bu misafire bu tarih için daha önce bildirim gönderildi' : undefined}
+                                style={{ accentColor: '#0ea5e9', cursor: disabled ? 'not-allowed' : 'pointer' }}
                               />
                             </td>
                             {/* Oda No */}
@@ -637,6 +747,10 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
                             <td style={{ ...tdStyle() }}>
                               <ContactBadge guest={guest} />
                             </td>
+                            {/* Son Bildirim */}
+                            <td style={{ ...tdStyle() }}>
+                              <NotificationBadge notif={guest.last_notification} filterDate={currentFilterDate} />
+                            </td>
                           </tr>
                         )
                       })}
@@ -646,6 +760,158 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
               </div>
             )}
           </>
+        )}
+      </div>
+
+      {/* ══ BÖLÜM 2: TÜM AKTİF MİSAFİRLER (Akordiyon) ══════════════════════ */}
+      <div style={{ marginTop: '32px' }}>
+        <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', fontStyle: 'italic' }}>
+          Oteldeki tüm konaklayan misafirlerin gerçek zamanlı listesi.
+          Bildirim göndermek için yukarıdaki filtreyi kullanın.
+        </p>
+        {/* Akordiyon başlığı */}
+        <button
+          id="accordion-all-guests-btn"
+          onClick={() => setAccordionOpen((o) => !o)}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '14px 20px',
+            background: accordionOpen ? 'linear-gradient(135deg, #0f172a, #1e3a5f)' : '#f1f5f9',
+            border: '1px solid ' + (accordionOpen ? 'transparent' : '#e2e8f0'),
+            borderRadius: accordionOpen ? '16px 16px 0 0' : '16px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 700,
+            color: accordionOpen ? '#f0f9ff' : '#0f172a',
+            transition: 'all 0.2s',
+          }}
+        >
+          <span>
+            {accordionOpen ? '▼' : '▶'}
+            {' '}🏨 Tüm Misafirler
+            {allGuests.length > 0 && (
+              <span style={{
+                marginLeft: '8px',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: accordionOpen ? '#7dd3fc' : '#64748b',
+              }}>
+                ({allGuests.length} kişi)
+              </span>
+            )}
+          </span>
+          <span style={{ fontSize: '12px', fontWeight: 400, color: accordionOpen ? '#7dd3fc' : '#94a3b8' }}>
+            {accordionOpen ? 'Kapat' : 'Tıkla / Aç'}
+          </span>
+        </button>
+
+        {/* Akordiyon içeriği */}
+        {accordionOpen && (
+          <div style={{
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderTop: 'none',
+            borderRadius: '0 0 16px 16px',
+            overflow: 'hidden',
+            animation: 'fadeIn 0.2s ease',
+          }}>
+            {/* Arama */}
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+              <input
+                id="all-guests-search"
+                type="text"
+                placeholder="Oda no veya misafir adı ara..."
+                value={allGuestsSearch}
+                onChange={(e) => setAllGuestsSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {allGuestsLoading && (
+              <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
+                ⏳ Yükleniyor...
+              </div>
+            )}
+
+            {!allGuestsLoading && (() => {
+              const term = allGuestsSearch.toLowerCase()
+              const filtered = term
+                ? allGuests.filter(
+                    (g) =>
+                      g.room_number.toLowerCase().includes(term) ||
+                      g.guest_name.toLowerCase().includes(term),
+                  )
+                : allGuests
+              return (
+                <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 5 }}>
+                        <th style={{ ...thStyle(), color: '#475569' }}>Oda</th>
+                        <th style={{ ...thStyle(), color: '#475569' }}>Misafir</th>
+                        <th style={{ ...thStyle(), color: '#475569' }}>Acente</th>
+                        <th style={{ ...thStyle(), color: '#475569' }}>Giriş</th>
+                        <th style={{ ...thStyle(), color: '#475569' }}>Çıkış</th>
+                        <th style={{ ...thStyle(), color: '#475569' }}>İletişim</th>
+                        <th style={{ ...thStyle(), color: '#475569' }}>Son Bildirim</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
+                            {allGuestsSearch ? 'Arama sonucu bulunamadı.' : 'Aktif misafir yok.'}
+                          </td>
+                        </tr>
+                      ) : (
+                        filtered.map((g, idx) => (
+                          <tr
+                            key={g.id}
+                            style={{
+                              background: idx % 2 === 0 ? '#fff' : '#fafafa',
+                              borderBottom: '1px solid #f1f5f9',
+                            }}
+                          >
+                            <td style={{ ...tdStyle() }}>
+                              <span style={{
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                              }}>
+                                {g.room_number}
+                              </span>
+                            </td>
+                            <td style={{ ...tdStyle(), fontWeight: 500 }}>{g.guest_name}</td>
+                            <td style={{ ...tdStyle(), color: '#64748b' }}>{g.agency ?? '—'}</td>
+                            <td style={{ ...tdStyle(), color: '#64748b', whiteSpace: 'nowrap' }}>{formatDDMM(g.check_in_date)}</td>
+                            <td style={{ ...tdStyle(), fontWeight: 600, whiteSpace: 'nowrap' }}>{formatDDMM(g.check_out_date)}</td>
+                            <td style={{ ...tdStyle() }}><ContactBadge guest={g} /></td>
+                            <td style={{ ...tdStyle() }}>
+                              <NotificationBadge notif={g.last_notification} />
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
+          </div>
         )}
       </div>
 

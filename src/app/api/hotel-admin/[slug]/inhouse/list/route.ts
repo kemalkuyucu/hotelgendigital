@@ -1,11 +1,15 @@
 /**
- * Modul 17b — In-House List API
- * GET /api/hotel-admin/[slug]/inhouse/list?filter=tomorrow&start=...&end=...
+ * Modul 17b — In-House List API (genisletilmis)
+ * GET /api/hotel-admin/[slug]/inhouse/list
  *
  * Query parametreleri:
- *   filter: "today" | "tomorrow" | "range"
+ *   view:   "filter" (default) | "all"
+ *   filter: "today" | "tomorrow" | "range"  (sadece view=filter ise)
  *   start:  YYYY-MM-DD (sadece filter=range ise)
  *   end:    YYYY-MM-DD (sadece filter=range ise)
+ *
+ * Her satira last_notification eklenir:
+ *   { notification_date, status, sent_at } | null
  *
  * Yetki: hotel_owner veya front_office_manager
  * Siralama: room_number ASC
@@ -18,7 +22,6 @@ import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
 const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager']
 
 function getTodayISO(): string {
-  // Server time (UTC+3 proxy icin simple UTC kullaniyoruz, UI tarafinda gosterim Turkce)
   const d = new Date()
   const y = d.getUTCFullYear()
   const m = String(d.getUTCMonth() + 1).padStart(2, '0')
@@ -34,6 +37,56 @@ function getTomorrowISO(): string {
   const dy = String(d.getUTCDate()).padStart(2, '0')
   return `${y}-${m}-${dy}`
 }
+
+// ─── Last notification lookup ─────────────────────────────────────────────────
+
+interface LastNotification {
+  notification_date: string
+  status: string
+  sent_at: string | null
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchLastNotifications(
+  supabase: any,
+  guestIds: string[],
+): Promise<Map<string, LastNotification | null>> {
+  const map = new Map<string, LastNotification | null>()
+  if (guestIds.length === 0) return map
+
+  // Initialize all as null
+  for (const id of guestIds) {
+    map.set(id, null)
+  }
+
+  const { data, error } = await supabase
+    .from('late_checkout_notifications')
+    .select('inhouse_guest_id, notification_date, status, sent_at')
+    .in('inhouse_guest_id', guestIds)
+    .eq('status', 'sent')
+    .order('sent_at', { ascending: false })
+
+  if (error) {
+    console.error('[inhouse/list] last_notification fetch error:', error.message)
+    return map
+  }
+
+  // Keep only the most recent per guest (data is sorted DESC by sent_at)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of (data ?? []) as any[]) {
+    if (map.get(row.inhouse_guest_id) === null) {
+      map.set(row.inhouse_guest_id, {
+        notification_date: row.notification_date,
+        status: row.status,
+        sent_at: row.sent_at,
+      })
+    }
+  }
+
+  return map
+}
+
+// ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function GET(
   req: NextRequest,
@@ -58,49 +111,92 @@ export async function GET(
 
   // ── Query parametreleri ────────────────────────────────────────────────────
   const { searchParams } = req.nextUrl
+  const view = searchParams.get('view') ?? 'filter'   // "filter" | "all"
   const filter = searchParams.get('filter') ?? 'tomorrow'
   const startParam = searchParams.get('start')
   const endParam = searchParams.get('end')
 
-  let dateStart: string
-  let dateEnd: string
-
-  if (filter === 'today') {
-    dateStart = getTodayISO()
-    dateEnd = dateStart
-  } else if (filter === 'tomorrow') {
-    dateStart = getTomorrowISO()
-    dateEnd = dateStart
-  } else if (filter === 'range') {
-    if (!startParam || !endParam) {
-      return NextResponse.json(
-        { error: 'range filtresi icin start ve end parametreleri zorunludur.' },
-        { status: 400 },
-      )
-    }
-    // Basit format dogrulamasi
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startParam) || !/^\d{4}-\d{2}-\d{2}$/.test(endParam)) {
-      return NextResponse.json(
-        { error: 'Tarih formati YYYY-MM-DD olmalidir.' },
-        { status: 400 },
-      )
-    }
-    dateStart = startParam
-    dateEnd = endParam
-  } else {
-    return NextResponse.json(
-      { error: 'Gecersiz filter degeri. today | tomorrow | range bekleniyor.' },
-      { status: 400 },
-    )
-  }
-
-  console.log(`[inhouse/list] slug=${slug} filter=${filter} dateStart=${dateStart} dateEnd=${dateEnd}`)
-
   try {
     const tenant = await resolveTenantBySlug(slug)
+    const { hotelSupabase: supabase } = tenant
 
-    // ── Sorgu ──────────────────────────────────────────────────────────────
-    let query = tenant.hotelSupabase
+    // ── view=all: butun aktif misafirler, tarih filtresi yok ──────────────
+    if (view === 'all') {
+      console.log(`[inhouse/list] slug=${slug} view=all`)
+
+      const { data: allData, error: allError } = await supabase
+        .from('inhouse_guests_v2')
+        .select(
+          'id, room_number, agency, guest_name, guest_count, check_in_date, check_out_date, telegram_id, whatsapp_id, status',
+        )
+        .eq('status', 'active')
+        .order('room_number', { ascending: true })
+
+      if (allError) {
+        console.error('[inhouse/list] view=all DB error:', allError.message)
+        return NextResponse.json(
+          { error: 'Misafir listesi alınamadı: ' + allError.message },
+          { status: 500 },
+        )
+      }
+
+      const allGuests = allData ?? []
+      const notifMap = await fetchLastNotifications(
+        supabase,
+        allGuests.map((g) => g.id),
+      )
+
+      const guestsWithNotif = allGuests.map((g) => ({
+        ...g,
+        last_notification: notifMap.get(g.id) ?? null,
+      }))
+
+      console.log(`[inhouse/list] view=all found ${guestsWithNotif.length} guests`)
+
+      return NextResponse.json({
+        guests: guestsWithNotif,
+        meta: {
+          view: 'all',
+          count: guestsWithNotif.length,
+        },
+      })
+    }
+
+    // ── view=filter: tarih filtreli sorgu (mevcut davranis) ──────────────
+    let dateStart: string
+    let dateEnd: string
+
+    if (filter === 'today') {
+      dateStart = getTodayISO()
+      dateEnd = dateStart
+    } else if (filter === 'tomorrow') {
+      dateStart = getTomorrowISO()
+      dateEnd = dateStart
+    } else if (filter === 'range') {
+      if (!startParam || !endParam) {
+        return NextResponse.json(
+          { error: 'range filtresi icin start ve end parametreleri zorunludur.' },
+          { status: 400 },
+        )
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startParam) || !/^\d{4}-\d{2}-\d{2}$/.test(endParam)) {
+        return NextResponse.json(
+          { error: 'Tarih formati YYYY-MM-DD olmalidir.' },
+          { status: 400 },
+        )
+      }
+      dateStart = startParam
+      dateEnd = endParam
+    } else {
+      return NextResponse.json(
+        { error: 'Gecersiz filter degeri. today | tomorrow | range bekleniyor.' },
+        { status: 400 },
+      )
+    }
+
+    console.log(`[inhouse/list] slug=${slug} view=filter filter=${filter} dateStart=${dateStart} dateEnd=${dateEnd}`)
+
+    let query = supabase
       .from('inhouse_guests_v2')
       .select(
         'id, room_number, agency, guest_name, guest_count, check_in_date, check_out_date, telegram_id, whatsapp_id, status',
@@ -125,16 +221,26 @@ export async function GET(
     }
 
     const guests = data ?? []
+    const notifMap = await fetchLastNotifications(
+      supabase,
+      guests.map((g) => g.id),
+    )
 
-    console.log(`[inhouse/list] Found ${guests.length} guests for date range ${dateStart}..${dateEnd}`)
+    const guestsWithNotif = guests.map((g) => ({
+      ...g,
+      last_notification: notifMap.get(g.id) ?? null,
+    }))
+
+    console.log(`[inhouse/list] Found ${guestsWithNotif.length} guests for date range ${dateStart}..${dateEnd}`)
 
     return NextResponse.json({
-      guests,
+      guests: guestsWithNotif,
       meta: {
+        view: 'filter',
         filter,
         dateStart,
         dateEnd,
-        count: guests.length,
+        count: guestsWithNotif.length,
       },
     })
   } catch (err) {
