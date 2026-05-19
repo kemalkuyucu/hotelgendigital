@@ -208,7 +208,7 @@ export async function POST(
   }
 
   try {
-    await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, msg, tg, botToken });
+    await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, hotelSlug, msg, tg, botToken });
   } catch (err) {
     console.error('[telegram] handleMessage error:', err);
   }
@@ -618,11 +618,12 @@ async function handleMessage(args: {
   supa: SupabaseClient;
   hotelId: string;
   hotelName: string;
+  hotelSlug: string;
   msg: TelegramMessage;
   tg: TelegramClient;
   botToken: string;
 }) {
-  const { supa, hotelId, hotelName, msg, tg, botToken } = args;
+  const { supa, hotelId, hotelName, hotelSlug, msg, tg, botToken } = args;
   const chatId = msg.chat.id;
   const userId = msg.from?.id;
 
@@ -761,6 +762,43 @@ async function handleMessage(args: {
             message_excerpt: text.slice(0, 200),
           });
           console.log(`[17c] No inhouse match for room=${roomAttempt}, logged pending_guest_match`);
+
+          // ── MODÜL 17.7: Anlık ön büro Telegram bildirimi ──────────────────
+          void (async () => {
+            try {
+              const { data: foDept } = await supa
+                .from('departments')
+                .select('telegram_chat_id')
+                .eq('code', 'front_office')
+                .maybeSingle();
+
+              if (!foDept?.telegram_chat_id) {
+                console.warn('[17.7] front_office telegram_chat_id bulunamadı, bildirim atlandı');
+                return;
+              }
+
+              const foChatId = Number(foDept.telegram_chat_id);
+              const now = new Date();
+              const timeStr = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+              const frontOfficeUrl = `https://hotelgen-v2.vercel.app/hotel-admin/${hotelSlug}/front-office`;
+
+              const alertText =
+                `⚠️ BEKLEYEN ESLESME\n\n` +
+                `Misafir oda numarasiyla eslesemedi.\n\n` +
+                `📱 Platform: Telegram\n` +
+                `🆔 Misafir ID: ${userId}\n` +
+                `🚪 Denenen Oda: ${roomAttempt}\n` +
+                `🕐 Saat: ${timeStr}\n\n` +
+                `Lutfen Front-Office panelinden manuel eslestirin.\n` +
+                frontOfficeUrl;
+
+              await tg.sendMessage({ chat_id: foChatId, text: alertText });
+              console.log(`[17.7] Ön büro bildirimi gönderildi → chatId=${foChatId} room=${roomAttempt}`);
+            } catch (notifyErr) {
+              console.error('[17.7] Ön büro Telegram bildirimi gönderilemedi:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
+            }
+          })();
+          // ── MODÜL 17.7 SONU ───────────────────────────────────────────────
 
           await tg.sendMessage({
             chat_id: chatId,
