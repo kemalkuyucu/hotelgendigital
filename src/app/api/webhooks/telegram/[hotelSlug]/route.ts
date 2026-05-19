@@ -690,11 +690,27 @@ async function handleMessage(args: {
   if (!userId) return;
 
   if (text.startsWith('/start')) {
-    await tg.sendMessage({
-      chat_id: chatId,
-      text: 'Merhaba! HotelGen demo bot\'a hoş geldiniz. 🎉\n\nİsteğinizi yazabilirsiniz, ilgili departmana iletilecektir.\n\nKomutlar:\n/help — yardım',
-    });
-    await upsertGuestAndConversation({ supa, msg });
+    // Module 17.c: /start flow → upsert guest+conversation, then ask for room if not linked
+    const { conversationId: startConvId } = await upsertGuestAndConversation({ supa, msg });
+
+    // Check if already linked to an inhouse guest
+    const { data: startConv } = await supa
+      .from('conversations')
+      .select('inhouse_match_guest_id')
+      .eq('id', startConvId)
+      .maybeSingle();
+
+    if (startConv?.inhouse_match_guest_id) {
+      await tg.sendMessage({
+        chat_id: chatId,
+        text: 'Merhaba! HotelGen Demo Hotel asistaninim. Nasil yardimci olabilirim?',
+      });
+    } else {
+      await tg.sendMessage({
+        chat_id: chatId,
+        text: 'Merhaba! HotelGen Demo Hotel asistaninim. Size yardimci olabilmem icin lutfen oda numaranizi yaziniz.',
+      });
+    }
     return;
   }
   if (text.startsWith('/help')) {
@@ -707,6 +723,92 @@ async function handleMessage(args: {
 
   const { guestName, conversationId, conversation } = await upsertGuestAndConversation({ supa, msg });
   const language = detectLanguage(msg);
+
+  // ============================================================
+  // MODULE 17.c — INHOUSE GUEST MATCHING GATE
+  // If not yet linked to inhouse_guests_v2 → handle room number flow
+  // ============================================================
+  {
+    // Check if conversation has inhouse_match_guest_id set
+    const { data: convMatch } = await supa
+      .from('conversations')
+      .select('inhouse_match_guest_id')
+      .eq('id', conversationId)
+      .maybeSingle();
+
+    const isLinkedToInhouse = !!(convMatch?.inhouse_match_guest_id);
+
+    if (!isLinkedToInhouse) {
+      // Treat message as a room number attempt
+      const roomAttempt = text.trim().replace(/[^0-9a-zA-Z]/g, '');
+      const looksLikeRoom = /^\d{1,4}[a-zA-Z]?$/.test(roomAttempt) && roomAttempt.length > 0;
+
+      if (looksLikeRoom) {
+        console.log(`[17c] Room matching attempt: userId=${userId} room="${roomAttempt}"`);
+
+        const { data: roomMatches } = await supa
+          .from('inhouse_guests_v2')
+          .select('id, guest_name, room_number')
+          .eq('room_number', roomAttempt)
+          .eq('status', 'active');
+
+        if (!roomMatches || roomMatches.length === 0) {
+          // No match → log pending, notify reception
+          await supa.from('pending_guest_matches').insert({
+            telegram_id: userId,
+            platform: 'telegram',
+            attempted_room_number: roomAttempt,
+            message_excerpt: text.slice(0, 200),
+          });
+          console.log(`[17c] No inhouse match for room=${roomAttempt}, logged pending_guest_match`);
+
+          await tg.sendMessage({
+            chat_id: chatId,
+            text: 'Belirtilen oda numarasinda kayit bulunamadi. Ondan emin olmak icin resepsiyonu bilgilendiriyorum, lutfen bekleyin.',
+          });
+          return;
+        }
+
+        if (roomMatches.length === 1) {
+          const matched = roomMatches[0];
+          // Link telegram_id in inhouse_guests_v2
+          await supa
+            .from('inhouse_guests_v2')
+            .update({ telegram_id: userId })
+            .eq('id', matched.id);
+
+          // Link conversation
+          await supa
+            .from('conversations')
+            .update({ inhouse_match_guest_id: matched.id })
+            .eq('id', conversationId);
+
+          console.log(`[17c] Linked telegram_id=${userId} → inhouse_guest_id=${matched.id} room=${matched.room_number}`);
+
+          await tg.sendMessage({
+            chat_id: chatId,
+            text: `Tesekkurler ${matched.guest_name}, sizin icin hazirim. Nasil yardimci olabilirim?`,
+          });
+          return;
+        }
+
+        // Multiple matches → ask for name
+        await tg.sendMessage({
+          chat_id: chatId,
+          text: 'Birden fazla kayit goruldu. Lutfen adinizi yaziniz:',
+        });
+        return;
+      }
+
+      // Not a room number and not linked → ask for room number
+      await tg.sendMessage({
+        chat_id: chatId,
+        text: 'Merhaba! HotelGen Demo Hotel asistaninim. Size yardimci olabilmem icin lutfen oda numaranizi yaziniz.',
+      });
+      return;
+    }
+  }
+  // MODULE 17.c SONU
 
   // Inbound mesajı kaydet
   const { data: inboundData, error: inboundError } = await supa

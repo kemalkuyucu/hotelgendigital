@@ -1,13 +1,14 @@
 'use client'
 
 /**
- * Modul 17b — InhouseListClient
+ * Modul 17b/17c/17d — InhouseListClient
  * In-House Listesi: Tarih filtre + tablo + checkbox + aksiyon butonu
  *
- * - Default filter: "tomorrow" (yarın)
+ * - Default filter: "yarn" (yarın)
  * - Iletisim rozeti: telegram_id / whatsapp_id / ikisi de yok
  * - Secim state: selectedIds string[]
- * - "Secili Misafirlere Bildirim Gonder" butonu UI hazir (Modul 17.d'de aktif)
+ * - "Secili Misafirlere Bildirim Gonder" butonu: gercek API (Modul 17.d)
+ * - Bekleyen Eslesmeler bolumu (Modul 17.c)
  */
 
 import { useEffect, useState, useCallback } from 'react'
@@ -42,6 +43,35 @@ interface ListMeta {
   dateStart?: string
   dateEnd?: string
   count: number
+}
+
+// Modul 17.d - Bildirim gonderim sonucu
+interface ChannelStat {
+  sent: number
+  failed: number
+}
+
+interface SendResult {
+  total: number
+  by_channel: {
+    telegram: ChannelStat
+    whatsapp: ChannelStat
+    manual: number
+  }
+  skipped_no_contact: number
+  errors: string[]
+}
+
+// Modul 17.c - Bekleyen eslesmeler
+interface PendingMatch {
+  id: string
+  telegram_id: number | null
+  whatsapp_id: string | null
+  platform: 'telegram' | 'whatsapp'
+  attempted_room_number: string | null
+  message_excerpt: string | null
+  created_at: string
+  resolved: boolean
 }
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -224,6 +254,16 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
   const [allGuestsLoading, setAllGuestsLoading] = useState(false)
   const [allGuestsSearch, setAllGuestsSearch] = useState('')
 
+  // ── Modul 17.c/17.d: Bildirim gönderim modalleri ────────────────────────
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false)
+  const [sendLoading, setSendLoading] = useState(false)
+  const [resultModal, setResultModal] = useState<SendResult | null>(null)
+
+  // ── Modul 17.c: Bekleyen Eşleşmeler (Bölüm 3) ───────────────────────────
+  const [pendingMatches, setPendingMatches] = useState<PendingMatch[]>([])
+  const [pendingLoading, setPendingLoading] = useState(false)
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
+
   // ── Fetch (Bolum 1 - filtreli) ───────────────────────────────────────────
 
   const fetchGuests = useCallback(async () => {
@@ -280,6 +320,23 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
     }
   }, [slug])
 
+  // ── Fetch pending matches (Bolum 3) ──────────────────────────────────────
+
+  const fetchPendingMatches = useCallback(async () => {
+    setPendingLoading(true)
+    try {
+      const res = await fetch(`/api/hotel-admin/${slug}/inhouse/pending-matches`)
+      const json = await res.json()
+      if (res.ok) {
+        setPendingMatches(json.items ?? [])
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setPendingLoading(false)
+    }
+  }, [slug])
+
   // Sayfa ilk acilisinda ve filtre degisince fetch
   useEffect(() => {
     if (filter !== 'range') {
@@ -295,6 +352,12 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accordionOpen])
+
+  // Pending matches — ilk yuklemede fetch
+  useEffect(() => {
+    fetchPendingMatches()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Current filter date (for disabled check) ─────────────────────────────
 
@@ -329,10 +392,56 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
   // ── Action button ─────────────────────────────────────────────────────────
 
   function handleSendNotification() {
-    const count = selectedIds.length
-    setToast(
-      `Bu özellik Modül 17.d'de aktif olacak. Şu an ${count} misafir seçildi.`,
-    )
+    if (selectedIds.length === 0) return
+    setConfirmModalOpen(true)
+  }
+
+  async function handleConfirmSend() {
+    setConfirmModalOpen(false)
+    setSendLoading(true)
+
+    const notificationDate = currentFilterDate ?? new Date().toISOString().split('T')[0]
+
+    try {
+      const res = await fetch(
+        `/api/hotel-admin/${slug}/inhouse/send-checkout-notifications`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ guest_ids: selectedIds, notification_date: notificationDate }),
+        },
+      )
+      const json = await res.json() as SendResult
+
+      if (!res.ok) {
+        setToast(`Hata: ${(json as { error?: string }).error ?? 'Bilinmeyen hata'}`)
+      } else {
+        setResultModal(json)
+        // Refresh lists
+        await fetchGuests()
+        setSelectedIds([])
+      }
+    } catch {
+      setToast('Sunucuya bağlanılamadı. Lütfen tekrar deneyin.')
+    } finally {
+      setSendLoading(false)
+    }
+  }
+
+  async function handleResolveMatch(id: string) {
+    setResolvingId(id)
+    try {
+      await fetch(`/api/hotel-admin/${slug}/inhouse/pending-matches`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, send_retry_message: true }),
+      })
+      await fetchPendingMatches()
+    } catch {
+      setToast('Güncelleme başarısız. Tekrar deneyin.')
+    } finally {
+      setResolvingId(null)
+    }
   }
 
   // ── Filter tab handler ────────────────────────────────────────────────────
@@ -915,9 +1024,157 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
         )}
       </div>
 
+      {/* ══ BÖLÜM 3: BEKLEYEN EŞLEŞMELEr ══════════════════════════════════════════ */}
+      {(pendingMatches.length > 0 || pendingLoading) && (
+        <div style={{ marginTop: '32px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#b45309', margin: 0 }}>
+              ⚠️ {pendingLoading ? '...' : pendingMatches.length} Bekleyen Eşleşme
+            </h2>
+            <span style={{ fontSize: '12px', color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: '20px', border: '1px solid #fcd34d' }}>
+              Bot üzerinden eşleşemeyen misafirler
+            </span>
+          </div>
+          <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #fcd34d', overflow: 'hidden', boxShadow: '0 2px 8px rgba(245,158,11,0.1)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#fef3c7' }}>
+                  <th style={{ ...thStyle(), color: '#92400e' }}>Platform</th>
+                  <th style={{ ...thStyle(), color: '#92400e' }}>Misafir İletişim</th>
+                  <th style={{ ...thStyle(), color: '#92400e' }}>Denenen Oda</th>
+                  <th style={{ ...thStyle(), color: '#92400e' }}>Tarih</th>
+                  <th style={{ ...thStyle(), color: '#92400e' }}>İşlem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingMatches.map((pm, idx) => {
+                  const contact = pm.platform === 'telegram'
+                    ? `Telegram ID: ${pm.telegram_id ?? '?'}`
+                    : `WhatsApp: ${pm.whatsapp_id ?? '?'}`
+                  const timeStr = (() => {
+                    const d = new Date(pm.created_at)
+                    return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+                  })()
+                  return (
+                    <tr key={pm.id} style={{ background: idx % 2 === 0 ? '#fffbeb' : '#fef9ee', borderBottom: '1px solid #fef3c7' }}>
+                      <td style={tdStyle()}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: pm.platform === 'telegram' ? '#0369a1' : '#15803d' }}>
+                          {pm.platform === 'telegram' ? '✈️ Telegram' : '📱 WhatsApp'}
+                        </span>
+                      </td>
+                      <td style={{ ...tdStyle(), fontSize: '12px', color: '#64748b' }}>{contact}</td>
+                      <td style={{ ...tdStyle(), fontWeight: 700, color: '#b45309' }}>
+                        {pm.attempted_room_number ?? <span style={{ color: '#cbd5e1' }}>—</span>}
+                      </td>
+                      <td style={{ ...tdStyle(), fontSize: '12px', color: '#94a3b8' }}>{timeStr}</td>
+                      <td style={tdStyle()}>
+                        <button
+                          id={`resolve-btn-${pm.id}`}
+                          disabled={resolvingId === pm.id}
+                          onClick={() => handleResolveMatch(pm.id)}
+                          style={{
+                            padding: '5px 12px',
+                            background: resolvingId === pm.id ? '#e2e8f0' : 'linear-gradient(135deg, #16a34a, #22c55e)',
+                            color: resolvingId === pm.id ? '#94a3b8' : '#fff',
+                            border: 'none', borderRadius: '8px',
+                            fontSize: '12px', fontWeight: 600,
+                            cursor: resolvingId === pm.id ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {resolvingId === pm.id ? '...' : '✓ Çözüldü'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       {toast && (
         <Toast message={toast} onClose={() => setToast(null)} />
+      )}
+
+      {/* ── Confirm Modal ─────────────────────────────────────────────────────── */}
+      {confirmModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '32px', maxWidth: '440px', width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.25)', animation: 'fadeIn 0.2s ease' }}>
+            <div style={{ fontSize: '28px', textAlign: 'center', marginBottom: '12px' }}>📨</div>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: '0 0 12px', textAlign: 'center' }}>
+              Bildirim Gönderilecek
+            </h3>
+            <p style={{ fontSize: '14px', color: '#475569', textAlign: 'center', margin: '0 0 24px', lineHeight: 1.6 }}>
+              <strong>{selectedIds.length}</strong> misafire çıkış bildirim mesajı gönderilecek. Onaylıyor musunuz?
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button id="confirm-cancel-btn" onClick={() => setConfirmModalOpen(false)}
+                style={{ padding: '10px 24px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+                İptal
+              </button>
+              <button id="confirm-send-btn" onClick={handleConfirmSend}
+                style={{ padding: '10px 24px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 12px rgba(14,165,233,0.35)' }}>
+                ✅ Onayla ve Gönder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Send Loading Overlay ───────────────────────────────────────────────── */}
+      {sendLoading && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9001, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '40px', textAlign: 'center', boxShadow: '0 24px 64px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontSize: '40px', marginBottom: '16px' }}>⏳</div>
+            <p style={{ fontSize: '15px', color: '#475569', fontWeight: 600, margin: 0 }}>Bildirimler gönderiliyor…</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Result Modal ──────────────────────────────────────────────────────── */}
+      {resultModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9002, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '32px', maxWidth: '480px', width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.25)', animation: 'fadeIn 0.2s ease' }}>
+            <div style={{ fontSize: '28px', textAlign: 'center', marginBottom: '12px' }}>📊</div>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: '0 0 20px', textAlign: 'center' }}>
+              Gönderim Tamamlandı
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>
+              {resultModal.by_channel.telegram.sent > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: '#f0f9ff', borderRadius: '10px', border: '1px solid #bae6fd' }}>
+                  <span style={{ fontSize: '18px' }}>✅</span>
+                  <span style={{ fontSize: '14px', color: '#0369a1', fontWeight: 600 }}>{resultModal.by_channel.telegram.sent} Telegram gönderildi</span>
+                </div>
+              )}
+              {resultModal.by_channel.whatsapp.sent > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                  <span style={{ fontSize: '18px' }}>✅</span>
+                  <span style={{ fontSize: '14px', color: '#15803d', fontWeight: 600 }}>{resultModal.by_channel.whatsapp.sent} WhatsApp gönderildi</span>
+                </div>
+              )}
+              {resultModal.by_channel.telegram.failed > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: '#fef2f2', borderRadius: '10px', border: '1px solid #fecaca' }}>
+                  <span style={{ fontSize: '18px' }}>❌</span>
+                  <span style={{ fontSize: '14px', color: '#dc2626', fontWeight: 600 }}>{resultModal.by_channel.telegram.failed} Telegram gönderilemedi</span>
+                </div>
+              )}
+              {resultModal.skipped_no_contact > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: '#fefce8', borderRadius: '10px', border: '1px solid #fde68a' }}>
+                  <span style={{ fontSize: '18px' }}>⚠️</span>
+                  <span style={{ fontSize: '14px', color: '#92400e', fontWeight: 600 }}>İletişim kanalı olmayan: {resultModal.skipped_no_contact} misafir</span>
+                </div>
+              )}
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <button id="result-close-btn" onClick={() => setResultModal(null)}
+                style={{ padding: '10px 32px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #0f172a, #1e3a5f)', color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )
