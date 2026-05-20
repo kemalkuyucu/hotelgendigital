@@ -2,6 +2,12 @@
 
 import { useState, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
+
+const ParticleBackground = dynamic(
+  () => import('@/components/landing/ParticleBackground'),
+  { ssr: false }
+)
 
 interface Props {
   slug: string
@@ -83,24 +89,41 @@ export default function LoginClient({ slug }: Props) {
     <div
       style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+        background: 'linear-gradient(135deg, #0a0f1e 0%, #111827 50%, #0a0f1e 100%)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '24px',
         fontFamily: "'Inter', system-ui, sans-serif",
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
+      {/* Neural network particle background — dimmed so form stays legible */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
+        <ParticleBackground
+          particleId="login-particles"
+          opacity={0.35}
+          particleCount={40}
+          speed={0.35}
+          linkOpacity={0.10}
+          fpsLimit={30}
+          disableOnMobile={true}
+        />
+      </div>
       <div
         style={{
+          position: 'relative',
+          zIndex: 1,
           width: '100%',
           maxWidth: '420px',
-          background: 'rgba(255,255,255,0.05)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255,255,255,0.1)',
+          background: 'rgba(10,15,30,0.55)',
+          backdropFilter: 'blur(24px) saturate(1.4)',
+          WebkitBackdropFilter: 'blur(24px) saturate(1.4)',
+          border: '1px solid rgba(91,158,255,0.18)',
           borderRadius: '20px',
           padding: '48px 40px',
-          boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
+          boxShadow: '0 25px 60px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.04) inset',
         }}
       >
         {/* Logo */}
