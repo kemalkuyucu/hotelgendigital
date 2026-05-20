@@ -763,11 +763,14 @@ async function handleMessage(args: {
     // Check if conversation has inhouse_match_guest_id set
     const { data: convMatch } = await supa
       .from('conversations')
-      .select('inhouse_match_guest_id')
+      .select('inhouse_match_guest_id, multi_match_pending_room, multi_match_attempts, multi_match_notified')
       .eq('id', conversationId)
       .maybeSingle();
 
     const isLinkedToInhouse = !!(convMatch?.inhouse_match_guest_id);
+    const multiMatchPendingRoom = (convMatch?.multi_match_pending_room as string | null) ?? null;
+    const multiMatchAttempts = (convMatch?.multi_match_attempts as number) ?? 0;
+    const multiMatchNotified = (convMatch?.multi_match_notified as boolean) ?? false;
 
     if (!isLinkedToInhouse) {
       // Treat message as a room number attempt
@@ -865,13 +868,133 @@ async function handleMessage(args: {
           return;
         }
 
-        // Multiple matches → ask for name
+        // Multiple matches → save pending room + ask for name
+        await supa
+          .from('conversations')
+          .update({ multi_match_pending_room: roomAttempt, multi_match_attempts: 0 })
+          .eq('id', conversationId);
+
         await tg.sendMessage({
           chat_id: chatId,
           text: 'Birden fazla kayit goruldu. Lutfen adinizi yaziniz:',
         });
         return;
       }
+
+      // ── Modül 17.7-B: Çoklu eşleşme isim denemesi ─────────────────────────
+      // Not a room number, but we are waiting for a name (multi_match_pending_room set)
+      if (multiMatchPendingRoom) {
+        const nameAttempt = text.trim();
+        console.log(`[17.7-B] İsim denemesi: room=${multiMatchPendingRoom} name="${nameAttempt}" attempt=${multiMatchAttempts + 1}`);
+
+        // Query candidates for that room
+        const { data: candidates } = await supa
+          .from('inhouse_guests_v2')
+          .select('id, guest_name, room_number')
+          .eq('room_number', multiMatchPendingRoom)
+          .eq('status', 'active');
+
+        const normalise = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+        const matched = (candidates ?? []).find((c) =>
+          normalise(c.guest_name as string).includes(normalise(nameAttempt)),
+        );
+
+        if (matched) {
+          // ✅ Name matched — link and welcome
+          await supa
+            .from('inhouse_guests_v2')
+            .update({ telegram_id: userId })
+            .eq('id', matched.id);
+
+          await supa
+            .from('conversations')
+            .update({
+              inhouse_match_guest_id: matched.id,
+              multi_match_pending_room: null,
+              multi_match_attempts: 0,
+            })
+            .eq('id', conversationId);
+
+          console.log(`[17.7-B] İsim eşleşti → inhouse_guest_id=${matched.id} room=${matched.room_number}`);
+
+          await tg.sendMessage({
+            chat_id: chatId,
+            text: `Tesekkurler ${matched.guest_name}, sizin icin hazirim. Nasil yardimci olabilirim?`,
+          });
+          return;
+        }
+
+        // ❌ No match — increment attempts
+        const newAttempts = multiMatchAttempts + 1;
+        await supa
+          .from('conversations')
+          .update({ multi_match_attempts: newAttempts })
+          .eq('id', conversationId);
+
+        const MAX_MULTI_MATCH_ATTEMPTS = 3;
+
+        if (newAttempts >= MAX_MULTI_MATCH_ATTEMPTS && !multiMatchNotified) {
+          // ── Önbüro grubuna bildirim ────────────────────────────────────────
+          try {
+            const { data: foDept } = await supa
+              .from('departments')
+              .select('telegram_chat_id')
+              .eq('code', 'front_office')
+              .maybeSingle();
+
+            if (!foDept?.telegram_chat_id) {
+              console.warn('[17.7-B] front_office telegram_chat_id bulunamadı, bildirim atlandı');
+            } else {
+              const foChatId = Number(foDept.telegram_chat_id);
+
+              // Kaç misafir kayıtlı?
+              const { count: guestCount } = await supa
+                .from('inhouse_guests_v2')
+                .select('id', { count: 'exact', head: true })
+                .eq('room_number', multiMatchPendingRoom)
+                .eq('status', 'active');
+
+              const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://hotelgen-v2.vercel.app';
+              const frontOfficeUrl = `${appUrl}/hotel-admin/${hotelSlug}/front-office`;
+
+              const alertText =
+                `⚠️ ÇOKLU EŞLEŞME ÇÖZÜLEMEDİ\n\n` +
+                `Oda: ${multiMatchPendingRoom}\n` +
+                `Kayıtlı misafir sayısı: ${guestCount ?? (candidates ?? []).length}\n` +
+                `Misafir 3 denemede doğru ismi giremedi.\n\n` +
+                `Front-Office panelinden manuel eşleştirme gerekli:\n` +
+                `${frontOfficeUrl}\n\n` +
+                `Zaman: ${new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`;
+
+              await tg.sendMessage({ chat_id: foChatId, text: alertText });
+              console.log(`[17.7-B] Çoklu eşleşme bildirimi gönderildi → chatId=${foChatId} room=${multiMatchPendingRoom}`);
+            }
+
+            // Flag — tek seferlik bildirim
+            await supa
+              .from('conversations')
+              .update({ multi_match_notified: true })
+              .eq('id', conversationId);
+          } catch (notifyErr) {
+            console.error('[17.7-B] Çoklu eşleşme bildirimi gönderilemedi:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
+          }
+          // ── Modül 17.7-B SONU ────────────────────────────────────────────────
+
+          await tg.sendMessage({
+            chat_id: chatId,
+            text: 'Isminizi eslestiremedik. On buromuz sizinle iletisime gececek, lutfen bekleyiniz.',
+          });
+          return;
+        }
+
+        // Still within attempt limit — ask again
+        await tg.sendMessage({
+          chat_id: chatId,
+          text: 'Isminizi eslestiremedik. Lutfen tekrar adinizi yaziniz:',
+        });
+        return;
+      }
+      // ── Modül 17.7-B SONU (multi_match_pending_room yoksa) ────────────────
 
       // Not a room number and not linked → ask for room number
       await tg.sendMessage({
