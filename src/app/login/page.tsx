@@ -125,7 +125,7 @@ export default function LoginChooserPage() {
           {/* ── Yönetici Paneli Kartı ── */}
           <button
             className="login-card login-card-manager"
-            onClick={() => router.push('/manager/login')}
+            onClick={() => router.push('/admin/login')}
             type="button"
             id="yonetici-paneli-card"
           >
