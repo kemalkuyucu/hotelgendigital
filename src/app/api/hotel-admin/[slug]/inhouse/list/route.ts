@@ -18,25 +18,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getHotelAdminFromCookie } from '@/lib/hotel-admin/auth'
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
+import { getTurkeyToday, getTurkeyTomorrow } from '@/lib/date/turkeyTime'
 
 const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager']
-
-function getTodayISO(): string {
-  const d = new Date()
-  const y = d.getUTCFullYear()
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const dy = String(d.getUTCDate()).padStart(2, '0')
-  return `${y}-${m}-${dy}`
-}
-
-function getTomorrowISO(): string {
-  const d = new Date()
-  d.setUTCDate(d.getUTCDate() + 1)
-  const y = d.getUTCFullYear()
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const dy = String(d.getUTCDate()).padStart(2, '0')
-  return `${y}-${m}-${dy}`
-}
 
 // ─── Last notification lookup ─────────────────────────────────────────────────
 
@@ -167,10 +151,10 @@ export async function GET(
     let dateEnd: string
 
     if (filter === 'today') {
-      dateStart = getTodayISO()
+      dateStart = getTurkeyToday()
       dateEnd = dateStart
     } else if (filter === 'tomorrow') {
-      dateStart = getTomorrowISO()
+      dateStart = getTurkeyTomorrow()
       dateEnd = dateStart
     } else if (filter === 'range') {
       if (!startParam || !endParam) {

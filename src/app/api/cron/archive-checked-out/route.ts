@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getCentralSupabase } from '@/lib/supabase-client';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
+import { getTurkeyToday } from '@/lib/date/turkeyTime';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
   }
 
   const central = getCentralSupabase();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTurkeyToday(); // Modül 18: Europe/Istanbul timezone
 
   // Demo hotel özel client (bridge dışı)
   const demoUrl = process.env.DEMO_HOTEL_SUPABASE_URL;

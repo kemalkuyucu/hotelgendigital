@@ -18,6 +18,7 @@ import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
 // Modül 11: SLA imports
 import { handleSlaCallback } from '@/lib/sla/handle-callback';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
+import { getTurkeyToday } from '@/lib/date/turkeyTime'; // Modül 18: timezone fix
 import { sendForwardWithSlaButtons } from '@/lib/sla/send-forward-with-buttons';
 // Modül 15.4: Auto-file belge gönderme
 import {
@@ -1156,7 +1157,7 @@ async function handleMessage(args: {
   let needsReVerification = false;
 
   if (conversation.verified_inhouse_guest_id) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTurkeyToday(); // Modül 18: Europe/Istanbul timezone
 
     const { data: linkedGuest } = await supa
       .from('inhouse_guests')

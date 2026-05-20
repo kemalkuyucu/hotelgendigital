@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
+import { getTurkeyToday, getTurkeyTomorrow } from '@/lib/date/turkeyTime'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -75,17 +76,7 @@ interface PendingMatch {
 }
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
-
-function getTodayISO(): string {
-  const d = new Date()
-  return d.toISOString().split('T')[0]
-}
-
-function getTomorrowISO(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().split('T')[0]
-}
+// getTodayISO ve getTomorrowISO → Modül 18: turkeyTime helper'larına taşındı
 
 function formatDDMM(dateStr: string): string {
   if (!dateStr) return '—'
@@ -233,8 +224,8 @@ interface InhouseListClientProps {
 export default function InhouseListClient({ slug }: InhouseListClientProps) {
   // Filter state
   const [filter, setFilter] = useState<FilterType>('tomorrow')
-  const [rangeStart, setRangeStart] = useState<string>(getTodayISO())
-  const [rangeEnd, setRangeEnd] = useState<string>(getTomorrowISO())
+  const [rangeStart, setRangeStart] = useState<string>(getTurkeyToday())
+  const [rangeEnd, setRangeEnd] = useState<string>(getTurkeyTomorrow())
 
   // Data state
   const [guests, setGuests] = useState<InhouseGuest[]>([])
@@ -400,7 +391,7 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
     setConfirmModalOpen(false)
     setSendLoading(true)
 
-    const notificationDate = currentFilterDate ?? new Date().toISOString().split('T')[0]
+    const notificationDate = currentFilterDate ?? getTurkeyToday()
 
     try {
       const res = await fetch(
@@ -458,9 +449,9 @@ export default function InhouseListClient({ slug }: InhouseListClientProps) {
   const dateLabel = meta
     ? formatDateLabel(meta.dateStart ?? '', meta.dateEnd ?? '')
     : filter === 'today'
-    ? formatDateLabel(getTodayISO(), getTodayISO())
+    ? formatDateLabel(getTurkeyToday(), getTurkeyToday())
     : filter === 'tomorrow'
-    ? formatDateLabel(getTomorrowISO(), getTomorrowISO())
+    ? formatDateLabel(getTurkeyTomorrow(), getTurkeyTomorrow())
     : rangeStart && rangeEnd
     ? formatDateLabel(rangeStart, rangeEnd)
     : ''
