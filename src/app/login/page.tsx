@@ -17,7 +17,7 @@ const DEPARTMENTS = [
 ] as const;
 
 // Demo hotel slug (gerçek projede dinamik olur)
-const DEMO_HOTEL_SLUG = 'demo-hotel-resort-spa';
+const DEMO_HOTEL_SLUG = 'demo-hotel';
 
 export default function LoginChooserPage() {
   const router = useRouter();
