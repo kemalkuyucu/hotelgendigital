@@ -211,6 +211,36 @@ export async function POST(
     await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, hotelSlug, msg, tg, botToken });
   } catch (err) {
     console.error('[telegram] handleMessage error:', err);
+
+    // ── Modül 17.7-C: Bot kritik hata bildirimi ─────────────────────────────
+    // Önbüro grubuna bildirim gönder — sessizce yut, webhook 200 dön.
+    try {
+      const { data: foDept } = await supa
+        .from('departments')
+        .select('telegram_chat_id')
+        .eq('code', 'front_office')
+        .maybeSingle();
+
+      if (foDept?.telegram_chat_id) {
+        const foChatId = Number(foDept.telegram_chat_id);
+        const errorMessage = err instanceof Error ? err.message : 'Bilinmeyen hata';
+        const alertText =
+          `🔴 BOT HATASI\n\n` +
+          `Misafir mesaj attı, bot cevap veremedi.\n\n` +
+          `Chat ID: ${update.message?.chat.id ?? '—'}\n` +
+          `Otel: ${hotelSlug}\n` +
+          `Hata: ${errorMessage}\n` +
+          `Zaman: ${new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`;
+
+        await tg.sendMessage({ chat_id: foChatId, text: alertText });
+        console.log(`[17.7-C] Bot kritik hata bildirimi gönderildi → chatId=${foChatId}`);
+      } else {
+        console.warn('[17.7-C] front_office telegram_chat_id bulunamadı, bildirim atlandı');
+      }
+    } catch (notifyErr) {
+      console.error('[17.7-C] Bot kritik hata bildirimi gönderilemedi:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
+    }
+    // ── Modül 17.7-C SONU ────────────────────────────────────────────────────
   }
 
   return NextResponse.json({ ok: true });
