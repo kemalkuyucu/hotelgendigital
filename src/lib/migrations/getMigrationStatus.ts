@@ -78,8 +78,10 @@ export async function getMigrationStatus(
   const appliedVersionMap = new Map(appliedRows.map((r) => [r.version, r]));
 
   // 5) Başarıyla uygulananlar
+  // Not: v000 bootstrap kayıt manuel uygulanır (exec_sql RPC'nin kendisi),
+  // runner ve UI tarafı onu görmez/saymaz — filtrele.
   const applied = appliedRows
-    .filter((r) => r.success)
+    .filter((r) => r.success && r.version !== '000')
     .map((r) => ({
       version: r.version,
       name: r.name,

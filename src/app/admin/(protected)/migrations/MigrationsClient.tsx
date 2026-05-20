@@ -44,7 +44,7 @@ function DetailModal({
   status: StatusWithName;
   onClose: () => void;
 }) {
-  const allVersions = ['001', '002', '003', '004', '005', '006'];
+  const allVersions = ['001', '002', '003', '004', '005', '006', '008'];
   const appliedVersions = new Set(status.applied.map((a) => a.version));
 
   return (
@@ -135,6 +135,7 @@ function getPendingName(version: string) {
     '004': 'module15_iban',
     '005': 'module17_inhouse',
     '006': 'module17_notifications',
+    '008': 'module17_7_multi_match_flag',
   };
   return names[version] ?? 'bilinmeyen';
 }
