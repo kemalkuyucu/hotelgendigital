@@ -14,11 +14,15 @@ export async function loginAction(formData: FormData) {
   const supabase = getCentralSupabase()
   const { data: admin } = await supabase
     .from('master_admins')
-    .select('id, username, password_hash, is_active, failed_login_attempts, locked_until')
+    .select('id, username, password_hash, role, is_active, failed_login_attempts, locked_until')
     .eq('username', username)
     .single()
 
   if (!admin || !admin.is_active) redirect('/admin/login?error=invalid')
+
+  // GÜVENLİK: Sadece super_admin ve admin rolü giriş yapabilir
+  const ALLOWED_ROLES = ['super_admin', 'admin']
+  if (!ALLOWED_ROLES.includes(admin.role)) redirect('/admin/login?error=invalid')
   if (admin.locked_until && new Date(admin.locked_until) > new Date()) {
     redirect('/admin/login?error=locked')
   }

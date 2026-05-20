@@ -19,9 +19,11 @@
 
 insert into master_admins (username, password_hash, full_name, email, role, is_active)
 values
-  ('OzgurOzen',     'PLACEHOLDER_REPLACE_VIA_API', 'Özgür ÖZEN',    null, 'super_admin',  true),
-  ('KemalKuyucu',   'PLACEHOLDER_REPLACE_VIA_API', 'Kemal KUYUCU',  null, 'super_admin',  true),
-  ('AdminYonetici', 'PLACEHOLDER_REPLACE_VIA_API', 'Default Admin', null, 'default_admin', true)
+  ('OzgurOzen',     'PLACEHOLDER_REPLACE_VIA_API', 'Özgür ÖZEN',    null, 'super_admin', true),
+  ('KemalKuyucu',   'PLACEHOLDER_REPLACE_VIA_API', 'Kemal KUYUCU',  null, 'super_admin', true),
+  -- AdminYonetici: is_active=FALSE — manuel DB erişimi olmadan giriş YAPILAMAZ
+  -- Role 'admin' olarak düzeltildi; 'default_admin' rolüyle /admin erişimi engellenir
+  ('AdminYonetici', 'PLACEHOLDER_REPLACE_VIA_API', 'Default Admin', null, 'admin',       false)
 on conflict (username) do nothing;
 
 

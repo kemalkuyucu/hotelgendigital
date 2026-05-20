@@ -5,6 +5,13 @@ import { getCentralSupabase } from '@/lib/supabase-client'
 const COOKIE_NAME = 'hg_admin_session'
 const SESSION_HOURS = 12
 
+/**
+ * GÜVENLİK: Sadece bu roller /admin erişimine izin verir.
+ * 'default_admin' ve 'support' rolü admin paneline giremez.
+ */
+const ALLOWED_ADMIN_ROLES = ['super_admin', 'admin'] as const
+type AllowedAdminRole = (typeof ALLOWED_ADMIN_ROLES)[number]
+
 export async function createSession(adminId: string, ip: string, ua: string) {
   const token = crypto.randomBytes(32).toString('hex')
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
@@ -52,6 +59,12 @@ export async function getSessionAdmin() {
     .single()
 
   if (!admin || !admin.is_active) return null
+
+  // GÜVENLİK: default_admin, support veya tanımsız roller bloklanır
+  if (!ALLOWED_ADMIN_ROLES.includes(admin.role as AllowedAdminRole)) {
+    console.warn(`[session] Blocked role='${admin.role}' user='${admin.username}' from admin access`)
+    return null
+  }
 
   await supabase
     .from('master_admin_sessions')

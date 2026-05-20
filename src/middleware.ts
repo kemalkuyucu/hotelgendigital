@@ -1,5 +1,8 @@
 /**
- * src/proxy.ts — Merkezi güvenlik noktası (Next.js middleware karşılığı)
+ * src/middleware.ts — Merkezi güvenlik noktası (Next.js Edge Middleware)
+ *
+ * ⚠️  DOSYA ADI KRİTİK: Next.js sadece src/middleware.ts'i okur.
+ *     proxy.ts olarak kayıtlıysa middleware HİÇ çalışmaz!
  *
  * Korunan path'ler:
  *   /admin/*            → hg_admin_session cookie (master admin)
@@ -9,6 +12,9 @@
  *   - Cookie yoksa → /hotel-admin/[slug]/login
  *   - Cookie slug ≠ URL slug → /hotel-admin/[slug]/login
  *   - Hedef path için rol yetkili değilse → /hotel-admin/[slug]/dashboard
+ *
+ * GÜVENLİK FIX (2026-05-20): proxy.ts → middleware.ts rename.
+ *   Önceki dosya adı yüzünden /admin/* tamamen korumasızdı.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -89,10 +95,10 @@ const PATH_ROLE_MAP: Record<string, HotelAdminRole[]> = {
 }
 
 // ---------------------------------------------------------------------------
-// Main proxy function
+// Main middleware function — Next.js bu export'u otomatik olarak çalıştırır
 // ---------------------------------------------------------------------------
 
-export default async function proxy(req: NextRequest) {
+export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   // ── BÖLÜM 1: Master Admin (/admin/*) ──────────────────────────────────────
@@ -120,7 +126,7 @@ export default async function proxy(req: NextRequest) {
     // 1. Cookie kontrolü
     const token = req.cookies.get(HOTEL_COOKIE_NAME)?.value
     if (!token) {
-      console.log(`[proxy] No hotel session. path=${pathname}`)
+      console.log(`[middleware] No hotel session. path=${pathname}`)
       return NextResponse.redirect(
         new URL(`/hotel-admin/${urlSlug}/login`, req.url)
       )
@@ -129,7 +135,7 @@ export default async function proxy(req: NextRequest) {
     // 2. Token doğrulama
     const payload = await verifyHotelToken(token)
     if (!payload) {
-      console.log(`[proxy] Invalid hotel token. path=${pathname}`)
+      console.log(`[middleware] Invalid hotel token. path=${pathname}`)
       const res = NextResponse.redirect(
         new URL(`/hotel-admin/${urlSlug}/login`, req.url)
       )
@@ -139,7 +145,7 @@ export default async function proxy(req: NextRequest) {
 
     // 3. Slug eşleşme kontrolü
     if (payload.hotel_slug !== urlSlug) {
-      console.log(`[proxy] Slug mismatch. cookie=${payload.hotel_slug} url=${urlSlug}`)
+      console.log(`[middleware] Slug mismatch. cookie=${payload.hotel_slug} url=${urlSlug}`)
       return NextResponse.redirect(
         new URL(`/hotel-admin/${urlSlug}/login`, req.url)
       )
@@ -153,7 +159,7 @@ export default async function proxy(req: NextRequest) {
       const userRole = payload.role as HotelAdminRole
       if (!allowedRoles.includes(userRole)) {
         console.log(
-          `[proxy] Access denied. role=${userRole} segment=${firstSegment}`
+          `[middleware] Access denied. role=${userRole} segment=${firstSegment}`
         )
         return NextResponse.redirect(
           new URL(`/hotel-admin/${urlSlug}/dashboard`, req.url)
