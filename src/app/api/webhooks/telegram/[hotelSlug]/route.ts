@@ -704,12 +704,12 @@ async function handleMessage(args: {
     if (startConv?.inhouse_match_guest_id) {
       await tg.sendMessage({
         chat_id: chatId,
-        text: 'Merhaba! HotelGen Demo Hotel asistaninim. Nasil yardimci olabilirim?',
+        text: 'Merhaba! HotelGen Demo Hotel\'e hos geldiniz. Nasil yardimci olabilirim?',
       });
     } else {
       await tg.sendMessage({
         chat_id: chatId,
-        text: 'Merhaba! HotelGen Demo Hotel asistaninim. Size yardimci olabilmem icin lutfen oda numaranizi yaziniz.',
+        text: 'Merhaba! HotelGen Demo Hotel\'e hos geldiniz. Size daha iyi hizmet verebilmemiz icin lutfen oda numaranizi yaziniz.',
       });
     }
     return;
@@ -792,13 +792,13 @@ async function handleMessage(args: {
               const frontOfficeUrl = `https://hotelgen-v2.vercel.app/hotel-admin/${hotelSlug}/front-office`;
 
               const alertText =
-                `⚠️ BEKLEYEN ESLESME\n\n` +
-                `Misafir oda numarasiyla eslesemedi.\n\n` +
+                `⚠️ KONAKLAYAN MISAFIR ESLESMIYOR\n\n` +
+                `Misafirden alinan oda numarasi sistemdeki in-house listesiyle eslesmedi. Lutfen guncel in-house listesini sisteme yeniden yukleyin ve bu misafiri manuel olarak eslestirin.\n\n` +
                 `📱 Platform: Telegram\n` +
                 `🆔 Misafir ID: ${userId}\n` +
                 `🚪 Denenen Oda: ${roomAttempt}\n` +
                 `🕐 Saat: ${timeStr}\n\n` +
-                `Lutfen Front-Office panelinden manuel eslestirin.\n` +
+                `👉 Front-Office paneli:\n` +
                 frontOfficeUrl;
 
               await tg.sendMessage({ chat_id: foChatId, text: alertText });
@@ -846,7 +846,7 @@ async function handleMessage(args: {
       // Not a room number and not linked → ask for room number
       await tg.sendMessage({
         chat_id: chatId,
-        text: 'Merhaba! HotelGen Demo Hotel asistaninim. Size yardimci olabilmem icin lutfen oda numaranizi yaziniz.',
+        text: 'Merhaba! HotelGen Demo Hotel\'e hos geldiniz. Size daha iyi hizmet verebilmemiz icin lutfen oda numaranizi yaziniz.',
       });
       return;
     }
