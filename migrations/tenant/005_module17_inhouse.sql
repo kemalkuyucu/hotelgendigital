@@ -5,8 +5,6 @@
 --           inhouse_archive (ek kolonlar), inhouse_guests (v1 ek kolonlar)
 -- =============================================================================
 
-BEGIN;
-
 -- ---------------------------------------------------------------------------
 -- inhouse_guests_v2 (Modül 17.a ana tablo)
 -- ---------------------------------------------------------------------------
@@ -85,4 +83,3 @@ CREATE INDEX IF NOT EXISTS idx_inhouse_upload_history_created_at
 ALTER TABLE inhouse_guests
   ADD COLUMN IF NOT EXISTS gender TEXT;
 
-COMMIT;

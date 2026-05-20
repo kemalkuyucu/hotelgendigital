@@ -4,8 +4,6 @@
 -- ALTER: conversations — multi_match_* kolonları
 -- =============================================================================
 
-BEGIN;
-
 -- Çoklu eşleşme durumunda misafirin girdiği oda numarasını saklar
 ALTER TABLE conversations
   ADD COLUMN IF NOT EXISTS multi_match_pending_room TEXT;
@@ -21,4 +19,3 @@ ALTER TABLE conversations
 -- PostgREST schema cache'ini yenile
 NOTIFY pgrst, 'reload schema';
 
-COMMIT;

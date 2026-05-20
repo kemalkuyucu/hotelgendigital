@@ -8,10 +8,7 @@
 -- !!! Üretim ortamında çalıştırmadan önce yedeği doğrulayın.
 -- =============================================================================
 
-BEGIN;
-
 -- messages tablosu: 0 kayıt, 0 kod referansı, bot_messages ile mükerrer.
 -- Kaldırmadan önce: SELECT COUNT(*) FROM messages; sonucu 0 olduğunu teyit edin.
 DROP TABLE IF EXISTS messages CASCADE;
 
-COMMIT;

@@ -20,6 +20,9 @@ export interface LoadMigrationsOptions {
  * migrations/tenant/ klasöründeki .sql dosyalarını okur,
  * versiyon numarasına göre sıralar ve döndürür.
  *
+ * 000_ bootstrap files are manual-only, runner skips — chicken-egg:
+ * exec_sql RPC'yi yaratan dosya runner tarafından çalıştırılamaz.
+ *
  * 007_drop_deprecated.sql varsayılan olarak DAHIL EDİLMEZ.
  * opts.includeDestructive = true ile dahil edilir.
  */
@@ -39,6 +42,12 @@ export function loadMigrations(opts: LoadMigrationsOptions = {}): MigrationFile[
 
     const version = match[1]!;
     const name = match[2]!;
+
+    // 000_ bootstrap files are manual-only, runner skips
+    // exec_sql RPC'yi yaratan dosyadır — runner onu çalıştıramaz (chicken-egg).
+    if (version === '000') {
+      continue;
+    }
 
     // Destructive dosyayı filtrele
     if (version === DESTRUCTIVE_VERSION && !includeDestructive) {

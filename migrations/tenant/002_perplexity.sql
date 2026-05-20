@@ -3,8 +3,6 @@
 -- Modül 14.b — Perplexity AI keşif tablosu
 -- =============================================================================
 
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS perplexity_discoveries (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   interest_tag  TEXT NOT NULL,
@@ -26,4 +24,3 @@ CREATE INDEX IF NOT EXISTS idx_perplexity_discoveries_expires_at
   ON perplexity_discoveries(expires_at)
   WHERE expires_at IS NOT NULL;
 
-COMMIT;

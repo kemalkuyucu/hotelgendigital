@@ -4,8 +4,6 @@
 -- (Modül 16.b safety routing Central DB'de kalır; tenant'ta sadece bu tablo)
 -- =============================================================================
 
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS sla_events (
   id                              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id                 UUID NOT NULL REFERENCES conversations(id),
@@ -44,4 +42,3 @@ CREATE INDEX IF NOT EXISTS idx_sla_events_sla_deadline
   ON sla_events(sla_deadline)
   WHERE final_status IS NULL;
 
-COMMIT;

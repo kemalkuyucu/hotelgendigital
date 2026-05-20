@@ -10,8 +10,6 @@
 -- technical_staff_subcategories, verification_attempts
 -- =============================================================================
 
-BEGIN;
-
 -- ---------------------------------------------------------------------------
 -- guests
 -- ---------------------------------------------------------------------------
@@ -608,4 +606,3 @@ CREATE TABLE IF NOT EXISTS knowledge_sections (
   source_document_id UUID
 );
 
-COMMIT;

@@ -5,8 +5,6 @@
 -- gerekli index ve constraint'leri ekler)
 -- =============================================================================
 
-BEGIN;
-
 -- hotel_documents.delivery_policy için check constraint (güvenli ekleme)
 DO $$ BEGIN
   ALTER TABLE hotel_documents
@@ -31,4 +29,3 @@ ALTER TABLE hotel_documents
 ALTER TABLE hotel_documents
   ADD COLUMN IF NOT EXISTS display_text TEXT;
 
-COMMIT;

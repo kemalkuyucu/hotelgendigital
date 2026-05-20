@@ -2,6 +2,7 @@
 // src/lib/migrations/seedBaseline.ts
 // Verilen hotel_slug için schema_migrations'a 001-006 baseline kayıtları ekler.
 // ON CONFLICT DO NOTHING (idempotent).
+// 000_bootstrap dâhil edilmez — manual-only (exec_sql RPC'yi yaratan dosya).
 // 007 dahil edilmez.
 // =============================================================================
 
@@ -24,6 +25,8 @@ export interface SeedBaselineResult {
   finalStatus: MigrationStatusReport;
 }
 
+// 000_bootstrap dâhil edilmez — manual-only, runner skip eder (chicken-egg).
+// 007 dâhil edilmez — destructive, sadece --include-destructive ile çalışır.
 const BASELINE_VERSIONS = [
   { version: '001', name: 'initial_schema' },
   { version: '002', name: 'perplexity' },

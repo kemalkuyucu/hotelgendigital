@@ -6,8 +6,6 @@
 -- ALTER: inhouse_guests_v2 (telegram_id, whatsapp_id zaten 005'te var)
 -- =============================================================================
 
-BEGIN;
-
 -- ---------------------------------------------------------------------------
 -- late_checkout_notifications (Modül 17.b)
 -- ---------------------------------------------------------------------------
@@ -81,4 +79,3 @@ ALTER TABLE conversations
 ALTER TABLE conversations
   ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMPTZ;
 
-COMMIT;
