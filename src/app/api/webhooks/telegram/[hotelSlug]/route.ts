@@ -754,7 +754,15 @@ async function handleMessage(args: {
           .eq('status', 'active');
 
         if (!roomMatches || roomMatches.length === 0) {
-          // No match → log pending, notify reception
+          // No match → (1) misafire hemen cevap, (2) DB'ye kaydet, (3) önbüro bildirimi
+
+          // ── ADIM 1: Misafire önce cevap ver (misafir beklesin) ────────────
+          await tg.sendMessage({
+            chat_id: chatId,
+            text: 'Belirtilen oda numarasinda kayit bulunamadi. Ondan emin olmak icin resepsiyonu bilgilendiriyorum, lutfen bekleyin.',
+          });
+
+          // ── ADIM 2: pending_guest_matches tablosuna kaydet ────────────────
           await supa.from('pending_guest_matches').insert({
             telegram_id: userId,
             platform: 'telegram',
@@ -763,23 +771,24 @@ async function handleMessage(args: {
           });
           console.log(`[17c] No inhouse match for room=${roomAttempt}, logged pending_guest_match`);
 
-          // ── MODÜL 17.7: Anlık ön büro Telegram bildirimi ──────────────────
-          void (async () => {
-            try {
-              const { data: foDept } = await supa
-                .from('departments')
-                .select('telegram_chat_id')
-                .eq('code', 'front_office')
-                .maybeSingle();
+          // ── ADIM 3 (MODÜL 17.7): Önbüro grubuna anlık Telegram bildirimi ──
+          // void yerine await — Vercel Hobby'de void fire-and-forget response
+          // sonrası kill edildiğinden bildirim gitmiyordu.
+          try {
+            const { data: foDept } = await supa
+              .from('departments')
+              .select('telegram_chat_id')
+              .eq('code', 'front_office')
+              .maybeSingle();
 
-              if (!foDept?.telegram_chat_id) {
-                console.warn('[17.7] front_office telegram_chat_id bulunamadı, bildirim atlandı');
-                return;
-              }
-
+            if (!foDept?.telegram_chat_id) {
+              console.warn('[17.7] front_office telegram_chat_id bulunamadı, bildirim atlandı');
+            } else {
               const foChatId = Number(foDept.telegram_chat_id);
               const now = new Date();
-              const timeStr = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+              const timeStr =
+                `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')} ` +
+                `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
               const frontOfficeUrl = `https://hotelgen-v2.vercel.app/hotel-admin/${hotelSlug}/front-office`;
 
               const alertText =
@@ -794,16 +803,12 @@ async function handleMessage(args: {
 
               await tg.sendMessage({ chat_id: foChatId, text: alertText });
               console.log(`[17.7] Ön büro bildirimi gönderildi → chatId=${foChatId} room=${roomAttempt}`);
-            } catch (notifyErr) {
-              console.error('[17.7] Ön büro Telegram bildirimi gönderilemedi:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
             }
-          })();
+          } catch (notifyErr) {
+            console.error('[17.7] Ön büro Telegram bildirimi gönderilemedi:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
+          }
           // ── MODÜL 17.7 SONU ───────────────────────────────────────────────
 
-          await tg.sendMessage({
-            chat_id: chatId,
-            text: 'Belirtilen oda numarasinda kayit bulunamadi. Ondan emin olmak icin resepsiyonu bilgilendiriyorum, lutfen bekleyin.',
-          });
           return;
         }
 
