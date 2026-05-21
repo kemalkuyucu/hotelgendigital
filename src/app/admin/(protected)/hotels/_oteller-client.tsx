@@ -300,7 +300,7 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
           </p>
         </div>
         <Link
-          href="/admin/hotels/new"
+          href="/admin/hotels/onboarding"
           className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"
         >
           + Yeni Otel
@@ -427,7 +427,7 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
                   {tab === 'active' ? (
                     <>
                       Henüz otel eklenmemiş.{' '}
-                      <Link href="/admin/hotels/new" className="text-blue-600 hover:underline">
+                      <Link href="/admin/hotels/onboarding" className="text-blue-600 hover:underline">
                         İlk oteli ekle →
                       </Link>
                     </>
