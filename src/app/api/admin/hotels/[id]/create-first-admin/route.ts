@@ -7,8 +7,8 @@ import { hashPassword } from '@/lib/auth/password'
 
 // =============================================================================
 // POST /api/admin/hotels/[id]/create-first-admin
-// Body: { username, password, email }
-// Tenant DB'ye hotel_users INSERT (bcrypt cost=12, role='owner').
+// Body: { username, password, email, full_name? }
+// Tenant DB'ye hotel_admin_users INSERT (bcrypt cost=12, role='hotel_owner').
 // is_healthy = true UPDATE (bridge_credentials).
 // Sadece super_admin rolü kullanabilir.
 // =============================================================================
@@ -27,14 +27,14 @@ export async function POST(
 
   const { id } = await params
 
-  let body: { username?: string; password?: string; email?: string }
+  let body: { username?: string; password?: string; email?: string; full_name?: string }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { username, password, email } = body
+  const { username, password, email, full_name } = body
   if (!username || !password || !email) {
     return NextResponse.json(
       { ok: false, error: 'username, password ve email gerekli' },
@@ -61,12 +61,12 @@ export async function POST(
   // 2) Şifreyi hash'le (bcrypt cost=12)
   const passwordHash = await hashPassword(password)
 
-  // 3) hotel_users tablosuna INSERT
-  const { error: insertError } = await tenantClient.from('hotel_users').insert({
+  // 3) hotel_admin_users tablosuna INSERT
+  const { error: insertError } = await tenantClient.from('hotel_admin_users').insert({
     username,
     password_hash: passwordHash,
-    email,
-    role: 'owner',
+    full_name: full_name ?? username,
+    role: 'hotel_owner',
     is_active: true,
   })
 
@@ -98,7 +98,7 @@ export async function POST(
     action: 'hotel.onboarding.first_admin_created',
     resourceType: 'hotel',
     hotelId: id,
-    details: { username, email, role: 'owner' },
+    details: { username, email, role: 'hotel_owner' },
   })
 
   await logAudit({
