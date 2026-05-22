@@ -3,6 +3,12 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
+
+const ParticleBackground = dynamic(
+  () => import('@/components/landing/ParticleBackground'),
+  { ssr: false }
+)
 
 type PackageRef = { display_name: string }
 
@@ -289,12 +295,34 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
   } as React.CSSProperties)
 
   return (
-    <div className="p-8 space-y-6">
+    <div
+      style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #0a0f1e 0%, #111827 50%, #0a0f1e 100%)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Particle background */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
+        <ParticleBackground
+          particleId="hotels-admin-particles"
+          opacity={0.35}
+          particleCount={40}
+          speed={0.35}
+          linkOpacity={0.10}
+          fpsLimit={30}
+          disableOnMobile={true}
+        />
+      </div>
+
+      {/* Content layer */}
+      <div className="p-8 space-y-6" style={{ position: 'relative', zIndex: 10 }}>
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Oteller</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-3xl font-bold" style={{ color: '#f8fafc' }}>Oteller</h1>
+          <p className="mt-1" style={{ color: '#94a3b8' }}>
             {activeHotels.length} aktif
             {deletedHotels.length > 0 && ` · ${deletedHotels.length} silinmiş`}
           </p>
@@ -343,27 +371,36 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{
+          background: 'rgba(255,255,255,0.06)',
+          backdropFilter: 'blur(20px) saturate(1.4)',
+          WebkitBackdropFilter: 'blur(20px) saturate(1.4)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        }}
+      >
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Otel</th>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Slug</th>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Paket</th>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Durum</th>
+            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)' }}>
+              <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Otel</th>
+              <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Slug</th>
+              <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Paket</th>
+              <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Durum</th>
               {tab === 'deleted' && (
-                <th className="text-left p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Silinme</th>
+                <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Silinme</th>
               )}
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">İşlemler</th>
+              <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>İşlemler</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {displayed.length > 0 ? (
               displayed.map((h) => (
-                <tr key={h.id} className={`hover:bg-gray-50 transition-colors ${h.deleted_at ? 'opacity-70' : ''}`}>
+                <tr key={h.id} className={`transition-colors ${h.deleted_at ? 'opacity-60' : ''}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                   <td className="p-4">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900">{h.name}</span>
+                      <span className="font-medium" style={{ color: '#f1f5f9' }}>{h.name}</span>
                       {h.is_demo && (
                         <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
                           DEMO
@@ -371,9 +408,9 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
                       )}
                     </div>
                   </td>
-                  <td className="p-4 text-gray-500 font-mono text-sm">{h.slug}</td>
-                  <td className="p-4 text-gray-700 text-sm">
-                    {getPackageName(h.packages) ?? <span className="text-gray-400">—</span>}
+                  <td className="p-4 font-mono text-sm" style={{ color: '#64748b' }}>{h.slug}</td>
+                  <td className="p-4 text-sm" style={{ color: '#cbd5e1' }}>
+                    {getPackageName(h.packages) ?? <span style={{ color: '#475569' }}>—</span>}
                   </td>
                   <td className="p-4">
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusBadge(h.status)}`}>
@@ -381,11 +418,11 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
                     </span>
                   </td>
                   {tab === 'deleted' && (
-                    <td className="p-4 text-xs text-gray-500">
+                    <td className="p-4 text-xs" style={{ color: '#64748b' }}>
                       {h.deleted_at ? (
                         <div>
                           <div>{new Date(h.deleted_at).toLocaleDateString('tr-TR')}</div>
-                          {h.deleted_by && <div className="text-gray-400">@{h.deleted_by}</div>}
+                          {h.deleted_by && <div style={{ color: '#475569' }}>@{h.deleted_by}</div>}
                         </div>
                       ) : '—'}
                     </td>
@@ -423,11 +460,11 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
               ))
             ) : (
               <tr>
-                <td colSpan={tab === 'deleted' ? 6 : 5} className="p-8 text-center text-gray-400 text-sm">
+                <td colSpan={tab === 'deleted' ? 6 : 5} className="p-8 text-center text-sm" style={{ color: '#64748b' }}>
                   {tab === 'active' ? (
                     <>
                       Henüz otel eklenmemiş.{' '}
-                      <Link href="/admin/hotels/onboarding" className="text-blue-600 hover:underline">
+                      <Link href="/admin/hotels/onboarding" style={{ color: '#60a5fa' }} className="hover:underline">
                         İlk oteli ekle →
                       </Link>
                     </>
@@ -441,14 +478,15 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
         </table>
       </div>
 
-      {/* Delete modal */}
-      {deleteTarget && (
-        <DeleteModal
-          hotel={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onDeleted={refresh}
-        />
-      )}
+        {/* Delete modal */}
+        {deleteTarget && (
+          <DeleteModal
+            hotel={deleteTarget}
+            onClose={() => setDeleteTarget(null)}
+            onDeleted={refresh}
+          />
+        )}
+      </div>
     </div>
   )
 }
