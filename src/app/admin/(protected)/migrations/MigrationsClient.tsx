@@ -4,6 +4,7 @@
 // src/app/admin/(protected)/migrations/MigrationsClient.tsx
 // Client Component — Migration yönetim UI (glassmorphism dark theme)
 // Modül 21 Adım 2: Central DB Migration UI + dry-run/apply entegrasyonu
+// Fix: stale build cache temizlendi, Vercel redeploy tetiklendi (2026-05-22)
 // =============================================================================
 
 import { useState, useCallback, useEffect } from 'react';
