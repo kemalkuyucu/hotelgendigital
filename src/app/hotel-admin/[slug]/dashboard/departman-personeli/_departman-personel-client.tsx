@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import type { DepartmentKey } from '@/lib/hotel-admin/types'
 import { deptLabel } from '@/lib/hotel-admin/types'
 
@@ -24,6 +24,14 @@ interface Props {
   adminRoleLabel: string
   allowedDepts: DepartmentKey[]
   isOwner: boolean
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+type ToastType = 'success' | 'error' | 'info'
+interface Toast {
+  id: number
+  type: ToastType
+  message: string
 }
 
 // ─── Departman renk paleti ────────────────────────────────────────────────────
@@ -145,10 +153,10 @@ function StatusBadge({ active }: { active: boolean }) {
 }
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
-function SkeletonRow() {
+function SkeletonRow({ cols }: { cols: number }) {
   return (
     <tr>
-      {[1, 2, 3, 4, 5, 6].map(i => (
+      {Array.from({ length: cols }).map((_, i) => (
         <td key={i} style={{ padding: '14px 16px' }}>
           <div style={{
             height: '14px',
@@ -159,6 +167,446 @@ function SkeletonRow() {
         </td>
       ))}
     </tr>
+  )
+}
+
+// ─── Toast Container ──────────────────────────────────────────────────────────
+function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: number) => void }) {
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: '28px',
+      right: '28px',
+      zIndex: 9999,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+      maxWidth: '380px',
+      pointerEvents: 'none',
+    }}>
+      {toasts.map(t => (
+        <div
+          key={t.id}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '14px 18px',
+            borderRadius: '12px',
+            backdropFilter: 'blur(16px)',
+            background:
+              t.type === 'success' ? 'rgba(22,163,74,0.85)' :
+              t.type === 'error'   ? 'rgba(185,28,28,0.85)' :
+                                     'rgba(37,99,235,0.85)',
+            border: `1px solid ${
+              t.type === 'success' ? 'rgba(74,222,128,0.4)' :
+              t.type === 'error'   ? 'rgba(248,113,113,0.4)' :
+                                     'rgba(147,197,253,0.4)'
+            }`,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            color: '#f8fafc',
+            fontSize: '13.5px',
+            fontWeight: 500,
+            pointerEvents: 'auto',
+            animation: 'fadeIn 0.25s ease',
+            cursor: 'pointer',
+          }}
+          onClick={() => onRemove(t.id)}
+        >
+          <span style={{ fontSize: '18px', flexShrink: 0 }}>
+            {t.type === 'success' ? '✅' : t.type === 'error' ? '❌' : 'ℹ️'}
+          </span>
+          <span style={{ flex: 1 }}>{t.message}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Personel Ekle Modal ──────────────────────────────────────────────────────
+interface AddStaffModalProps {
+  slug: string
+  onClose: () => void
+  onSuccess: (row: StaffRow) => void
+  onToast: (type: ToastType, message: string) => void
+}
+
+function AddStaffModal({ slug, onClose, onSuccess, onToast }: AddStaffModalProps) {
+  const [fullName, setFullName] = useState('')
+  const [whatsappId, setWhatsappId] = useState('')
+  const [telegramId, setTelegramId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState<{ fullName?: string; platform?: string }>({})
+  const nameRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    nameRef.current?.focus()
+    // ESC ile kapat
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
+  function validate(): boolean {
+    const errs: typeof errors = {}
+    if (!fullName.trim()) errs.fullName = 'Ad Soyad zorunludur.'
+    if (!whatsappId.trim() && !telegramId.trim()) errs.platform = 'En az bir platform ID\'si girin (WhatsApp veya Telegram).'
+    setErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validate()) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/hotel-admin/${slug}/department-staff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: fullName.trim(),
+          whatsapp_id: whatsappId.trim() || undefined,
+          telegram_id: telegramId.trim() || undefined,
+        }),
+      })
+      const json = await res.json() as { staff?: StaffRow; error?: string }
+      if (!res.ok) {
+        onToast('error', json.error ?? `Hata: HTTP ${res.status}`)
+        return
+      }
+      onSuccess(json.staff!)
+      onToast('success', `"${fullName.trim()}" başarıyla eklendi.`)
+      onClose()
+    } catch {
+      onToast('error', 'Bağlantı hatası. Lütfen tekrar deneyin.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.7)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{
+        background: 'linear-gradient(145deg, #1e293b 0%, #0f172a 100%)',
+        border: '1px solid rgba(255,255,255,0.12)',
+        borderRadius: '20px',
+        padding: '32px',
+        width: '100%',
+        maxWidth: '480px',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+        animation: 'fadeIn 0.2s ease',
+      }}>
+        {/* Modal başlık */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+          <div>
+            <h2 style={{ color: '#f1f5f9', fontSize: '18px', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>
+              👤 Personel Ekle
+            </h2>
+            <p style={{ color: '#64748b', fontSize: '12.5px', margin: '4px 0 0' }}>
+              Departmanınıza yeni personel ekleyin
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.07)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '8px',
+              color: '#94a3b8',
+              fontSize: '16px',
+              width: '36px', height: '36px',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'background 0.15s',
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={e => void handleSubmit(e)}>
+          {/* Ad Soyad */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', fontWeight: 600, marginBottom: '8px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Ad Soyad <span style={{ color: '#f87171' }}>*</span>
+            </label>
+            <input
+              ref={nameRef}
+              type="text"
+              value={fullName}
+              onChange={e => { setFullName(e.target.value); setErrors(p => ({ ...p, fullName: undefined })) }}
+              placeholder="Örn: Ahmet Yılmaz"
+              style={{
+                width: '100%',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: `1px solid ${errors.fullName ? 'rgba(248,113,113,0.6)' : 'rgba(255,255,255,0.1)'}`,
+                background: 'rgba(255,255,255,0.06)',
+                color: '#e2e8f0',
+                fontSize: '14px',
+                outline: 'none',
+                transition: 'border-color 0.15s',
+                boxSizing: 'border-box',
+              }}
+            />
+            {errors.fullName && (
+              <p style={{ color: '#f87171', fontSize: '11.5px', margin: '5px 0 0' }}>⚠ {errors.fullName}</p>
+            )}
+          </div>
+
+          {/* Platform ID'leri — yan yana veya alt alta */}
+          <div style={{ marginBottom: errors.platform ? '8px' : '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+
+              {/* WhatsApp — yeşil */}
+              <div>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  color: '#22c55e', fontSize: '12px', fontWeight: 700,
+                  marginBottom: '8px', letterSpacing: '0.03em',
+                }}>
+                  📱 <span style={{ borderBottom: '2px solid #22c55e' }}>WhatsApp ID</span>
+                </label>
+                <input
+                  type="text"
+                  value={whatsappId}
+                  onChange={e => { setWhatsappId(e.target.value); setErrors(p => ({ ...p, platform: undefined })) }}
+                  placeholder="905551234567"
+                  style={{
+                    width: '100%',
+                    padding: '11px 12px',
+                    borderRadius: '10px',
+                    border: `1px solid ${errors.platform ? 'rgba(248,113,113,0.4)' : 'rgba(34,197,94,0.25)'}`,
+                    background: 'rgba(34,197,94,0.06)',
+                    color: '#4ade80',
+                    fontSize: '13px',
+                    outline: 'none',
+                    fontFamily: "'Courier New', monospace",
+                    transition: 'border-color 0.15s',
+                    boxSizing: 'border-box',
+                  }}
+                  onFocus={e => { e.currentTarget.style.borderColor = 'rgba(34,197,94,0.55)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(34,197,94,0.12)' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = errors.platform ? 'rgba(248,113,113,0.4)' : 'rgba(34,197,94,0.25)'; e.currentTarget.style.boxShadow = 'none' }}
+                />
+                <p style={{ color: '#4ade80', fontSize: '10.5px', opacity: 0.65, margin: '4px 0 0' }}>Uluslararası format</p>
+              </div>
+
+              {/* Telegram — mavi */}
+              <div>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  color: '#38bdf8', fontSize: '12px', fontWeight: 700,
+                  marginBottom: '8px', letterSpacing: '0.03em',
+                }}>
+                  ✈️ <span style={{ borderBottom: '2px solid #38bdf8' }}>Telegram ID</span>
+                </label>
+                <input
+                  type="text"
+                  value={telegramId}
+                  onChange={e => { setTelegramId(e.target.value); setErrors(p => ({ ...p, platform: undefined })) }}
+                  placeholder="Sayısal Chat ID"
+                  style={{
+                    width: '100%',
+                    padding: '11px 12px',
+                    borderRadius: '10px',
+                    border: `1px solid ${errors.platform ? 'rgba(248,113,113,0.4)' : 'rgba(56,189,248,0.25)'}`,
+                    background: 'rgba(56,189,248,0.06)',
+                    color: '#7dd3fc',
+                    fontSize: '13px',
+                    outline: 'none',
+                    fontFamily: "'Courier New', monospace",
+                    transition: 'border-color 0.15s',
+                    boxSizing: 'border-box',
+                  }}
+                  onFocus={e => { e.currentTarget.style.borderColor = 'rgba(56,189,248,0.55)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(56,189,248,0.12)' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = errors.platform ? 'rgba(248,113,113,0.4)' : 'rgba(56,189,248,0.25)'; e.currentTarget.style.boxShadow = 'none' }}
+                />
+                <p style={{ color: '#7dd3fc', fontSize: '10.5px', opacity: 0.65, margin: '4px 0 0' }}>Sayısal Chat ID</p>
+              </div>
+            </div>
+
+            {errors.platform && (
+              <p style={{ color: '#f87171', fontSize: '11.5px', margin: '8px 0 0' }}>⚠ {errors.platform}</p>
+            )}
+          </div>
+
+          {/* Info notu */}
+          <div style={{
+            marginBottom: '24px',
+            padding: '10px 14px',
+            borderRadius: '8px',
+            background: 'rgba(99,102,241,0.08)',
+            border: '1px solid rgba(99,102,241,0.2)',
+            fontSize: '11.5px',
+            color: '#94a3b8',
+          }}>
+            🔒 Departman otomatik atanır — kendi departmanınıza eklenir.
+          </div>
+
+          {/* Butonlar */}
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              style={{
+                flex: 1,
+                padding: '12px',
+                borderRadius: '10px',
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.05)',
+                color: '#94a3b8',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              İptal
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                flex: 2,
+                padding: '12px',
+                borderRadius: '10px',
+                border: 'none',
+                background: loading
+                  ? 'rgba(99,102,241,0.4)'
+                  : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s',
+                boxShadow: loading ? 'none' : '0 4px 16px rgba(99,102,241,0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+            >
+              {loading ? (
+                <>
+                  <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                  Ekleniyor...
+                </>
+              ) : '✓ Personel Ekle'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Arşiv Onay Modalı ────────────────────────────────────────────────────────
+interface ConfirmModalProps {
+  staff: StaffRow
+  onConfirm: () => void
+  onClose: () => void
+  loading: boolean
+}
+
+function ConfirmModal({ staff, onConfirm, onClose, loading }: ConfirmModalProps) {
+  const isArchiving = staff.is_active
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.7)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{
+        background: 'linear-gradient(145deg, #1e293b 0%, #0f172a 100%)',
+        border: '1px solid rgba(255,255,255,0.12)',
+        borderRadius: '20px',
+        padding: '32px',
+        width: '100%',
+        maxWidth: '420px',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+        animation: 'fadeIn 0.2s ease',
+        textAlign: 'center',
+      }}>
+        <div style={{ fontSize: '40px', marginBottom: '16px' }}>
+          {isArchiving ? '📦' : '♻️'}
+        </div>
+        <h3 style={{ color: '#f1f5f9', fontSize: '17px', fontWeight: 800, margin: '0 0 10px', letterSpacing: '-0.01em' }}>
+          {isArchiving ? 'Personeli Arşivle' : 'Personeli Geri Al'}
+        </h3>
+        <p style={{ color: '#94a3b8', fontSize: '13.5px', margin: '0 0 6px', lineHeight: 1.6 }}>
+          <strong style={{ color: '#e2e8f0' }}>{staff.full_name}</strong> adlı personel
+          {isArchiving
+            ? ' arşivlenecek. Verisi silinmez, istediğinizde geri alabilirsiniz.'
+            : ' tekrar aktif edilecek.'}
+        </p>
+        {isArchiving && (
+          <p style={{ color: '#64748b', fontSize: '12px', margin: '0 0 24px' }}>
+            Bu işlem geri alınabilir.
+          </p>
+        )}
+        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            style={{
+              flex: 1, padding: '12px',
+              borderRadius: '10px',
+              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'rgba(255,255,255,0.05)',
+              color: '#94a3b8',
+              fontSize: '14px', fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            İptal
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            style={{
+              flex: 1, padding: '12px',
+              borderRadius: '10px',
+              border: 'none',
+              background: loading
+                ? 'rgba(100,116,139,0.3)'
+                : isArchiving
+                  ? 'linear-gradient(135deg, #64748b 0%, #475569 100%)'
+                  : 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+              color: '#fff',
+              fontSize: '14px', fontWeight: 700,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              boxShadow: loading ? 'none' : isArchiving ? '0 4px 12px rgba(100,116,139,0.3)' : '0 4px 12px rgba(34,197,94,0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+            }}
+          >
+            {loading ? (
+              <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+            ) : isArchiving ? '📦 Arşivle' : '♻️ Geri Al'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -176,6 +624,24 @@ export default function DepartmanPersonelClient({
   const [filterDept, setFilterDept] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [search, setSearch] = useState('')
+
+  // Yazma işlemleri state (sadece müdür)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [confirmTarget, setConfirmTarget] = useState<StaffRow | null>(null)
+  const [statusLoading, setStatusLoading] = useState<string | null>(null) // staffId
+
+  // Toast
+  const [toasts, setToasts] = useState<Toast[]>([])
+  const toastIdRef = useRef(0)
+
+  function addToast(type: ToastType, message: string) {
+    const id = ++toastIdRef.current
+    setToasts(prev => [...prev, { id, type, message }])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
+  }
+  function removeToast(id: number) {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }
 
   const fetchStaff = useCallback(async () => {
     setLoading(true)
@@ -196,6 +662,42 @@ export default function DepartmanPersonelClient({
   }, [slug])
 
   useEffect(() => { void fetchStaff() }, [fetchStaff])
+
+  // ── Personel eklendi callback ───────────────────────────────────────────────
+  function handleStaffAdded(newRow: StaffRow) {
+    setStaff(prev => [newRow, ...prev])
+  }
+
+  // ── Arşivle / Geri Al ──────────────────────────────────────────────────────
+  async function handleStatusToggle() {
+    if (!confirmTarget) return
+    setStatusLoading(confirmTarget.id)
+    const newActive = !confirmTarget.is_active
+    try {
+      const res = await fetch(`/api/hotel-admin/${slug}/department-staff/${confirmTarget.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: newActive }),
+      })
+      const json = await res.json() as { staff?: StaffRow; error?: string }
+      if (!res.ok) {
+        addToast('error', json.error ?? `Hata: HTTP ${res.status}`)
+        return
+      }
+      setStaff(prev => prev.map(s => s.id === confirmTarget.id ? { ...s, is_active: newActive } : s))
+      addToast(
+        'success',
+        newActive
+          ? `"${confirmTarget.full_name}" geri alındı — artık aktif.`
+          : `"${confirmTarget.full_name}" arşivlendi.`
+      )
+    } catch {
+      addToast('error', 'Bağlantı hatası. Lütfen tekrar deneyin.')
+    } finally {
+      setStatusLoading(null)
+      setConfirmTarget(null)
+    }
+  }
 
   // ── Filtreler ──────────────────────────────────────────────────────────────
   const filtered = staff.filter(s => {
@@ -218,6 +720,9 @@ export default function DepartmanPersonelClient({
   const totalActive = staff.filter(s => s.is_active).length
   const totalArchived = staff.filter(s => !s.is_active).length
 
+  // ── Kolon sayısı (işlemler sütunu müdür için eklenir) ─────────────────────
+  const colCount = isOwner ? 6 : 7
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -234,6 +739,9 @@ export default function DepartmanPersonelClient({
           from { opacity: 0; transform: translateY(8px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
         .staff-row:hover td {
           background: rgba(255,255,255,0.03) !important;
         }
@@ -246,7 +754,39 @@ export default function DepartmanPersonelClient({
           border-color: rgba(99,102,241,0.5) !important;
           box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
         }
+        .action-btn-archive:hover {
+          background: rgba(100,116,139,0.25) !important;
+          border-color: rgba(100,116,139,0.5) !important;
+        }
+        .action-btn-restore:hover {
+          background: rgba(34,197,94,0.2) !important;
+          border-color: rgba(34,197,94,0.5) !important;
+        }
+        .add-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 20px rgba(99,102,241,0.45) !important;
+        }
       `}</style>
+
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* Modaller */}
+      {showAddModal && !isOwner && (
+        <AddStaffModal
+          slug={slug}
+          onClose={() => setShowAddModal(false)}
+          onSuccess={handleStaffAdded}
+          onToast={addToast}
+        />
+      )}
+      {confirmTarget && !isOwner && (
+        <ConfirmModal
+          staff={confirmTarget}
+          onConfirm={() => void handleStatusToggle()}
+          onClose={() => setConfirmTarget(null)}
+          loading={statusLoading === confirmTarget.id}
+        />
+      )}
 
       <div style={{ maxWidth: '1200px', margin: '0 auto', animation: 'fadeIn 0.4s ease' }}>
 
@@ -270,27 +810,56 @@ export default function DepartmanPersonelClient({
               </p>
             </div>
 
-            {/* Rol rozeti */}
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 16px',
-              borderRadius: '10px',
-              background: isOwner ? 'rgba(245,158,11,0.12)' : 'rgba(99,102,241,0.12)',
-              border: `1px solid ${isOwner ? 'rgba(245,158,11,0.3)' : 'rgba(99,102,241,0.3)'}`,
-              fontSize: '12px',
-              fontWeight: 600,
-              color: isOwner ? '#fcd34d' : '#a5b4fc',
-            }}>
-              {isOwner ? '👁️ Görüntüleme' : '🏢 Departman Yöneticisi'}
-              <span style={{
-                fontSize: '10px',
-                fontWeight: 400,
-                opacity: 0.8,
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              {/* + Personel Ekle butonu — SADECE MÜDÜRE GÖRÜNÜR */}
+              {!isOwner && (
+                <button
+                  id="add-staff-btn"
+                  className="add-btn"
+                  onClick={() => setShowAddModal(true)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 20px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                    color: '#fff',
+                    fontSize: '13.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 16px rgba(99,102,241,0.35)',
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  ＋ Personel Ekle
+                </button>
+              )}
+
+              {/* Rol rozeti */}
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                borderRadius: '10px',
+                background: isOwner ? 'rgba(245,158,11,0.12)' : 'rgba(99,102,241,0.12)',
+                border: `1px solid ${isOwner ? 'rgba(245,158,11,0.3)' : 'rgba(99,102,241,0.3)'}`,
+                fontSize: '12px',
+                fontWeight: 600,
+                color: isOwner ? '#fcd34d' : '#a5b4fc',
               }}>
-                {isOwner ? '(salt okunur)' : `(${allowedDepts.map(d => deptLabel(d)).join(', ')})`}
-              </span>
+                {isOwner ? '👁️ Görüntüleme' : '🏢 Departman Yöneticisi'}
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: 400,
+                  opacity: 0.8,
+                }}>
+                  {isOwner ? '(salt okunur)' : `(${allowedDepts.map(d => deptLabel(d)).join(', ')})`}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -491,16 +1060,22 @@ export default function DepartmanPersonelClient({
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                     Eklenme
                   </th>
+                  {/* İşlemler — SADECE MÜDÜRE */}
+                  {!isOwner && (
+                    <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                      İşlemler
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {/* Loading skeleton */}
-                {loading && [1, 2, 3, 4, 5].map(i => <SkeletonRow key={i} />)}
+                {loading && [1, 2, 3, 4, 5].map(i => <SkeletonRow key={i} cols={colCount} />)}
 
                 {/* Hata */}
                 {!loading && error && (
                   <tr>
-                    <td colSpan={6} style={{ padding: '48px 24px', textAlign: 'center' }}>
+                    <td colSpan={colCount} style={{ padding: '48px 24px', textAlign: 'center' }}>
                       <div style={{
                         display: 'inline-flex',
                         flexDirection: 'column',
@@ -537,7 +1112,7 @@ export default function DepartmanPersonelClient({
                 {/* Boş durum */}
                 {!loading && !error && filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6} style={{ padding: '64px 24px', textAlign: 'center' }}>
+                    <td colSpan={colCount} style={{ padding: '64px 24px', textAlign: 'center' }}>
                       <div style={{ fontSize: '40px', marginBottom: '12px' }}>
                         {staff.length === 0 ? '👥' : '🔍'}
                       </div>
@@ -546,7 +1121,7 @@ export default function DepartmanPersonelClient({
                       </p>
                       <p style={{ color: '#334155', fontSize: '13px', margin: 0 }}>
                         {staff.length === 0
-                          ? 'Adım 2\'de personel ekleme özelliği eklenecek.'
+                          ? (isOwner ? 'Departman müdürleri personel ekleyebilir.' : '"+ Personel Ekle" butonunu kullanarak başlayın.')
                           : 'Filtreleri değiştirerek tekrar deneyin.'}
                       </p>
                     </td>
@@ -556,6 +1131,7 @@ export default function DepartmanPersonelClient({
                 {/* Personel satırları */}
                 {!loading && !error && filtered.map(row => {
                   const deptColor = getDeptColor(row.department_key)
+                  const isThisLoading = statusLoading === row.id
                   return (
                     <tr
                       key={row.id}
@@ -563,6 +1139,7 @@ export default function DepartmanPersonelClient({
                       style={{
                         borderBottom: '1px solid rgba(255,255,255,0.04)',
                         transition: 'background 0.1s',
+                        opacity: isThisLoading ? 0.6 : 1,
                       }}
                     >
                       {/* Ad Soyad + Ünvan */}
@@ -639,6 +1216,65 @@ export default function DepartmanPersonelClient({
                           </span>
                         )}
                       </td>
+
+                      {/* İşlemler — SADECE MÜDÜRE */}
+                      {!isOwner && (
+                        <td style={{ padding: '14px 16px', verticalAlign: 'middle', textAlign: 'center' }}>
+                          {row.is_active ? (
+                            <button
+                              id={`archive-btn-${row.id}`}
+                              className="action-btn-archive"
+                              disabled={isThisLoading}
+                              onClick={() => setConfirmTarget(row)}
+                              style={{
+                                padding: '6px 14px',
+                                borderRadius: '7px',
+                                border: '1px solid rgba(100,116,139,0.3)',
+                                background: 'rgba(100,116,139,0.12)',
+                                color: '#94a3b8',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: isThisLoading ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.15s',
+                                whiteSpace: 'nowrap',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                              }}
+                            >
+                              {isThisLoading
+                                ? <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid rgba(148,163,184,0.3)', borderTopColor: '#94a3b8', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                                : '📦'} Arşivle
+                            </button>
+                          ) : (
+                            <button
+                              id={`restore-btn-${row.id}`}
+                              className="action-btn-restore"
+                              disabled={isThisLoading}
+                              onClick={() => setConfirmTarget(row)}
+                              style={{
+                                padding: '6px 14px',
+                                borderRadius: '7px',
+                                border: '1px solid rgba(34,197,94,0.3)',
+                                background: 'rgba(34,197,94,0.08)',
+                                color: '#4ade80',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: isThisLoading ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.15s',
+                                whiteSpace: 'nowrap',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                              }}
+                            >
+                              {isThisLoading
+                                ? <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid rgba(74,222,128,0.3)', borderTopColor: '#4ade80', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                                : '♻️'} Geri Al
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
@@ -677,29 +1313,6 @@ export default function DepartmanPersonelClient({
               )}
             </div>
           )}
-        </div>
-
-        {/* Adım 2 placeholder kartı */}
-        <div style={{
-          marginTop: '20px',
-          padding: '16px 20px',
-          borderRadius: '12px',
-          background: 'rgba(99,102,241,0.06)',
-          border: '1px solid rgba(99,102,241,0.15)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          opacity: 0.7,
-        }}>
-          <span style={{ fontSize: '20px' }}>🔒</span>
-          <div>
-            <p style={{ color: '#a5b4fc', fontSize: '13px', fontWeight: 600, margin: 0 }}>
-              Personel Ekle / Arşivle — Adım 2
-            </p>
-            <p style={{ color: '#475569', fontSize: '12px', margin: '2px 0 0' }}>
-              Yazma işlemleri (ekle, arşivle) bir sonraki adımda devreye alınacak.
-            </p>
-          </div>
         </div>
       </div>
     </div>
