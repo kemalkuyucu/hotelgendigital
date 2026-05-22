@@ -1,6 +1,6 @@
-// Modül 22 Adım 1 — Süper Admin Kullanıcı Yönetimi Sayfası
+// Modül 22 Adım 1+2 — Süper Admin Kullanıcı Yönetimi
 // Central DB'den aktif otel listesini çeker, client'a iletir.
-// Kullanıcı listesi client-side (hotel seçimi sonrası API çağrısı) yüklenir.
+// Kullanıcı listesi + yazma işlemleri client-side (hotel seçimi sonrası) yönetilir.
 
 import { redirect } from 'next/navigation'
 import { getSessionAdmin } from '@/lib/auth/session'
