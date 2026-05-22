@@ -1,3 +1,4 @@
+import type React from 'react'
 import Link from 'next/link'
 import { getCentralServerClient } from '@/lib/supabase/central-server'
 
@@ -99,10 +100,7 @@ export default async function SystemHealthPage() {
           <div className="text-2xl font-bold text-red-400">{unhealthyCount}</div>
           <div className="text-sm mt-1 text-red-300">❌ Bağlantı Hatası</div>
         </div>
-        <div
-          className="rounded-xl p-5"
-          style={{ ...glassCard }}
-        >
+        <div className="rounded-xl p-5" style={glassCard}>
           <div className="text-2xl font-bold" style={{ color: '#e2e8f0' }}>{pendingCount}</div>
           <div className="text-sm mt-1" style={{ color: '#94a3b8' }}>⏳ Test Bekleniyor</div>
         </div>
@@ -115,7 +113,12 @@ export default async function SystemHealthPage() {
         </div>
         <table className="w-full">
           <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <tr
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
+              }}
+            >
               <th className="text-left px-6 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: '#94a3b8' }}>Otel</th>
               <th className="text-left px-6 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: '#94a3b8' }}>Bridge Sağlığı</th>
               <th className="text-left px-6 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: '#94a3b8' }}>Son Kontrol</th>
@@ -134,9 +137,8 @@ export default async function SystemHealthPage() {
               return (
                 <tr
                   key={h.id}
+                  className="hover:bg-white/5 transition-colors"
                   style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
                   <td className="px-6 py-4">
                     <div className="font-medium" style={{ color: '#f1f5f9' }}>{h.name}</div>
@@ -144,27 +146,37 @@ export default async function SystemHealthPage() {
                   </td>
                   <td className="px-6 py-4">
                     {bc === null || bc === undefined ? (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(255,255,255,0.08)', color: '#94a3b8' }}>
+                      <span
+                        className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium"
+                        style={{ background: 'rgba(255,255,255,0.08)', color: '#94a3b8' }}
+                      >
                         — Henüz test edilmedi
                       </span>
                     ) : isHealthy ? (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80' }}>
+                      <span
+                        className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium"
+                        style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80' }}
+                      >
                         ✅ Sağlıklı
                       </span>
                     ) : isUnhealthy ? (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171' }}>
+                      <span
+                        className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium"
+                        style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171' }}
+                      >
                         ❌ Hata
                       </span>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(234,179,8,0.15)', color: '#fbbf24' }}>
+                      <span
+                        className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium"
+                        style={{ background: 'rgba(234,179,8,0.15)', color: '#fbbf24' }}
+                      >
                         ⏳ Bilinmiyor
                       </span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm" style={{ color: '#64748b' }}>
-                    {lastVerified
-                      ? new Date(lastVerified).toLocaleString('tr-TR')
-                      : '—'}
+                    {lastVerified ? new Date(lastVerified).toLocaleString('tr-TR') : '—'}
                   </td>
                   <td className="px-6 py-4">
                     <Link
@@ -196,14 +208,17 @@ export default async function SystemHealthPage() {
           {typedChecks.map((c, i) => (
             <div
               key={i}
-              className="px-6 py-3 flex items-center gap-4 text-sm"
+              className="px-6 py-3 flex items-center gap-4 text-sm hover:bg-white/5 transition-colors"
               style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
             >
               <span className="text-base">{c.status === 'healthy' ? '✅' : '❌'}</span>
               <span className="font-mono text-xs w-36 shrink-0" style={{ color: '#64748b' }}>
                 {new Date(c.checked_at).toLocaleString('tr-TR')}
               </span>
-              <span className="text-xs px-2 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,0.08)', color: '#94a3b8' }}>
+              <span
+                className="text-xs px-2 py-0.5 rounded font-mono"
+                style={{ background: 'rgba(255,255,255,0.08)', color: '#94a3b8' }}
+              >
                 {c.check_type}
               </span>
               <span className="truncate flex-1" style={{ color: '#cbd5e1' }}>

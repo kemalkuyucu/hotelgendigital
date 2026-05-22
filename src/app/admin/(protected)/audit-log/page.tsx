@@ -1,3 +1,4 @@
+import type React from 'react'
 import { getCentralServerClient } from '@/lib/supabase/central-server'
 
 export const dynamic = 'force-dynamic'
@@ -63,10 +64,7 @@ export default async function AuditLogPage({
       </div>
 
       {/* Filtreler */}
-      <form
-        className="rounded-xl p-5 flex flex-wrap gap-3 items-end"
-        style={glassCard}
-      >
+      <form className="rounded-xl p-5 flex flex-wrap gap-3 items-end" style={glassCard}>
         <div className="flex-1 min-w-48">
           <label className="block text-xs font-medium mb-1" style={{ color: '#94a3b8' }}>
             Action filtrele
@@ -136,7 +134,11 @@ export default async function AuditLogPage({
             <thead>
               <tr
                 className="text-left text-xs font-medium uppercase tracking-wider"
-                style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  color: '#94a3b8',
+                }}
               >
                 <th className="px-6 py-3">Zaman</th>
                 <th className="px-6 py-3">Kullanıcı</th>
@@ -149,9 +151,8 @@ export default async function AuditLogPage({
               {typedLogs.map((l) => (
                 <tr
                   key={l.id}
+                  className="hover:bg-white/5 transition-colors"
                   style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
                   <td className="px-6 py-3 font-mono text-xs whitespace-nowrap" style={{ color: '#64748b' }}>
                     {new Date(l.created_at).toLocaleString('tr-TR')}
