@@ -23,6 +23,7 @@ type NavItemKey =
   | 'bilgi-tabani'
   | 'belgeler'
   | 'cevre-kesfi'
+  | 'departman-personeli'
 
 interface NavItem {
   key: NavItemKey
@@ -36,6 +37,18 @@ const FRONT_OFFICE_ROLES: HotelAdminRole[] = ['hotel_owner', 'front_office_manag
 
 /** Hangi roller bilgi yönetimi bölümünü görür */
 const BILGI_ROLES: HotelAdminRole[] = ['hotel_owner']
+
+/** Hangi roller departman personeli görebilir */
+const PERSONEL_ROLES: HotelAdminRole[] = [
+  'hotel_owner',
+  'front_office_manager',
+  'housekeeping_manager',
+  'technical_manager',
+  'fb_manager',
+  'guest_relation_manager',
+  'spa_manager',
+  'animation_manager',
+]
 
 export default function DashboardLayoutClient({ slug, adminName, adminRole, children }: Props) {
   const pathname = usePathname()
@@ -56,6 +69,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
 
   // Ön Büro alt menü (sadece hotel_owner ve front_office_manager)
   const showFrontOffice = FRONT_OFFICE_ROLES.includes(adminRole)
+  const showPersonel = PERSONEL_ROLES.includes(adminRole)
   const frontOfficeItems: NavItem[] = [
     { key: 'fo-list',    label: 'In-House Listesi', href: `/hotel-admin/${slug}/front-office`,         isSubItem: true },
     { key: 'fo-upload', label: 'Excel Yükle',       href: `/hotel-admin/${slug}/front-office/upload`,  isSubItem: true },
@@ -185,6 +199,22 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
                   </Link>
                 )
               })}
+            </>
+          )}
+
+          {/* 👥 Personel Yönetimi — hotel_owner + tüm departman müdürleri */}
+          {showPersonel && (
+            <>
+              {sectionLabel('👥', 'Personel')}
+              <Link
+                href={`/hotel-admin/${slug}/dashboard/departman-personeli`}
+                style={linkStyle(
+                  pathname.startsWith(`/hotel-admin/${slug}/dashboard/departman-personeli`),
+                  true
+                )}
+              >
+                {adminRole === 'hotel_owner' ? '👁️ Departman Çalışanları' : '👥 Departman Çalışanları'}
+              </Link>
             </>
           )}
 
