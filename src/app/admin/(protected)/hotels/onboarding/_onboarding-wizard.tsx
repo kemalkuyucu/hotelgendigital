@@ -171,6 +171,7 @@ export default function OnboardingWizard({ packages, bootstrapSql, resumeHotel }
   const [step1Saving, setStep1Saving] = useState(false)
   const [step1Error, setStep1Error] = useState('')
   const [hotelCreated, setHotelCreated] = useState(!!resumeHotel?.id)
+  const [isCreating, setIsCreating] = useState(false)
 
   // Step 2 state
   const [bootstrapChecked, setBootstrapChecked] = useState(false)
@@ -203,6 +204,7 @@ export default function OnboardingWizard({ packages, bootstrapSql, resumeHotel }
   async function handleCreateHotel() {
     setStep1Error('')
     setStep1Saving(true)
+    setIsCreating(true)
     try {
       const res = await fetch('/api/admin/hotels', {
         method: 'POST',
@@ -230,6 +232,7 @@ export default function OnboardingWizard({ packages, bootstrapSql, resumeHotel }
       return false
     } finally {
       setStep1Saving(false)
+      setIsCreating(false)
     }
   }
 
@@ -554,7 +557,7 @@ export default function OnboardingWizard({ packages, bootstrapSql, resumeHotel }
                   <div>
                     <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>Demo otel</span>
                     <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#9ca3af' }}>
-                      Sunum/test amaçlı işaretleyin. Production&apos;da kapalı olmalı.
+                      Demo oteller sunum amaçlıdır; gerçek müşteri verisi içermez ve istenildiğinde silinebilir.
                     </p>
                   </div>
                 </label>
@@ -582,29 +585,44 @@ export default function OnboardingWizard({ packages, bootstrapSql, resumeHotel }
                 <Field label="Project URL" required hint="Örn: https://xxxxxxxxxxxx.supabase.co">
                   <Inp
                     id="supa-url"
+                    name="sb_project_url_field"
                     placeholder="https://xxxxxxxxxxxx.supabase.co"
                     value={supaUrl}
                     onChange={(e) => { setSupaUrl(e.target.value); setConnStatus('idle') }}
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore
+                    data-form-type="other"
                   />
                 </Field>
 
                 <Field label="anon (public) key" required>
                   <Inp
                     id="supa-anon"
+                    name="sb_anon_key_field"
                     placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                     value={supaAnon}
                     onChange={(e) => { setSupaAnon(e.target.value); setConnStatus('idle') }}
                     style={{ fontFamily: 'monospace', fontSize: '12px' }}
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore
+                    data-form-type="other"
                   />
                 </Field>
 
                 <Field label="service_role key" required hint="Gizli tutulur, UI'da masked gösterilir.">
                   <Inp
                     id="supa-service-key"
+                    name="sb_service_role_field"
                     type="password"
                     placeholder="••••••••••••••••••••••••••••••••"
                     value={supaServiceKey}
                     onChange={(e) => { setSupaServiceKey(e.target.value); setConnStatus('idle') }}
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore
+                    data-form-type="other"
                   />
                 </Field>
 
@@ -683,21 +701,21 @@ export default function OnboardingWizard({ packages, bootstrapSql, resumeHotel }
                   id="btn-step1-submit"
                   type="button"
                   onClick={handleStep1Submit}
-                  disabled={step1Saving || connStatus === 'testing'}
+                  disabled={step1Saving || isCreating || connStatus === 'testing'}
                   style={{
                     padding: '12px 28px',
                     borderRadius: '10px',
                     border: 'none',
-                    background: step1Saving ? '#93c5fd' : 'linear-gradient(135deg, #1d4ed8, #3b82f6)',
+                    background: (step1Saving || isCreating) ? '#93c5fd' : 'linear-gradient(135deg, #1d4ed8, #3b82f6)',
                     color: '#fff',
                     fontSize: '14px',
                     fontWeight: 700,
-                    cursor: step1Saving ? 'wait' : 'pointer',
+                    cursor: (step1Saving || isCreating) ? 'wait' : 'pointer',
                     boxShadow: '0 4px 12px rgba(29,78,216,0.3)',
                     transition: 'all 0.2s',
                   }}
                 >
-                  {step1Saving ? '⏳ Kaydediliyor...' : 'Devam → Sistem Kurulumu'}
+                  {isCreating ? '⏳ Oluşturuluyor...' : step1Saving ? '⏳ Kaydediliyor...' : 'Devam → Sistem Kurulumu'}
                 </button>
                 <a
                   href="/admin/hotels"
