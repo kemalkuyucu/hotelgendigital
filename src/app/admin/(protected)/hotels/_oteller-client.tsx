@@ -3,12 +3,6 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import dynamic from 'next/dynamic'
-
-const ParticleBackground = dynamic(
-  () => import('@/components/landing/ParticleBackground'),
-  { ssr: false }
-)
 
 type PackageRef = { display_name: string }
 
@@ -295,29 +289,7 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
   } as React.CSSProperties)
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0a0f1e 0%, #111827 50%, #0a0f1e 100%)',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Particle background */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
-        <ParticleBackground
-          particleId="hotels-admin-particles"
-          opacity={0.35}
-          particleCount={40}
-          speed={0.35}
-          linkOpacity={0.10}
-          fpsLimit={30}
-          disableOnMobile={true}
-        />
-      </div>
-
-      {/* Content layer */}
-      <div className="p-8 space-y-6" style={{ position: 'relative', zIndex: 10 }}>
+    <div className="p-8 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -486,7 +458,6 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
             onDeleted={refresh}
           />
         )}
-      </div>
     </div>
   )
 }
