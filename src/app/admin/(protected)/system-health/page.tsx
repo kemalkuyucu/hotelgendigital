@@ -24,6 +24,15 @@ interface SystemHealthRow {
   checked_at: string
 }
 
+// ─── Ortak glassmorphism kart stili ─────────────────────────────────────────
+const glassCard: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.06)',
+  backdropFilter: 'blur(20px)',
+  WebkitBackdropFilter: 'blur(20px)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+}
+
 export default async function SystemHealthPage() {
   const supabase = await getCentralServerClient()
   const [{ data: hotels }, { data: recentChecks }] = await Promise.all([
@@ -58,41 +67,62 @@ export default async function SystemHealthPage() {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Sistem Sağlığı</h1>
-        <p className="text-gray-500 text-sm mt-1">Tüm otellerin bridge bağlantı durumlarını izleyin</p>
+        <h1 className="text-3xl font-bold" style={{ color: '#f8fafc' }}>Sistem Sağlığı</h1>
+        <p className="text-sm mt-1" style={{ color: '#94a3b8' }}>Tüm otellerin bridge bağlantı durumlarını izleyin</p>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-green-50 border border-green-200 rounded-xl p-5">
-          <div className="text-2xl font-bold text-green-700">{healthyCount}</div>
-          <div className="text-sm text-green-600 mt-1">✅ Sağlıklı Bağlantı</div>
+        <div
+          className="rounded-xl p-5"
+          style={{
+            background: 'rgba(34,197,94,0.12)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(34,197,94,0.25)',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+          }}
+        >
+          <div className="text-2xl font-bold text-green-400">{healthyCount}</div>
+          <div className="text-sm mt-1 text-green-300">✅ Sağlıklı Bağlantı</div>
         </div>
-        <div className="bg-red-50 border border-red-200 rounded-xl p-5">
-          <div className="text-2xl font-bold text-red-700">{unhealthyCount}</div>
-          <div className="text-sm text-red-600 mt-1">❌ Bağlantı Hatası</div>
+        <div
+          className="rounded-xl p-5"
+          style={{
+            background: 'rgba(239,68,68,0.12)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+          }}
+        >
+          <div className="text-2xl font-bold text-red-400">{unhealthyCount}</div>
+          <div className="text-sm mt-1 text-red-300">❌ Bağlantı Hatası</div>
         </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
-          <div className="text-2xl font-bold text-gray-700">{pendingCount}</div>
-          <div className="text-sm text-gray-600 mt-1">⏳ Test Bekleniyor</div>
+        <div
+          className="rounded-xl p-5"
+          style={{ ...glassCard }}
+        >
+          <div className="text-2xl font-bold" style={{ color: '#e2e8f0' }}>{pendingCount}</div>
+          <div className="text-sm mt-1" style={{ color: '#94a3b8' }}>⏳ Test Bekleniyor</div>
         </div>
       </div>
 
       {/* Hotels Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Otel Bağlantı Durumları</h2>
+      <div className="rounded-xl overflow-hidden" style={glassCard}>
+        <div className="px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <h2 className="text-lg font-semibold" style={{ color: '#f1f5f9' }}>Otel Bağlantı Durumları</h2>
         </div>
         <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              <th className="px-6 py-3">Otel</th>
-              <th className="px-6 py-3">Bridge Sağlığı</th>
-              <th className="px-6 py-3">Son Kontrol</th>
-              <th className="px-6 py-3">İşlem</th>
+          <thead>
+            <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <th className="text-left px-6 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: '#94a3b8' }}>Otel</th>
+              <th className="text-left px-6 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: '#94a3b8' }}>Bridge Sağlığı</th>
+              <th className="text-left px-6 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: '#94a3b8' }}>Son Kontrol</th>
+              <th className="text-left px-6 py-3 text-xs font-medium uppercase tracking-wider" style={{ color: '#94a3b8' }}>İşlem</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {typedHotels.map((h) => {
               const bc = Array.isArray(h.bridge_credentials)
                 ? h.bridge_credentials[0]
@@ -102,31 +132,36 @@ export default async function SystemHealthPage() {
               const lastVerified = bc?.last_verified_at
 
               return (
-                <tr key={h.id} className="hover:bg-gray-50 transition-colors">
+                <tr
+                  key={h.id}
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
                   <td className="px-6 py-4">
-                    <div className="font-medium text-gray-900">{h.name}</div>
-                    <div className="text-xs text-gray-400">{h.slug}</div>
+                    <div className="font-medium" style={{ color: '#f1f5f9' }}>{h.name}</div>
+                    <div className="text-xs" style={{ color: '#64748b' }}>{h.slug}</div>
                   </td>
                   <td className="px-6 py-4">
                     {bc === null || bc === undefined ? (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(255,255,255,0.08)', color: '#94a3b8' }}>
                         — Henüz test edilmedi
                       </span>
                     ) : isHealthy ? (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80' }}>
                         ✅ Sağlıklı
                       </span>
                     ) : isUnhealthy ? (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171' }}>
                         ❌ Hata
                       </span>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(234,179,8,0.15)', color: '#fbbf24' }}>
                         ⏳ Bilinmiyor
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
+                  <td className="px-6 py-4 text-sm" style={{ color: '#64748b' }}>
                     {lastVerified
                       ? new Date(lastVerified).toLocaleString('tr-TR')
                       : '—'}
@@ -134,7 +169,8 @@ export default async function SystemHealthPage() {
                   <td className="px-6 py-4">
                     <Link
                       href={`/admin/hotels/${h.id}/credentials`}
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      className="text-sm font-medium"
+                      style={{ color: '#60a5fa' }}
                     >
                       Test &amp; Yönet →
                     </Link>
@@ -147,29 +183,33 @@ export default async function SystemHealthPage() {
       </div>
 
       {/* Recent Checks */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Son 50 Kontrol Kaydı</h2>
+      <div className="rounded-xl overflow-hidden" style={glassCard}>
+        <div className="px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <h2 className="text-lg font-semibold" style={{ color: '#f1f5f9' }}>Son 50 Kontrol Kaydı</h2>
         </div>
-        <div className="divide-y divide-gray-100">
+        <div>
           {typedChecks.length === 0 && (
-            <div className="px-6 py-8 text-center text-gray-400 text-sm">
+            <div className="px-6 py-8 text-center text-sm" style={{ color: '#64748b' }}>
               Henüz bridge testi yapılmadı.
             </div>
           )}
           {typedChecks.map((c, i) => (
-            <div key={i} className="px-6 py-3 flex items-center gap-4 text-sm">
+            <div
+              key={i}
+              className="px-6 py-3 flex items-center gap-4 text-sm"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+            >
               <span className="text-base">{c.status === 'healthy' ? '✅' : '❌'}</span>
-              <span className="font-mono text-xs text-gray-400 w-36 shrink-0">
+              <span className="font-mono text-xs w-36 shrink-0" style={{ color: '#64748b' }}>
                 {new Date(c.checked_at).toLocaleString('tr-TR')}
               </span>
-              <span className="text-xs bg-gray-100 px-2 py-0.5 rounded font-mono">
+              <span className="text-xs px-2 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,0.08)', color: '#94a3b8' }}>
                 {c.check_type}
               </span>
-              <span className="text-gray-600 truncate flex-1">
+              <span className="truncate flex-1" style={{ color: '#cbd5e1' }}>
                 {(c.details as Record<string, unknown>)?.message as string ?? '—'}
               </span>
-              <span className="text-xs text-gray-400 shrink-0">
+              <span className="text-xs shrink-0" style={{ color: '#475569' }}>
                 {(c.details as Record<string, unknown>)?.latencyMs as number ?? 0} ms
               </span>
             </div>
