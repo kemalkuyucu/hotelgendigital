@@ -15,7 +15,6 @@ export interface GroupHotel {
   id: string;
   name: string;
   slug: string;
-  package_tier: string;
 }
 
 export async function GET(
@@ -55,7 +54,6 @@ export async function GET(
           id,
           name,
           slug,
-          package_tier,
           status
         )
       `)
@@ -63,8 +61,8 @@ export async function GET(
       .eq('hotels.status', 'active');
 
     if (error) {
-      console.error('[group-admin/hotels] DB hatası:', error.message);
-      return NextResponse.json({ hotels: [] }, { status: 200 });
+      console.error('[group-admin/hotels] DB hatası:', error);
+      return NextResponse.json({ hotels: [], error: 'Veritabanı hatası.' }, { status: 500 });
     }
 
     // Sadece gerekli alanları dön — hassas veri yok
@@ -76,7 +74,6 @@ export async function GET(
           id: hotel.id as string,
           name: hotel.name as string,
           slug: hotel.slug as string,
-          package_tier: (hotel.package_tier as string) ?? 'basic',
         };
       })
       .filter((h): h is GroupHotel => h !== null);

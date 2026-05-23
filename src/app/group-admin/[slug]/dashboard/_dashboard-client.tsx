@@ -46,37 +46,7 @@ function getPreset(preset: 'week' | 'month' | 'thisMonth'): { start: string; end
   return { start: toLocalDateStr(firstOfMonth), end: todayStr }
 }
 
-// ---------------------------------------------------------------------------
-// Paket rozeti rengi
-// ---------------------------------------------------------------------------
 
-function packageBadgeStyle(tier: string): { background: string; color: string; border: string; label: string } {
-  const t = tier?.toLowerCase()
-  if (t === 'full' || t === 'full_service') {
-    return {
-      background: 'rgba(139,92,246,0.15)',
-      color: '#c4b5fd',
-      border: '1px solid rgba(139,92,246,0.30)',
-      label: 'Full',
-    }
-  }
-  if (t === 'premium') {
-    return {
-      background: 'rgba(245,158,11,0.12)',
-      color: '#fcd34d',
-      border: '1px solid rgba(245,158,11,0.28)',
-      label: 'Premium',
-    }
-  }
-  return {
-    background: 'rgba(30,215,96,0.10)',
-    color: '#6ee7b7',
-    border: '1px solid rgba(52,211,153,0.25)',
-    label: 'Basic',
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Glassmorphism kart stili
 // ---------------------------------------------------------------------------
 const glassCard: React.CSSProperties = {
@@ -420,23 +390,23 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
                   minWidth: '160px',
                 }}
               >
-                <div style={{ fontSize: '18px', marginBottom: '5px' }}>{item.icon}</div>
+                <div style={{ fontSize: '20px', marginBottom: '6px' }}>{item.icon}</div>
                 <div
                   style={{
-                    color: item.status === 'done' ? '#86efac' : '#a5b4fc',
-                    fontSize: '10px',
-                    fontWeight: 700,
-                    letterSpacing: '0.06em',
-                    marginBottom: '3px',
+                    color: item.status === 'done' ? '#a7f3d0' : '#c4b5fd',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    letterSpacing: '0.08em',
+                    marginBottom: '4px',
                   }}
                 >
                   {item.faz}
                 </div>
                 <div
                   style={{
-                    color: item.status === 'done' ? '#dcfce7' : '#e2e8f0',
-                    fontSize: '12px',
-                    fontWeight: 500,
+                    color: item.status === 'done' ? '#f0fdf4' : '#e2e8f0',
+                    fontSize: '13px',
+                    fontWeight: 600,
                   }}
                 >
                   {item.label}
@@ -566,7 +536,7 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
                   style={{ width: '16px', height: '16px', accentColor: '#6366f1', cursor: 'pointer' }}
                 />
                 <span
-                  style={{ color: '#a5b4fc', fontSize: '13px', fontWeight: 600 }}
+                  style={{ color: '#c4b5fd', fontSize: '14px', fontWeight: 700 }}
                 >
                   Tümünü Seç
                 </span>
@@ -584,7 +554,6 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
               {/* Her otel satırı */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {hotels.map((hotel) => {
-                  const badge = packageBadgeStyle(hotel.package_tier)
                   const isChecked = selectedHotelIds.includes(hotel.id)
                   return (
                     <label
@@ -605,7 +574,7 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
                         userSelect: 'none',
                       }}
                       onMouseEnter={(e) => {
-                        if (!isChecked) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+                        if (!isChecked) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
                       }}
                       onMouseLeave={(e) => {
                         if (!isChecked) e.currentTarget.style.background = 'transparent'
@@ -616,30 +585,17 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
                         type="checkbox"
                         checked={isChecked}
                         onChange={() => toggleHotel(hotel.id)}
-                        style={{ width: '16px', height: '16px', accentColor: '#6366f1', cursor: 'pointer', flexShrink: 0 }}
+                        style={{ width: '17px', height: '17px', accentColor: '#6366f1', cursor: 'pointer', flexShrink: 0 }}
                       />
                       <span
                         style={{
-                          color: '#e2e8f0',
-                          fontSize: '14px',
+                          color: '#f1f5f9',
+                          fontSize: '15px',
                           fontWeight: 500,
                           flex: 1,
                         }}
                       >
                         {hotel.name}
-                      </span>
-                      <span
-                        style={{
-                          ...badge,
-                          fontSize: '10px',
-                          fontWeight: 700,
-                          padding: '3px 9px',
-                          borderRadius: '999px',
-                          letterSpacing: '0.04em',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {badge.label}
                       </span>
                     </label>
                   )
@@ -729,7 +685,7 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
             }}
           >
             <div style={{ flex: 1, height: '1px', background: 'rgba(139,92,246,0.10)' }} />
-            <span style={{ color: '#334155', fontSize: '11px', fontWeight: 500, letterSpacing: '0.05em' }}>
+            <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, letterSpacing: '0.06em' }}>
               VEYA MANUEL
             </span>
             <div style={{ flex: 1, height: '1px', background: 'rgba(139,92,246,0.10)' }} />
@@ -743,9 +699,9 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
                   htmlFor={`date-input-${field}`}
                   style={{
                     display: 'block',
-                    color: '#64748b',
-                    fontSize: '11px',
-                    fontWeight: 600,
+                    color: '#94a3b8',
+                    fontSize: '12px',
+                    fontWeight: 700,
                     letterSpacing: '0.06em',
                     marginBottom: '8px',
                     textTransform: 'uppercase',
@@ -822,13 +778,13 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
             >
               {selectedHotelIds.length} otel seçili
             </span>
-            <span style={{ color: '#334155', fontSize: '13px' }}>·</span>
-            <span style={{ color: '#64748b', fontSize: '13px' }}>
+            <span style={{ color: '#64748b', fontSize: '14px' }}>·</span>
+            <span style={{ color: '#94a3b8', fontSize: '14px' }}>
               {dateRange.start}
-              <span style={{ color: '#334155', margin: '0 6px' }}>–</span>
+              <span style={{ color: '#64748b', margin: '0 6px' }}>–</span>
               {dateRange.end}
               {' '}
-              <span style={{ color: '#475569' }}>aralığı</span>
+              <span style={{ color: '#94a3b8' }}>aralığı</span>
             </span>
           </div>
 
