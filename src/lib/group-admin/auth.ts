@@ -109,14 +109,14 @@ export async function groupManagerLogin(
       .setExpirationTime(`${SESSION_HOURS}h`)
       .sign(getJwtSecret());
 
-    // 5. Cookie set — sadece /group-admin/* path'inde geçerli
+    // 5. Cookie set — path '/' → hem /group-admin/* sayfaları hem /api/group-admin/* endpoint'leri alır
     const cookieStore = await cookies();
     cookieStore.set(GROUP_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       expires: expiresAt,
-      path: '/group-admin',
+      path: '/',
     });
 
     return { ok: true, redirect: `/group-admin/${slug}/dashboard` };
@@ -150,5 +150,12 @@ export async function getGroupManagerFromCookie(): Promise<GroupManagerJwtPayloa
 
 export async function groupManagerLogout(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.delete(GROUP_COOKIE_NAME);
+  // path '/' ile set edildiği için aynı path ile silmek gerekiyor
+  cookieStore.set(GROUP_COOKIE_NAME, '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    expires: new Date(0),
+    path: '/',
+  });
 }
