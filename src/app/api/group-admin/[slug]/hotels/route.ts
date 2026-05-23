@@ -41,42 +41,50 @@ export async function GET(
       );
     }
 
-    // 3. Central DB'den sorgu:
-    //    group_hotel_links JOIN hotels
-    //    Sadece bu gruba ait (group_id) VE status='active' olan oteller
+    // 3. Central DB'den sorgu — İKİ ADIM:
+    //    Adım 1: group_hotel_links → bu gruba ait hotel_id listesi
+    //    Adım 2: hotels tablosu → bu ID'lerden status='active' olanlar
+    //
+    //    NOT: Supabase JS v2'de !inner join üzerinde .eq('hotels.status','active')
+    //    PostgREST tarafında geçersiz bir kolon referansı oluşturur ve
+    //    "Veritabanı hatası" döndürür. İki ayrı sorgu en güvenli yöntemdir.
     const db = getCentralSupabase();
 
-    const { data, error } = await db
+    // Adım 1: Bu gruba bağlı hotel_id'lerini al
+    const { data: linkRows, error: linkError } = await db
       .from('group_hotel_links')
-      .select(`
-        hotel_id,
-        hotels!inner (
-          id,
-          name,
-          slug,
-          status
-        )
-      `)
-      .eq('group_id', manager.group_id)
-      .eq('hotels.status', 'active');
+      .select('hotel_id')
+      .eq('group_id', manager.group_id);
 
-    if (error) {
-      console.error('[group-admin/hotels] DB hatası:', error);
+    if (linkError) {
+      console.error('[group-admin/hotels] group_hotel_links sorgu hatası:', linkError);
+      return NextResponse.json({ hotels: [], error: 'Veritabanı hatası.' }, { status: 500 });
+    }
+
+    const hotelIds = (linkRows ?? []).map((r) => r.hotel_id as string);
+
+    if (hotelIds.length === 0) {
+      return NextResponse.json({ hotels: [] }, { status: 200 });
+    }
+
+    // Adım 2: Bu ID'lerden status='active' olanları çek (sadece id, name, slug)
+    const { data: hotelRows, error: hotelError } = await db
+      .from('hotels')
+      .select('id, name, slug')
+      .in('id', hotelIds)
+      .eq('status', 'active');
+
+    if (hotelError) {
+      console.error('[group-admin/hotels] hotels sorgu hatası:', hotelError);
       return NextResponse.json({ hotels: [], error: 'Veritabanı hatası.' }, { status: 500 });
     }
 
     // Sadece gerekli alanları dön — hassas veri yok
-    const hotels: GroupHotel[] = (data ?? [])
-      .map((row) => {
-        const hotel = Array.isArray(row.hotels) ? row.hotels[0] : row.hotels;
-        if (!hotel) return null;
-        return {
-          id: hotel.id as string,
-          name: hotel.name as string,
-          slug: hotel.slug as string,
-        };
-      })
-      .filter((h): h is GroupHotel => h !== null);
+    const hotels: GroupHotel[] = (hotelRows ?? []).map((h) => ({
+      id: h.id as string,
+      name: h.name as string,
+      slug: h.slug as string,
+    }));
 
     return NextResponse.json({ hotels }, { status: 200 });
   } catch (err) {
