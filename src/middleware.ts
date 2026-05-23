@@ -5,8 +5,9 @@
  *     proxy.ts olarak kayıtlıysa middleware HİÇ çalışmaz!
  *
  * Korunan path'ler:
- *   /admin/*            → hg_admin_session cookie (master admin)
- *   /hotel-admin/[slug]/* → hg_hotel_session JWT (hotel admin)
+ *   /admin/*                   → hg_admin_session cookie (master admin)
+ *   /hotel-admin/[slug]/*      → hg_hotel_session JWT (hotel admin)
+ *   /group-admin/[slug]/*      → group_session JWT (grup yöneticisi, Modül 22)
  *
  * GOREV 3 (2026-05-19): Hotel admin rol bazlı erişim eklendi.
  *   - Cookie yoksa → /hotel-admin/[slug]/login
@@ -15,6 +16,9 @@
  *
  * GÜVENLİK FIX (2026-05-20): proxy.ts → middleware.ts rename.
  *   Önceki dosya adı yüzünden /admin/* tamamen korumasızdı.
+ *
+ * MODÜL 22 (2026-05-23): /group-admin/[slug]/dashboard koruması eklendi.
+ *   group_session cookie'si SADECE /group-admin/* path'inde geçerlidir.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -25,6 +29,7 @@ import { jwtVerify } from 'jose'
 // ---------------------------------------------------------------------------
 
 const HOTEL_COOKIE_NAME = 'hg_hotel_session'
+const GROUP_COOKIE_NAME = 'group_session'
 
 function getJwtSecret(): Uint8Array {
   const secret =
@@ -47,6 +52,27 @@ async function verifyHotelToken(token: string): Promise<HotelAdminJwtPayload | n
   try {
     const { payload } = await jwtVerify(token, getJwtSecret())
     return payload as unknown as HotelAdminJwtPayload
+  } catch {
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Group Manager JWT payload
+// ---------------------------------------------------------------------------
+
+interface GroupManagerJwtPayload {
+  sub: string
+  group_id: string
+  group_slug: string
+  full_name: string
+  role: 'group_manager'
+}
+
+async function verifyGroupToken(token: string): Promise<GroupManagerJwtPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecret())
+    return payload as unknown as GroupManagerJwtPayload
   } catch {
     return null
   }
@@ -168,6 +194,48 @@ export default async function middleware(req: NextRequest) {
     }
   }
 
+  // ── BÖLÜM 3: Grup Yöneticisi (/group-admin/[slug]/*) ─────────────────────
+  const groupMatch = pathname.match(/^\/group-admin\/([^/]+)\/(.*)?$/)
+  if (groupMatch) {
+    const urlSlug = groupMatch[1]
+    const restPath = groupMatch[2] ?? ''
+
+    // Login sayfası korumasız
+    if (restPath === 'login' || restPath.startsWith('login/')) {
+      return NextResponse.next()
+    }
+
+    // 1. Cookie kontrolü
+    const token = req.cookies.get(GROUP_COOKIE_NAME)?.value
+    if (!token) {
+      console.log(`[middleware] No group session. path=${pathname}`)
+      return NextResponse.redirect(
+        new URL(`/group-admin/${urlSlug}/login`, req.url)
+      )
+    }
+
+    // 2. Token doğrulama
+    const payload = await verifyGroupToken(token)
+    if (!payload) {
+      console.log(`[middleware] Invalid group token. path=${pathname}`)
+      const res = NextResponse.redirect(
+        new URL(`/group-admin/${urlSlug}/login`, req.url)
+      )
+      res.cookies.delete(GROUP_COOKIE_NAME)
+      return res
+    }
+
+    // 3. Slug eşleşme kontrolü
+    if (payload.group_slug !== urlSlug) {
+      console.log(
+        `[middleware] Group slug mismatch. cookie=${payload.group_slug} url=${urlSlug}`
+      )
+      return NextResponse.redirect(
+        new URL(`/group-admin/${urlSlug}/login`, req.url)
+      )
+    }
+  }
+
   return NextResponse.next()
 }
 
@@ -176,5 +244,5 @@ export default async function middleware(req: NextRequest) {
 // ---------------------------------------------------------------------------
 
 export const config = {
-  matcher: ['/admin/:path*', '/hotel-admin/:slug/:path*'],
+  matcher: ['/admin/:path*', '/hotel-admin/:slug/:path*', '/group-admin/:slug/:path*'],
 }
