@@ -5,6 +5,40 @@ import dynamic from 'next/dynamic'
 import type { GroupManagerJwtPayload } from '@/lib/group-admin/auth'
 import type { GroupHotel } from '@/app/api/group-admin/[slug]/hotels/route'
 
+// ---------------------------------------------------------------------------
+// Rapor tipleri
+// ---------------------------------------------------------------------------
+interface DepartmanSatir {
+  departman: string
+  toplam: number
+  cevaplanan: number
+  escalation: number
+}
+interface PersonelSatir {
+  personel: string
+  cozulen_adet: number
+}
+interface OtelOzet {
+  toplam: number
+  cevaplanan: number
+  cevapsiz: number
+  escalation: number
+  ortalamaYanitDakika: number | null
+}
+interface OtelRapor {
+  hotelId: string
+  hotelName: string
+  veriAlinabildi: boolean
+  hataDetay?: string
+  ozet: OtelOzet
+  departmanBazli: DepartmanSatir[]
+  personelBazli: PersonelSatir[]
+}
+interface RaporSonucu {
+  rapor: OtelRapor[]
+  genelToplam: { toplam: number; cevaplanan: number; cevapsiz: number; escalation: number }
+}
+
 const ParticleBackground = dynamic(
   () => import('@/components/landing/ParticleBackground'),
   { ssr: false }
@@ -62,8 +96,29 @@ const glassCard: React.CSSProperties = {
 // Ana bileşen
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Departman kodu → Türkçe
+// ---------------------------------------------------------------------------
+const DEPT_TR: Record<string, string> = {
+  front_office: 'Ön Büro',
+  housekeeping: 'Kat Hizmetleri',
+  technical: 'Teknik Servis',
+  fb: 'Yiyecek-İçecek',
+  guest_relation: 'Misafir İlişkileri',
+  spa: 'Spa',
+  animation: 'Animasyon',
+}
+function deptTr(code: string): string {
+  return DEPT_TR[code] ?? code
+}
+
 export default function GroupDashboardClient({ slug, manager }: Props) {
   const [loggingOut, setLoggingOut] = useState(false)
+
+  // -- Rapor state --
+  const [raporYukleniyor, setRaporYukleniyor] = useState(false)
+  const [raporSonucu, setRaporSonucu] = useState<RaporSonucu | null>(null)
+  const [raporHata, setRaporHata] = useState<string | null>(null)
 
   // -- Otel state --
   const [hotels, setHotels] = useState<GroupHotel[]>([])
@@ -126,6 +181,35 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
       await fetch(`/api/group-admin/${slug}/logout`, { method: 'POST' })
     } catch { /* no-op */ }
     window.location.href = `/group-admin/${slug}/login`
+  }
+
+  async function handleRapor() {
+    if (selectedHotelIds.length === 0) return
+    setRaporYukleniyor(true)
+    setRaporSonucu(null)
+    setRaporHata(null)
+    try {
+      const res = await fetch(`/api/group-admin/${slug}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hotelIds: selectedHotelIds,
+          startDate: dateRange.start,
+          endDate: dateRange.end,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setRaporHata((err as { error?: string }).error ?? `Hata: HTTP ${res.status}`)
+        return
+      }
+      const data: RaporSonucu = await res.json()
+      setRaporSonucu(data)
+    } catch (err) {
+      setRaporHata(err instanceof Error ? err.message : 'Bağlantı hatası')
+    } finally {
+      setRaporYukleniyor(false)
+    }
   }
 
   function toggleSelectAll() {
@@ -374,7 +458,7 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
             {[
               { faz: 'FAZ 1', label: 'Altyapı & Login', status: 'done', icon: '✅' },
               { faz: 'FAZ 2', label: 'Otel Seçimi', status: 'done', icon: '✅' },
-              { faz: 'FAZ 3', label: 'Talep / İş / Personel Raporları', status: 'pending', icon: '📈' },
+              { faz: 'FAZ 3', label: 'Talep / İş / Personel Raporları', status: 'done', icon: '✅' },
             ].map((item) => (
               <div
                 key={item.faz}
@@ -788,41 +872,421 @@ export default function GroupDashboardClient({ slug, manager }: Props) {
             </span>
           </div>
 
-          {/* Pasif rapor butonu — Faz 3'te aktif */}
+          {/* Rapor butonu — AKTİF */}
           <button
             id="group-admin-report-btn"
-            disabled
+            onClick={handleRapor}
+            disabled={raporYukleniyor || selectedHotelIds.length === 0}
             style={{
-              background: 'rgba(99,102,241,0.08)',
-              border: '1px solid rgba(99,102,241,0.15)',
-              color: '#475569',
+              background:
+                raporYukleniyor || selectedHotelIds.length === 0
+                  ? 'rgba(99,102,241,0.08)'
+                  : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              border:
+                raporYukleniyor || selectedHotelIds.length === 0
+                  ? '1px solid rgba(99,102,241,0.18)'
+                  : '1px solid rgba(139,92,246,0.60)',
+              color:
+                raporYukleniyor || selectedHotelIds.length === 0 ? '#475569' : '#fff',
               borderRadius: '10px',
               padding: '10px 22px',
               fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'not-allowed',
+              fontWeight: 700,
+              cursor:
+                raporYukleniyor || selectedHotelIds.length === 0 ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              opacity: 0.6,
+              boxShadow:
+                raporYukleniyor || selectedHotelIds.length === 0
+                  ? 'none'
+                  : '0 4px 18px rgba(99,102,241,0.35)',
+              transition: 'all 0.20s',
+            }}
+            onMouseEnter={(e) => {
+              if (!raporYukleniyor && selectedHotelIds.length > 0) {
+                e.currentTarget.style.transform = 'translateY(-1px)'
+                e.currentTarget.style.boxShadow = '0 6px 24px rgba(99,102,241,0.50)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow =
+                raporYukleniyor || selectedHotelIds.length === 0
+                  ? 'none'
+                  : '0 4px 18px rgba(99,102,241,0.35)'
             }}
           >
-            📊 Rapor Oluştur
-            <span
-              style={{
-                background: 'rgba(99,102,241,0.15)',
-                color: '#6366f1',
-                fontSize: '9px',
-                fontWeight: 700,
-                padding: '2px 7px',
-                borderRadius: '999px',
-                letterSpacing: '0.05em',
-              }}
-            >
-              FAZ 3&apos;TE AKTİF
-            </span>
+            {raporYukleniyor ? (
+              <>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '14px',
+                    height: '14px',
+                    border: '2px solid rgba(255,255,255,0.30)',
+                    borderTopColor: '#fff',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite',
+                    flexShrink: 0,
+                  }}
+                />
+                Hazırlanıyor...
+              </>
+            ) : (
+              <>📊 Rapor Oluştur</>
+            )}
           </button>
         </div>
+
+        {/* ================================================================
+            BÖLÜM D — RAPOR SONUCU
+            ================================================================ */}
+
+        {/* Hata mesajı */}
+        {raporHata && (
+          <div
+            style={{
+              ...glassCard,
+              padding: '20px 28px',
+              marginBottom: '20px',
+              border: '1px solid rgba(239,68,68,0.30)',
+              background: 'rgba(239,68,68,0.08)',
+            }}
+          >
+            <span style={{ color: '#fca5a5', fontSize: '14px', fontWeight: 600 }}>
+              ⚠️ {raporHata}
+            </span>
+          </div>
+        )}
+
+        {raporSonucu && (
+          <div style={{ marginBottom: '32px' }}>
+
+            {/* ── A) GENEL ÖZET KARTI ── */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.18), rgba(139,92,246,0.14))',
+                border: '1px solid rgba(139,92,246,0.35)',
+                borderRadius: '20px',
+                boxShadow: '0 20px 50px rgba(0,0,0,0.50), 0 0 0 1px rgba(255,255,255,0.04) inset',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                padding: '28px 32px',
+                marginBottom: '24px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+                <span style={{ fontSize: '22px' }}>📊</span>
+                <h2 style={{ color: '#e2e8f0', fontSize: '17px', fontWeight: 700, margin: 0 }}>
+                  Genel Özet
+                </h2>
+                <span
+                  style={{
+                    marginLeft: '8px',
+                    background: 'rgba(139,92,246,0.18)',
+                    color: '#c4b5fd',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '3px 10px',
+                    borderRadius: '999px',
+                    border: '1px solid rgba(139,92,246,0.28)',
+                  }}
+                >
+                  {dateRange.start} – {dateRange.end}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px' }}>
+                {([
+                  { label: 'Toplam Talep', value: raporSonucu.genelToplam.toplam, color: '#a5b4fc', icon: '📋' },
+                  { label: 'Cevaplanan', value: raporSonucu.genelToplam.cevaplanan, color: '#6ee7b7', icon: '✅' },
+                  { label: 'Cevapsız', value: raporSonucu.genelToplam.cevapsiz, color: '#fcd34d', icon: '⏳' },
+                  { label: 'Eskalasyon', value: raporSonucu.genelToplam.escalation, color: '#fca5a5', icon: '🚨' },
+                ] as const).map((stat) => (
+                  <div
+                    key={stat.label}
+                    style={{
+                      background: 'rgba(0,0,0,0.25)',
+                      borderRadius: '14px',
+                      padding: '18px 20px',
+                      border: '1px solid rgba(255,255,255,0.06)',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontSize: '26px', marginBottom: '8px' }}>{stat.icon}</div>
+                    <div style={{ color: stat.color, fontSize: '32px', fontWeight: 800, lineHeight: 1 }}>
+                      {stat.value.toLocaleString('tr-TR')}
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '6px', fontWeight: 600 }}>
+                      {stat.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── B) HER OTEL İÇİN KART ── */}
+            {raporSonucu.rapor.map((otel) => (
+              <div
+                key={otel.hotelId}
+                style={{
+                  ...glassCard,
+                  padding: '28px 32px',
+                  marginBottom: '20px',
+                }}
+              >
+                {/* Otel başlık */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                  <span style={{ fontSize: '20px' }}>🏨</span>
+                  <h3 style={{ color: '#f1f5f9', fontSize: '16px', fontWeight: 700, margin: 0, flex: 1 }}>
+                    {otel.hotelName}
+                  </h3>
+                  {!otel.veriAlinabildi && (
+                    <span
+                      style={{
+                        background: 'rgba(239,68,68,0.12)',
+                        color: '#fca5a5',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '3px 10px',
+                        borderRadius: '999px',
+                        border: '1px solid rgba(239,68,68,0.25)',
+                      }}
+                    >
+                      Hata
+                    </span>
+                  )}
+                </div>
+
+                {/* Veri alınamadı */}
+                {!otel.veriAlinabildi ? (
+                  <div
+                    style={{
+                      background: 'rgba(239,68,68,0.08)',
+                      border: '1px solid rgba(239,68,68,0.20)',
+                      borderRadius: '12px',
+                      padding: '16px 20px',
+                      color: '#fca5a5',
+                      fontSize: '14px',
+                    }}
+                  >
+                    ⚠️ Bu otelden veri alınamadı.
+                    {otel.hataDetay && (
+                      <span style={{ color: '#94a3b8', fontSize: '12px', marginLeft: '8px' }}>
+                        ({otel.hataDetay})
+                      </span>
+                    )}
+                  </div>
+                ) : otel.ozet.toplam === 0 ? (
+                  /* Boş veri — hata değil */
+                  <div
+                    style={{
+                      background: 'rgba(99,102,241,0.05)',
+                      border: '1px solid rgba(99,102,241,0.12)',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      textAlign: 'center',
+                      color: '#64748b',
+                      fontSize: '14px',
+                    }}
+                  >
+                    <div style={{ fontSize: '28px', marginBottom: '8px' }}>📭</div>
+                    Bu tarih aralığında kayıt yok.
+                  </div>
+                ) : (
+                  <>
+                    {/* Özet rakamlar */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                        gap: '12px',
+                        marginBottom: '24px',
+                      }}
+                    >
+                      {([
+                        { label: 'Toplam', value: otel.ozet.toplam, color: '#a5b4fc' },
+                        { label: 'Cevaplanan', value: otel.ozet.cevaplanan, color: '#6ee7b7' },
+                        { label: 'Cevapsız', value: otel.ozet.cevapsiz, color: '#fcd34d' },
+                        { label: 'Eskalasyon', value: otel.ozet.escalation, color: '#fca5a5' },
+                        {
+                          label: 'Ort. Yanıt',
+                          value: otel.ozet.ortalamaYanitDakika !== null
+                            ? `${otel.ozet.ortalamaYanitDakika} dk`
+                            : '—',
+                          color: '#93c5fd',
+                        },
+                      ] as const).map((s) => (
+                        <div
+                          key={s.label}
+                          style={{
+                            background: 'rgba(0,0,0,0.22)',
+                            borderRadius: '12px',
+                            padding: '14px 16px',
+                            textAlign: 'center',
+                            border: '1px solid rgba(255,255,255,0.05)',
+                          }}
+                        >
+                          <div style={{ color: s.color, fontSize: '22px', fontWeight: 800, lineHeight: 1 }}>
+                            {s.value}
+                          </div>
+                          <div style={{ color: '#64748b', fontSize: '11px', marginTop: '5px', fontWeight: 600 }}>
+                            {s.label}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Departman tablosu */}
+                    {otel.departmanBazli.length > 0 && (
+                      <div style={{ marginBottom: '20px' }}>
+                        <div
+                          style={{
+                            color: '#94a3b8',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            letterSpacing: '0.08em',
+                            textTransform: 'uppercase',
+                            marginBottom: '10px',
+                          }}
+                        >
+                          Departman Bazlı
+                        </div>
+                        <div
+                          style={{
+                            borderRadius: '12px',
+                            overflow: 'hidden',
+                            border: '1px solid rgba(139,92,246,0.12)',
+                          }}
+                        >
+                          {/* Tablo başlığı */}
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 80px 90px 90px',
+                              background: 'rgba(99,102,241,0.10)',
+                              padding: '10px 16px',
+                              color: '#64748b',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              letterSpacing: '0.05em',
+                            }}
+                          >
+                            <span>DEPARTMAN</span>
+                            <span style={{ textAlign: 'center' }}>TOPLAM</span>
+                            <span style={{ textAlign: 'center' }}>CEVAPLANAN</span>
+                            <span style={{ textAlign: 'center' }}>ESKALe</span>
+                          </div>
+                          {otel.departmanBazli.map((d, i) => (
+                            <div
+                              key={d.departman}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 80px 90px 90px',
+                                padding: '11px 16px',
+                                background: i % 2 === 0 ? 'rgba(0,0,0,0.15)' : 'transparent',
+                                borderTop: '1px solid rgba(139,92,246,0.07)',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <span style={{ color: '#e2e8f0', fontSize: '13px', fontWeight: 500 }}>
+                                {deptTr(d.departman)}
+                              </span>
+                              <span style={{ color: '#a5b4fc', fontSize: '14px', fontWeight: 700, textAlign: 'center' }}>
+                                {d.toplam}
+                              </span>
+                              <span style={{ color: '#6ee7b7', fontSize: '13px', fontWeight: 600, textAlign: 'center' }}>
+                                {d.cevaplanan}
+                              </span>
+                              <span
+                                style={{
+                                  color: d.escalation > 0 ? '#fca5a5' : '#475569',
+                                  fontSize: '13px',
+                                  fontWeight: d.escalation > 0 ? 700 : 500,
+                                  textAlign: 'center',
+                                }}
+                              >
+                                {d.escalation > 0 ? `🚨 ${d.escalation}` : '—'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Personel tablosu */}
+                    {otel.personelBazli.length > 0 && (
+                      <div>
+                        <div
+                          style={{
+                            color: '#94a3b8',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            letterSpacing: '0.08em',
+                            textTransform: 'uppercase',
+                            marginBottom: '10px',
+                          }}
+                        >
+                          Personel Performansı
+                        </div>
+                        <div
+                          style={{
+                            borderRadius: '12px',
+                            overflow: 'hidden',
+                            border: '1px solid rgba(139,92,246,0.12)',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 120px',
+                              background: 'rgba(99,102,241,0.10)',
+                              padding: '10px 16px',
+                              color: '#64748b',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              letterSpacing: '0.05em',
+                            }}
+                          >
+                            <span>PERSONEL</span>
+                            <span style={{ textAlign: 'center' }}>ÇÖZÜLEN ADET</span>
+                          </div>
+                          {otel.personelBazli.map((p, i) => (
+                            <div
+                              key={p.personel}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 120px',
+                                padding: '11px 16px',
+                                background: i % 2 === 0 ? 'rgba(0,0,0,0.15)' : 'transparent',
+                                borderTop: '1px solid rgba(139,92,246,0.07)',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <span style={{ color: '#e2e8f0', fontSize: '13px', fontWeight: 500 }}>
+                                {i === 0 && otel.personelBazli.length > 1 ? '🏆 ' : ''}{p.personel}
+                              </span>
+                              <span
+                                style={{
+                                  color: '#6ee7b7',
+                                  fontSize: '14px',
+                                  fontWeight: 700,
+                                  textAlign: 'center',
+                                }}
+                              >
+                                {p.cozulen_adet}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Alt bilgi */}
         <p
