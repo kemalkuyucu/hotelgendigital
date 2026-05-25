@@ -1017,6 +1017,127 @@ async function handleMessage(args: {
   }
   // MODULE 17.c SONU
 
+  // ============================================================
+  // MODÜL 3 — ALERJEN SHORT-CIRCUIT (verification/AI/forward ÖNCESİNDE)
+  // allergen_pending=true ise bu mesaj KESİNLİKLE alerji cevabıdır.
+  // Başka hiçbir akışa (verification, intent, forward) GİRMEZ.
+  // ============================================================
+  if (conversation.allergen_pending) {
+    console.log(`[allergen-sc] allergen_pending=true — short-circuit başlıyor. text="${text.slice(0, 80)}"`);
+
+    // Inbound mesajı kaydet (kayıt mantığı korunuyor)
+    await supa.from('bot_messages').insert({
+      conversation_id: conversationId,
+      direction: 'inbound',
+      text,
+      message_type: msg.voice ? 'voice' : msg.photo ? 'photo' : 'text',
+      metadata: {
+        telegram_message_id: msg.message_id,
+        telegram_date: msg.date,
+        ...(msg.voice ? { voice_file_id: msg.voice.file_id } : {}),
+        ...(msg.photo ? { photo_file_ids: msg.photo.map((p) => p.file_id) } : {}),
+      },
+    });
+
+    const answerRaw = text.trim().toLowerCase();
+    const noAllergenPatterns = /\b(yok|yoq|hayır|hayir|hayr|alerjim yok|alerjisi yok|alerji yok|no|none|nichts|нет)\b/i;
+    const hasAllergenText = answerRaw.length > 0 && !noAllergenPatterns.test(answerRaw);
+    // Çok kısa (< 2 karakter) metinler alakasız sayılır
+    const isIrrelevant = answerRaw.length < 2;
+
+    let allergenStatus: string;
+    let allergenText: string | null = null;
+    let reportedAt: string | null = null;
+    let scReplyText = '';
+
+    if (isIrrelevant) {
+      allergenStatus = 'asked_no_response';
+      // Kısa/anlamsız → normal AI cevabı yok, sadece kısa onay
+      scReplyText = language === 'en'
+        ? 'Understood, thank you.'
+        : language === 'de'
+          ? 'Verstanden, vielen Dank.'
+          : 'Anlaşıldı, teşekkürler.';
+      console.log(`[allergen-sc] Alakasız cevap → status=asked_no_response`);
+    } else if (!hasAllergenText) {
+      // noAllergenPatterns eşleşti → "yok"
+      allergenStatus = 'none';
+      scReplyText = language === 'en'
+        ? 'Noted, thank you! Please let us know if there is anything else we can help you with.'
+        : language === 'de'
+          ? 'Notiert, vielen Dank! Lassen Sie uns wissen, wenn wir noch etwas für Sie tun können.'
+          : 'Anlaşıldı, teşekkürler! Başka bir isteğiniz varsa lütfen belirtin.';
+      console.log(`[allergen-sc] Alerji yok → status=none`);
+    } else {
+      // Alerjen belirtmiş → reported
+      allergenStatus = 'reported';
+      allergenText = text.trim(); // ham metin (küçük harfe çevirme yok)
+      reportedAt = new Date().toISOString();
+      scReplyText = language === 'en'
+        ? 'Thank you for letting us know! We have informed the relevant team about your allergy.'
+        : language === 'de'
+          ? 'Vielen Dank! Wir haben das zuständige Team über Ihre Allergie informiert.'
+          : 'Bilgilendirme için teşekkürler! İlgili ekibimizi alerjiniz hakkında haberdar ettik.';
+      console.log(`[allergen-sc] Alerjen bildirildi → status=reported text="${allergenText}"`);
+    }
+
+    // conversation state güncelle
+    await supa
+      .from('conversations')
+      .update({ allergen_pending: false, allergen_asked: true })
+      .eq('id', conversationId);
+
+    // guest_allergens kaydını güncelle
+    const platformUserIdSc = String(userId);
+    const updatePayloadSc: Record<string, unknown> = {
+      status: allergenStatus,
+      updated_at: new Date().toISOString(),
+    };
+    if (allergenText !== null) updatePayloadSc.allergen_text = allergenText;
+    if (reportedAt !== null) updatePayloadSc.reported_at = reportedAt;
+
+    const { data: allergenRowSc } = await supa
+      .from('guest_allergens')
+      .select('id')
+      .eq('platform', 'telegram')
+      .eq('platform_user_id', platformUserIdSc)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (allergenRowSc) {
+      await supa
+        .from('guest_allergens')
+        .update(updatePayloadSc)
+        .eq('id', allergenRowSc.id);
+    } else {
+      // Güvenli fallback: kayıt yoksa yeni oluştur
+      await supa.from('guest_allergens').insert({
+        platform: 'telegram',
+        platform_user_id: platformUserIdSc,
+        status: allergenStatus,
+        ...(allergenText ? { allergen_text: allergenText } : {}),
+        ...(reportedAt ? { reported_at: reportedAt } : {}),
+      });
+    }
+
+    // Outbound mesajı kaydet
+    await supa.from('bot_messages').insert({
+      conversation_id: conversationId,
+      direction: 'outbound',
+      text: scReplyText,
+      message_type: 'text',
+    });
+
+    // Misafire tek ve net cevap gönder — oda no SORULMAZ, forward YOK
+    await tg.sendMessage({ chat_id: chatId, text: scReplyText });
+
+    console.log(`[allergen-sc] Short-circuit tamamlandı → status=${allergenStatus}, conversationId=${conversationId}`);
+    return; // ← Başka hiçbir akışa girme
+  }
+  // ============================================================
+  // MODÜL 3 — ALERJEN SHORT-CIRCUIT SONU
+  // ============================================================
+
   // Inbound mesajı kaydet
   const { data: inboundData, error: inboundError } = await supa
     .from('bot_messages')
@@ -1473,96 +1594,9 @@ async function handleMessage(args: {
     }
 
     console.log(`[allergen] Alerji sorusu eklendi → conversationId=${conversationId}`);
-  } else if (conversation.allergen_pending && !skipForward) {
-    // ── Alerji cevabı bekleniyor — bu mesaj CEVAP ──
-    const answerRaw = text.trim().toLowerCase();
-
-    // Basit kural tabanlı sınıflandırma
-    const noAllergenPatterns = /\b(yok|yoq|hayır|hayir|hayr|alerjim yok|alerjisi yok|alerji yok|no|none|nichts|нет)\b/i;
-    const hasAllergenText = answerRaw.length > 0 && !noAllergenPatterns.test(answerRaw);
-    const isIrrelevant =
-      // Kısa ve tamamen anlamsız (sadece rakam, sembol vb.)
-      (answerRaw.length < 2) ||
-      // AI intent sosyal → "teşekkür" gibi → alakasız kabul et
-      (aiRawIntent != null && ['greeting', 'acknowledgment', 'farewell', 'chitchat', 'affirmation'].includes((aiRawIntent ?? '').toLowerCase()) && !hasAllergenText);
-
-    let allergenStatus: string;
-    let allergenText: string | null = null;
-    let reportedAt: string | null = null;
-    let botAllergenReply = '';
-
-    if (isIrrelevant) {
-      // Alakasız/cevapsız — 'asked_no_response' (ASLA "yok" diye kaydetme)
-      allergenStatus = 'asked_no_response';
-      console.log(`[allergen] Alerji cevabı alakasız → status=asked_no_response`);
-    } else if (noAllergenPatterns.test(answerRaw)) {
-      // "Yok" → none
-      allergenStatus = 'none';
-      console.log(`[allergen] Alerji yok → status=none`);
-    } else {
-      // Alerjen belirtmiş → reported
-      allergenStatus = 'reported';
-      allergenText = text.trim(); // ham metin, küçük harfe çevirme
-      reportedAt = new Date().toISOString();
-      botAllergenReply =
-        '\n\nBilgilendirme için teşekkürler, ilgili ekibimizi haberdar ediyoruz.';
-      console.log(`[allergen] Alerjen bildirildi → status=reported text="${allergenText}"`);
-    }
-
-    // conversation state güncelle
-    await supa
-      .from('conversations')
-      .update({
-        allergen_pending: false,
-        allergen_asked: true,
-      })
-      .eq('id', conversationId);
-
-    // guest_allergens kaydını güncelle
-    const platformUserIdForAnswer = String(userId);
-    const updatePayload: Record<string, unknown> = {
-      status: allergenStatus,
-      updated_at: new Date().toISOString(),
-    };
-    if (allergenText !== null) updatePayload.allergen_text = allergenText;
-    if (reportedAt !== null) updatePayload.reported_at = reportedAt;
-
-    const { data: allergenRow } = await supa
-      .from('guest_allergens')
-      .select('id')
-      .eq('platform', 'telegram')
-      .eq('platform_user_id', platformUserIdForAnswer)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (allergenRow) {
-      await supa
-        .from('guest_allergens')
-        .update(updatePayload)
-        .eq('id', allergenRow.id);
-    } else {
-      // Güvenli fallback: kayıt yoksa yeni oluştur
-      await supa.from('guest_allergens').insert({
-        platform: 'telegram',
-        platform_user_id: platformUserIdForAnswer,
-        status: allergenStatus,
-        ...(allergenText ? { allergen_text: allergenText } : {}),
-        ...(reportedAt ? { reported_at: reportedAt } : {}),
-      });
-    }
-
-    // Bot cevabını alerjen bilgisiyle zenginleştir (sadece 'reported' için ek mesaj)
-    if (botAllergenReply) {
-      finalResponseText = finalResponseText + botAllergenReply;
-    }
-
-    // Bu mesaj alerji cevabı — forward YOK (skipForward zaten false olabilir; geçersiz kıl)
-    if (allergenStatus !== 'asked_no_response') {
-      // 'none' veya 'reported' → forward atla, sadece bot cevap gitsin
-      skipForward = true;
-    }
-    // 'asked_no_response' → normal akışa devam (AI ne dediyse gitsin)
   }
+  // Not: allergen_pending=true durumu artık yukarıda (MODULE 17.c SONU'ndan sonra)
+  // short-circuit ile işleniyor — buraya DÜŞMEZ.
   // ============================================================
   // MODÜL 3 — ALERJEN AKIŞI SONU
   // ============================================================
