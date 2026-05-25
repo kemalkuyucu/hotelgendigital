@@ -21,11 +21,11 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
   return (
     <div style={{ padding: '40px', fontFamily: "'Inter', system-ui, sans-serif" }}>
       <div style={{ maxWidth: '900px' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>
+        <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#e2e8f0', margin: '0 0 8px' }}>
           📊 Dashboard
         </h1>
         <p style={{ color: '#64748b', margin: '0 0 40px' }}>
-          Hoş geldiniz, <strong>{admin?.full_name}</strong> · {slug}
+          Hoş geldiniz, <strong style={{ color: '#94a3b8' }}>{admin?.full_name}</strong> · {slug}
         </p>
 
         {/* Stat Kartları */}
@@ -38,19 +38,20 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
           }}
         >
           {[
-            { icon: '💬', label: 'Aktif Konuşmalar', value: '—', color: '#6366f1' },
-            { icon: '📨', label: 'Bugün İletilen', value: '—', color: '#10b981' },
-            { icon: '👥', label: 'Aktif Personel', value: '—', color: '#f59e0b' },
-            { icon: '📂', label: 'Toplam Belge', value: totalDocs > 0 ? String(totalDocs) : '—', color: '#0ea5e9' },
+            { icon: '💬', label: 'Aktif Konuşmalar', value: '—', color: '#a5b4fc' },
+            { icon: '📨', label: 'Bugün İletilen', value: '—', color: '#6ee7b7' },
+            { icon: '👥', label: 'Aktif Personel', value: '—', color: '#fcd34d' },
+            { icon: '📂', label: 'Toplam Belge', value: totalDocs > 0 ? String(totalDocs) : '—', color: '#7dd3fc' },
           ].map((card) => (
             <div
               key={card.label}
               style={{
-                background: '#fff',
-                border: '1px solid #e2e8f0',
+                background: 'rgba(15,23,42,0.7)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: '16px',
                 padding: '24px',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
               }}
             >
               <div style={{ fontSize: '28px', marginBottom: '12px' }}>{card.icon}</div>
@@ -66,14 +67,16 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
         {totalDocs > 0 && (
           <div
             style={{
-              background: 'linear-gradient(135deg, rgba(14,165,233,0.06), rgba(99,102,241,0.06))',
-              border: '1px solid rgba(14,165,233,0.15)',
+              background: 'rgba(14,165,233,0.08)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              border: '1px solid rgba(14,165,233,0.2)',
               borderRadius: '16px',
               padding: '28px 32px',
               marginBottom: '24px',
             }}
           >
-            <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#0369a1', margin: '0 0 16px' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#7dd3fc', margin: '0 0 16px' }}>
               📂 Departman Belgeleri
             </h2>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
@@ -83,8 +86,8 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
                   <span
                     key={dept}
                     style={{
-                      background: 'rgba(14,165,233,0.1)',
-                      color: '#0369a1',
+                      background: 'rgba(14,165,233,0.15)',
+                      color: '#7dd3fc',
                       padding: '6px 14px',
                       borderRadius: '999px',
                       fontSize: '13px',
@@ -101,16 +104,18 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
         {/* Modül bilgi kartı */}
         <div
           style={{
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.08))',
-            border: '1px solid rgba(99,102,241,0.2)',
+            background: 'rgba(99,102,241,0.1)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(99,102,241,0.25)',
             borderRadius: '16px',
             padding: '32px',
           }}
         >
-          <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#4338ca', margin: '0 0 12px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#a5b4fc', margin: '0 0 12px' }}>
             🚀 Modül 9 Aktif
           </h2>
-          <p style={{ color: '#6366f1', fontSize: '14px', lineHeight: 1.6, margin: 0 }}>
+          <p style={{ color: '#818cf8', fontSize: '14px', lineHeight: 1.6, margin: 0 }}>
             Belge yükleme ve KB Self-Service aktif. Departman sayfalarından PDF, Excel veya Word
             belgelerinizi yükleyebilirsiniz. AI otomatik olarak parse edip misafir asistanına bilgi
             olarak ekleyecek.

@@ -62,7 +62,7 @@ export default async function FrontOfficePage({
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#e2e8f0', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             🏨 In-House Misafir Listesi
           </h1>
           <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>
@@ -95,16 +95,18 @@ export default async function FrontOfficePage({
 
         {/* Aktif Misafir Kartı */}
         <div style={{
-          background: hasGuests ? 'linear-gradient(135deg, #0f172a, #1e3a5f)' : '#f8fafc',
-          border: hasGuests ? 'none' : '1px solid #e2e8f0',
+          background: hasGuests ? 'rgba(14,165,233,0.12)' : 'rgba(15,23,42,0.6)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: hasGuests ? '1px solid rgba(14,165,233,0.3)' : '1px solid rgba(255,255,255,0.06)',
           borderRadius: '16px',
           padding: '24px',
-          boxShadow: hasGuests ? '0 8px 32px rgba(14,165,233,0.2)' : 'none',
+          boxShadow: hasGuests ? '0 8px 32px rgba(14,165,233,0.15)' : 'none',
         }}>
           <p style={{ fontSize: '12px', fontWeight: 600, color: hasGuests ? '#7dd3fc' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
             Aktif Misafir
           </p>
-          <p style={{ fontSize: '48px', fontWeight: 700, color: hasGuests ? '#f0f9ff' : '#0f172a', margin: 0, lineHeight: 1 }}>
+          <p style={{ fontSize: '48px', fontWeight: 700, color: hasGuests ? '#f0f9ff' : '#e2e8f0', margin: 0, lineHeight: 1 }}>
             {guestCount}
           </p>
           <p style={{ fontSize: '12px', color: hasGuests ? '#93c5fd' : '#64748b', margin: '8px 0 0' }}>
@@ -114,11 +116,11 @@ export default async function FrontOfficePage({
 
         {/* Son Yükleme Kartı */}
         {lastUpload ? (
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px' }}>
+          <div style={{ background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '24px' }}>
             <p style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
               Son Yükleme
             </p>
-            <p style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>
+            <p style={{ fontSize: '14px', fontWeight: 600, color: '#e2e8f0', margin: '0 0 4px' }}>
               {lastUpload.file_name ?? 'Bilinmiyor'}
             </p>
             <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px' }}>
@@ -126,19 +128,19 @@ export default async function FrontOfficePage({
             </p>
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               {[
-                { label: 'Eklendi', val: lastUpload.inserted_count, color: '#16a34a' },
-                { label: 'Güncellendi', val: lastUpload.updated_count, color: '#0369a1' },
-                { label: 'Arşivlendi', val: lastUpload.archived_count, color: '#92400e' },
+                { label: 'Eklendi', val: lastUpload.inserted_count, color: '#4ade80' },
+                { label: 'Güncellendi', val: lastUpload.updated_count, color: '#60a5fa' },
+                { label: 'Arşivlendi', val: lastUpload.archived_count, color: '#fb923c' },
               ].map(({ label, val, color }) => (
-                <span key={label} style={{ fontSize: '11px', fontWeight: 600, color, background: color + '18', padding: '2px 8px', borderRadius: '6px' }}>
+                <span key={label} style={{ fontSize: '11px', fontWeight: 600, color, background: color + '22', padding: '2px 8px', borderRadius: '6px' }}>
                   {label}: {val}
                 </span>
               ))}
             </div>
           </div>
         ) : (
-          <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-            <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', margin: 0 }}>
+          <div style={{ background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+            <p style={{ color: '#475569', fontSize: '13px', textAlign: 'center', margin: 0 }}>
               Henüz yükleme yapılmadı
             </p>
           </div>
@@ -148,7 +150,7 @@ export default async function FrontOfficePage({
       {/* ── Divider ────────────────────────────────────────────────────────── */}
       <div style={{
         height: '1px',
-        background: 'linear-gradient(90deg, #e2e8f0, transparent)',
+        background: 'linear-gradient(90deg, rgba(255,255,255,0.08), transparent)',
         marginBottom: '32px',
       }} />
 

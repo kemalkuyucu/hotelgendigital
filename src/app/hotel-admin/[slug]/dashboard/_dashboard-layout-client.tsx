@@ -19,6 +19,7 @@ type NavItemKey =
   | 'fo-list'
   | 'fo-upload'
   | 'fo-history'
+  | 'fo-rez-links'
   | 'bilgi-otel'
   | 'bilgi-tabani'
   | 'belgeler'
@@ -71,9 +72,10 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
   const showFrontOffice = FRONT_OFFICE_ROLES.includes(adminRole)
   const showPersonel = PERSONEL_ROLES.includes(adminRole)
   const frontOfficeItems: NavItem[] = [
-    { key: 'fo-list',    label: 'In-House Listesi', href: `/hotel-admin/${slug}/front-office`,         isSubItem: true },
-    { key: 'fo-upload', label: 'Excel Yükle',       href: `/hotel-admin/${slug}/front-office/upload`,  isSubItem: true },
-    { key: 'fo-history',label: 'Bildirim Geçmişi',  href: `/hotel-admin/${slug}/front-office/history`, isSubItem: true },
+    { key: 'fo-list',      label: 'In-House Listesi',     href: `/hotel-admin/${slug}/front-office`,              isSubItem: true },
+    { key: 'fo-upload',   label: 'Excel Yükle',           href: `/hotel-admin/${slug}/front-office/upload`,       isSubItem: true },
+    { key: 'fo-history',  label: 'Bildirim Geçmişi',      href: `/hotel-admin/${slug}/front-office/history`,      isSubItem: true },
+    { key: 'fo-rez-links',label: '🔗 Rezervasyon Linkleri', href: `/hotel-admin/${slug}/dashboard/reservation-links`, isSubItem: true },
   ]
 
   // Bilgi Yönetimi alt menü (sadece hotel_owner)
@@ -113,7 +115,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
       <p style={{
         fontSize: '10px',
         fontWeight: 700,
-        color: '#475569',
+        color: '#64748b',
         textTransform: 'uppercase',
         letterSpacing: '0.08em',
         margin: 0,
@@ -129,7 +131,8 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
         minHeight: '100vh',
         display: 'flex',
         fontFamily: "'Inter', system-ui, sans-serif",
-        background: '#f8fafc',
+        background: 'transparent',
+        width: '100%',
       }}
     >
       {/* Sidebar */}
@@ -137,7 +140,10 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
         style={{
           width: '260px',
           minHeight: '100vh',
-          background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
+          background: 'rgba(10,15,30,0.85)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          borderRight: '1px solid rgba(255,255,255,0.08)',
           display: 'flex',
           flexDirection: 'column',
           flexShrink: 0,
@@ -275,7 +281,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
       </aside>
 
       {/* Main */}
-      <main style={{ flex: 1, overflow: 'auto' }}>{children}</main>
+      <main style={{ flex: 1, overflow: 'auto', background: 'transparent' }}>{children}</main>
     </div>
   )
 }

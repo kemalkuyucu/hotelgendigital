@@ -69,7 +69,7 @@ export default async function DepartmentPage({
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
           <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
+            <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#e2e8f0', margin: '0 0 4px' }}>
               {label}
             </h1>
             <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>
@@ -124,17 +124,19 @@ export default async function DepartmentPage({
         {/* Modül 11: SLA Ayarları Kartı */}
         <div
           style={{
-            background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(239,68,68,0.06))',
+            background: 'rgba(245,158,11,0.08)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
             border: '1px solid rgba(245,158,11,0.2)',
             borderRadius: '16px',
             padding: '28px 32px',
             marginBottom: '24px',
           }}
         >
-          <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#b45309', margin: '0 0 6px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#fbbf24', margin: '0 0 6px' }}>
             ⏱ SLA Ayarları (Modül 11)
           </h2>
-          <p style={{ color: '#92400e', fontSize: '13px', lineHeight: 1.6, margin: '0 0 20px' }}>
+          <p style={{ color: '#d97706', fontSize: '13px', lineHeight: 1.6, margin: '0 0 20px' }}>
             Talep cevap süreleri. Aşılırsa sırasıyla resepsiyona escalation → &quot;cevap verilmedi&quot; otomatik kaydı yapılır.
           </p>
 
@@ -145,7 +147,7 @@ export default async function DepartmentPage({
             onSubmit={undefined}
           >
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#78350f', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#fbbf24', marginBottom: '6px' }}>
                 🏢 Departman SLA (dakika)
               </label>
               <input
@@ -160,7 +162,8 @@ export default async function DepartmentPage({
                   border: '1px solid rgba(245,158,11,0.3)',
                   borderRadius: '8px',
                   fontSize: '14px',
-                  background: 'rgba(255,255,255,0.8)',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: '#e2e8f0',
                   boxSizing: 'border-box',
                 }}
               />
@@ -170,7 +173,7 @@ export default async function DepartmentPage({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#78350f', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#fbbf24', marginBottom: '6px' }}>
                 🛎️ Resepsiyon SLA (dakika)
               </label>
               <input
@@ -185,7 +188,8 @@ export default async function DepartmentPage({
                   border: '1px solid rgba(245,158,11,0.3)',
                   borderRadius: '8px',
                   fontSize: '14px',
-                  background: 'rgba(255,255,255,0.8)',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: '#e2e8f0',
                   boxSizing: 'border-box',
                 }}
               />
@@ -195,7 +199,7 @@ export default async function DepartmentPage({
             </div>
           </form>
 
-          <p style={{ fontSize: '12px', color: '#a16207', marginTop: '16px', fontStyle: 'italic' }}>
+          <p style={{ fontSize: '12px', color: '#b45309', marginTop: '16px', fontStyle: 'italic' }}>
             ℹ️ SLA güncellemesi için: Hotel Admin API PATCH /api/hotel-admin/{slug}/departments/{dept}/sla endpoint&apos;ini kullanın.
             Panelden fetch ile güncelleme Modül 11.1&apos;de eklenecek.
           </p>
@@ -204,16 +208,18 @@ export default async function DepartmentPage({
         {/* Info kartı */}
         <div
           style={{
-            background: 'linear-gradient(135deg, rgba(14,165,233,0.06), rgba(99,102,241,0.06))',
-            border: '1px solid rgba(14,165,233,0.15)',
+            background: 'rgba(14,165,233,0.08)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(14,165,233,0.2)',
             borderRadius: '16px',
             padding: '28px 32px',
           }}
         >
-          <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#0369a1', margin: '0 0 10px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#7dd3fc', margin: '0 0 10px' }}>
             💡 Modül 11 — SLA Escalation Aktif
           </h2>
-          <p style={{ color: '#0ea5e9', fontSize: '13.5px', lineHeight: 1.7, margin: 0 }}>
+          <p style={{ color: '#60a5fa', fontSize: '13.5px', lineHeight: 1.7, margin: 0 }}>
             Departmana gönderilen talepler artık 2 inline buton içeriyor: 🟢 Hemen ilgileniyoruz / 🟡 Biraz sonra.
             Personel butona basmazsa SLA süresi aşımında resepsiyona escalation gider.
           </p>
@@ -222,4 +228,3 @@ export default async function DepartmentPage({
     </div>
   )
 }
-
