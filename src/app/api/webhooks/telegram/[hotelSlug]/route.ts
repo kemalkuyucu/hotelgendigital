@@ -548,17 +548,24 @@ async function handleVerificationFlow(args: {
     const effectiveIntent = conversation.verification_pending_intent ?? aiIntent;
     // Modül 10.4: Orijinal talebi al, ardından pending'i temizle
     const originalRequestText = conversation.pending_request_text || null;
+    const verifiedAt = new Date().toISOString();
     await supa
       .from('conversations')
       .update({
         verified_inhouse_guest_id: result.guestId,
-        verified_at: new Date().toISOString(),
+        verified_at: verifiedAt,
         verification_pending_intent: null,
         verification_attempts: 0,
-        verification_last_attempt_at: new Date().toISOString(),
+        verification_last_attempt_at: verifiedAt,
         pending_request_text: null, // ← TEMİZLE (forward sonrası)
       })
       .eq('id', conversationId);
+
+    // Bug 1 fix: in-memory conversation nesnesini DB ile senkronize et.
+    // Aksi halde Modül 3'teki verificationIsActive hesabı eski (stale)
+    // nesneyi görür, TRUE döner ve canAskAllergen=false olur.
+    conversation.verification_pending_intent = null;
+    conversation.verified_at = verifiedAt;
 
     // Doğrulanmış misafirin tam kaydını çek (forward + CC için)
     let verifiedGuestRecord: VerificationFlowResult['verifiedGuestRecord'] = null;
