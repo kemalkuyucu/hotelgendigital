@@ -1411,15 +1411,15 @@ async function handleMessage(args: {
   //   - Henüz sormadık (allergen_asked=false)
   //   - Şu an beklemiyoruz (allergen_pending=false)
   //   - Doğrulama / oda eşleşme beklentisi YOK (diğer akışlarla çakışmasın)
-  //   - Forward iptal değil (sosyal/safety değil)
+  // NOT: skipForward (KB cevabı dahil) ARTIK engel değil — F&B sorusuna
+  // KB'den cevap verilse bile alerji sorusu cevabın sonuna eklenir.
   const verificationIsActive =
     !!conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at);
   const canAskAllergen =
     isFbIntent &&
     !conversation.allergen_asked &&
     !conversation.allergen_pending &&
-    !verificationIsActive &&
-    !skipForward;
+    !verificationIsActive;
 
   if (canAskAllergen) {
     // Alerji sorusunu normal F&B cevabının sonuna ekle
