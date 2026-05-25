@@ -102,7 +102,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     // Personeli doğrula + telegram_user_id kontrolü için çek
     const { data: existing, error: fetchError } = await tenant.hotelSupabase
       .from('department_staff')
-      .select('id, full_name, telegram_user_id, department_key, is_active')
+      .select('id, full_name, telegram_user_id, department_key, is_active, is_allergen_primary, is_allergen_backup, is_manager')
       .eq('id', staffId)
       .single()
 
