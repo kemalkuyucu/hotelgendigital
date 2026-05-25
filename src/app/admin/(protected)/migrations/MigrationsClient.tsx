@@ -78,7 +78,7 @@ function DetailModal({
   status: StatusWithName;
   onClose: () => void;
 }) {
-  const allVersions = ['001', '002', '003', '004', '005', '006', '008', '009'];
+  const allVersions = ['001', '002', '003', '004', '005', '006', '008', '009', '010'];
   const appliedVersions = new Set(status.applied.map((a) => a.version));
 
   return (
@@ -184,6 +184,7 @@ function getPendingName(version: string) {
     '006': 'module17_notifications',
     '008': 'module17_7_multi_match_flag',
     '009': 'module22_department_staff_created_by',
+    '010': 'reservation_links',
   };
   return names[version] ?? 'bilinmeyen';
 }
