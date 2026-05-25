@@ -26,6 +26,8 @@ import {
   shouldSendDocument,
   findRelevantAutoFileDocument,
 } from '@/lib/telegram/send-document';
+// Modül 4: Alerjen bildirim yönlendirme
+import { sendAllergenNotifications } from '@/lib/telegram/allergen-notify';
 
 export const runtime = 'nodejs';
 
@@ -1104,6 +1106,9 @@ async function handleMessage(args: {
       .eq('is_active', true)
       .maybeSingle();
 
+    // guest_allergens güncelle/oluştur; ID'yi yakala (bildirim için gerekli)
+    let resolvedAllergenId: string | null = allergenRowSc?.id ?? null;
+
     if (allergenRowSc) {
       await supa
         .from('guest_allergens')
@@ -1111,14 +1116,60 @@ async function handleMessage(args: {
         .eq('id', allergenRowSc.id);
     } else {
       // Güvenli fallback: kayıt yoksa yeni oluştur
-      await supa.from('guest_allergens').insert({
-        platform: 'telegram',
-        platform_user_id: platformUserIdSc,
-        status: allergenStatus,
-        ...(allergenText ? { allergen_text: allergenText } : {}),
-        ...(reportedAt ? { reported_at: reportedAt } : {}),
+      const { data: insertedRow } = await supa
+        .from('guest_allergens')
+        .insert({
+          platform: 'telegram',
+          platform_user_id: platformUserIdSc,
+          status: allergenStatus,
+          ...(allergenText ? { allergen_text: allergenText } : {}),
+          ...(reportedAt ? { reported_at: reportedAt } : {}),
+        })
+        .select('id')
+        .single();
+      resolvedAllergenId = (insertedRow as { id: string } | null)?.id ?? null;
+    }
+
+    // ── Modül 4: Bildirim yönlendirme (sadece reported) ──────────────────────
+    if (allergenStatus === 'reported' && allergenText && resolvedAllergenId) {
+      // Doğrulanmış misafir bilgisi — conversation'daki verified_inhouse_guest_id ile çek
+      let notifyRoomNumber: string | null = null;
+      let notifyGuestName: string | null = null;
+
+      if (conversation.verified_inhouse_guest_id) {
+        const { data: inhouseRec } = await supa
+          .from('inhouse_guests')
+          .select('room_number, first_name, last_name')
+          .eq('id', conversation.verified_inhouse_guest_id)
+          .maybeSingle();
+        if (inhouseRec) {
+          notifyRoomNumber = (inhouseRec.room_number as string | null) ?? null;
+          notifyGuestName  = `${inhouseRec.first_name ?? ''} ${inhouseRec.last_name ?? ''}`.trim() || null;
+        }
+      }
+
+      // guest_allergens'teki room_number fallback (eşleşme olmasa da oda no girilebilir)
+      if (!notifyRoomNumber) {
+        const { data: gaRow } = await supa
+          .from('guest_allergens')
+          .select('room_number, guest_full_name')
+          .eq('id', resolvedAllergenId)
+          .maybeSingle();
+        notifyRoomNumber = (gaRow?.room_number as string | null) ?? null;
+        if (!notifyGuestName) notifyGuestName = (gaRow?.guest_full_name as string | null) ?? null;
+      }
+
+      console.log(`[allergen-sc] Modül 4 bildirim → room=${notifyRoomNumber} name=${notifyGuestName}`);
+      await sendAllergenNotifications({
+        hotelSupa: supa,
+        tg,
+        guestAllergenId: resolvedAllergenId,
+        roomNumber: notifyRoomNumber,
+        guestFullName: notifyGuestName,
+        allergenText,
       });
     }
+    // ── Modül 4 bildirim SONU ─────────────────────────────────────────────────
 
     // Outbound mesajı kaydet
     await supa.from('bot_messages').insert({
