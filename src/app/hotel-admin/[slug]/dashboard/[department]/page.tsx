@@ -4,6 +4,8 @@ import { getAllowedDepartments, deptLabel } from '@/lib/hotel-admin/types'
 import type { DepartmentKey } from '@/lib/hotel-admin/types'
 import Link from 'next/link'
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
+import AllergenStaffClient from './_allergen-staff-client'
+import type { AllergenStaffMember } from './_allergen-staff-client'
 
 export default async function DepartmentPage({
   params,
@@ -43,13 +45,12 @@ export default async function DepartmentPage({
     )
   }
 
-  const label = deptLabel(dept)
+  const tenant = await resolveTenantBySlug(slug)
 
   // Modül 11: SLA ayarlarını DB'den çek
   let slaMinutes = 1
   let receptionSlaMinutes = 5
   try {
-    const tenant = await resolveTenantBySlug(slug)
     const { data: deptRow } = await tenant.hotelSupabase
       .from('departments')
       .select('sla_minutes, reception_sla_minutes')
@@ -62,6 +63,34 @@ export default async function DepartmentPage({
   } catch {
     // Hata olursa varsayılan değerler kullan
   }
+
+  // Modül 2: Alerjen alıcı personeli — sadece fb sayfasında, hotel_owner veya fb_manager
+  const ALLERGEN_ALLOWED = new Set(['hotel_owner', 'fb_manager'])
+  let allergenFbStaff: AllergenStaffMember[] = []
+  let allergenFoStaff: AllergenStaffMember[] = []
+  const showAllergenSection = dept === 'fb' && ALLERGEN_ALLOWED.has(admin.role)
+  if (showAllergenSection) {
+    try {
+      const { data: fbRows } = await tenant.hotelSupabase
+        .from('department_staff')
+        .select('id, full_name, role_title, department_key, telegram_user_id, is_allergen_primary, is_allergen_backup, is_manager')
+        .eq('is_active', true)
+        .eq('department_key', 'fb')
+        .order('full_name')
+      const { data: foRows } = await tenant.hotelSupabase
+        .from('department_staff')
+        .select('id, full_name, role_title, department_key, telegram_user_id, is_allergen_primary, is_allergen_backup, is_manager')
+        .eq('is_active', true)
+        .eq('department_key', 'front_office')
+        .order('full_name')
+      allergenFbStaff = (fbRows ?? []) as AllergenStaffMember[]
+      allergenFoStaff = (foRows ?? []) as AllergenStaffMember[]
+    } catch {
+      // Sessizce geç
+    }
+  }
+
+  const label = deptLabel(dept)
 
   return (
     <div style={{ padding: '40px', fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -224,6 +253,17 @@ export default async function DepartmentPage({
             Personel butona basmazsa SLA süresi aşımında resepsiyona escalation gider.
           </p>
         </div>
+
+        {/* Modül 2: Alerjen Bildirim Ayarları — sadece F&B, hotel_owner veya fb_manager */}
+        {showAllergenSection && (
+          <div style={{ marginTop: '32px' }}>
+            <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.07)', margin: '0 0 32px' }} />
+            <AllergenStaffClient
+              initialFbStaff={allergenFbStaff}
+              initialFoStaff={allergenFoStaff}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
