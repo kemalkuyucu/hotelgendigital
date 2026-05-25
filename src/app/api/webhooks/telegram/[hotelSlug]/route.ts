@@ -343,6 +343,9 @@ interface ConversationState {
   verification_pending_intent: string | null;
   verification_attempts: number;
   pending_request_text: string | null; // Modül 10.4: doğrulama öncesi orijinal talep
+  // Modül 3 — Alerjen akışı
+  allergen_asked: boolean;   // Bu konuşmada alerji sorusu soruldu mu?
+  allergen_pending: boolean; // Şu an alerji cevabı bekleniyor mu?
 }
 
 interface VerificationFlowResult {
@@ -1385,6 +1388,178 @@ async function handleMessage(args: {
   }
   // ─────────────────────────────────────────────────────────────────────────
 
+  // ============================================================
+  // MODÜL 3 — ALERJEN AKIŞI
+  // F&B intent + allergen_asked=false → alerji sorusu ekle + kayıt aç
+  // allergen_pending=true → misafirin cevabını yorumla ve kaydet
+  // ============================================================
+
+  // F&B mi? (fb veya room_service → fb'ye routelanıyor)
+  const isFbIntent =
+    finalIntent === 'fb' ||
+    (aiRawIntent != null && ['fb', 'room_service'].includes((aiRawIntent ?? '').toLowerCase()));
+
+  // Alerji sorma koşulu:
+  //   - F&B intent
+  //   - Henüz sormadık (allergen_asked=false)
+  //   - Şu an beklemiyoruz (allergen_pending=false)
+  //   - Doğrulama / oda eşleşme beklentisi YOK (diğer akışlarla çakışmasın)
+  //   - Forward iptal değil (sosyal/safety değil)
+  const verificationIsActive =
+    !!conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at);
+  const canAskAllergen =
+    isFbIntent &&
+    !conversation.allergen_asked &&
+    !conversation.allergen_pending &&
+    !verificationIsActive &&
+    !skipForward;
+
+  if (canAskAllergen) {
+    // Alerji sorusunu normal F&B cevabının sonuna ekle
+    const allergenQuestion =
+      '\n\nKonaklamanız boyunca size daha iyi hizmet verebilmemiz için: herhangi bir gıda alerjiniz var mı? ' +
+      'Varsa lütfen belirtin (örn. fıstık, deniz ürünleri). Yoksa \'yok\' yazmanız yeterli.';
+    finalResponseText = finalResponseText + allergenQuestion;
+
+    // allergen_pending=true yap
+    await supa
+      .from('conversations')
+      .update({ allergen_pending: true })
+      .eq('id', conversationId);
+
+    // guest_allergens tablosuna 'asked' kaydı aç/güncelle (idempotent: önce bak)
+    const platformUserId = String(userId);
+    const { data: existingAllergen } = await supa
+      .from('guest_allergens')
+      .select('id')
+      .eq('platform', 'telegram')
+      .eq('platform_user_id', platformUserId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    const guestFullNameForAllergen = persistentVerifiedGuest
+      ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim()
+      : guestName;
+
+    if (existingAllergen) {
+      // Kayıt var, sadece asked_at güncelle
+      await supa
+        .from('guest_allergens')
+        .update({
+          status: 'asked' as string,
+          asked_at: new Date().toISOString(),
+          guest_full_name: guestFullNameForAllergen || null,
+          room_number: persistentVerifiedGuest?.room_number ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingAllergen.id);
+    } else {
+      // Yeni kayıt aç
+      await supa.from('guest_allergens').insert({
+        platform: 'telegram',
+        platform_user_id: platformUserId,
+        guest_full_name: guestFullNameForAllergen || null,
+        room_number: persistentVerifiedGuest?.room_number ?? null,
+        status: 'asked',
+        asked_at: new Date().toISOString(),
+      });
+    }
+
+    console.log(`[allergen] Alerji sorusu eklendi → conversationId=${conversationId}`);
+  } else if (conversation.allergen_pending && !skipForward) {
+    // ── Alerji cevabı bekleniyor — bu mesaj CEVAP ──
+    const answerRaw = text.trim().toLowerCase();
+
+    // Basit kural tabanlı sınıflandırma
+    const noAllergenPatterns = /\b(yok|yoq|hayır|hayir|hayr|alerjim yok|alerjisi yok|alerji yok|no|none|nichts|нет)\b/i;
+    const hasAllergenText = answerRaw.length > 0 && !noAllergenPatterns.test(answerRaw);
+    const isIrrelevant =
+      // Kısa ve tamamen anlamsız (sadece rakam, sembol vb.)
+      (answerRaw.length < 2) ||
+      // AI intent sosyal → "teşekkür" gibi → alakasız kabul et
+      (aiRawIntent != null && ['greeting', 'acknowledgment', 'farewell', 'chitchat', 'affirmation'].includes((aiRawIntent ?? '').toLowerCase()) && !hasAllergenText);
+
+    let allergenStatus: string;
+    let allergenText: string | null = null;
+    let reportedAt: string | null = null;
+    let botAllergenReply = '';
+
+    if (isIrrelevant) {
+      // Alakasız/cevapsız — 'asked_no_response' (ASLA "yok" diye kaydetme)
+      allergenStatus = 'asked_no_response';
+      console.log(`[allergen] Alerji cevabı alakasız → status=asked_no_response`);
+    } else if (noAllergenPatterns.test(answerRaw)) {
+      // "Yok" → none
+      allergenStatus = 'none';
+      console.log(`[allergen] Alerji yok → status=none`);
+    } else {
+      // Alerjen belirtmiş → reported
+      allergenStatus = 'reported';
+      allergenText = text.trim(); // ham metin, küçük harfe çevirme
+      reportedAt = new Date().toISOString();
+      botAllergenReply =
+        '\n\nBilgilendirme için teşekkürler, ilgili ekibimizi haberdar ediyoruz.';
+      console.log(`[allergen] Alerjen bildirildi → status=reported text="${allergenText}"`);
+    }
+
+    // conversation state güncelle
+    await supa
+      .from('conversations')
+      .update({
+        allergen_pending: false,
+        allergen_asked: true,
+      })
+      .eq('id', conversationId);
+
+    // guest_allergens kaydını güncelle
+    const platformUserIdForAnswer = String(userId);
+    const updatePayload: Record<string, unknown> = {
+      status: allergenStatus,
+      updated_at: new Date().toISOString(),
+    };
+    if (allergenText !== null) updatePayload.allergen_text = allergenText;
+    if (reportedAt !== null) updatePayload.reported_at = reportedAt;
+
+    const { data: allergenRow } = await supa
+      .from('guest_allergens')
+      .select('id')
+      .eq('platform', 'telegram')
+      .eq('platform_user_id', platformUserIdForAnswer)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (allergenRow) {
+      await supa
+        .from('guest_allergens')
+        .update(updatePayload)
+        .eq('id', allergenRow.id);
+    } else {
+      // Güvenli fallback: kayıt yoksa yeni oluştur
+      await supa.from('guest_allergens').insert({
+        platform: 'telegram',
+        platform_user_id: platformUserIdForAnswer,
+        status: allergenStatus,
+        ...(allergenText ? { allergen_text: allergenText } : {}),
+        ...(reportedAt ? { reported_at: reportedAt } : {}),
+      });
+    }
+
+    // Bot cevabını alerjen bilgisiyle zenginleştir (sadece 'reported' için ek mesaj)
+    if (botAllergenReply) {
+      finalResponseText = finalResponseText + botAllergenReply;
+    }
+
+    // Bu mesaj alerji cevabı — forward YOK (skipForward zaten false olabilir; geçersiz kıl)
+    if (allergenStatus !== 'asked_no_response') {
+      // 'none' veya 'reported' → forward atla, sadece bot cevap gitsin
+      skipForward = true;
+    }
+    // 'asked_no_response' → normal akışa devam (AI ne dediyse gitsin)
+  }
+  // ============================================================
+  // MODÜL 3 — ALERJEN AKIŞI SONU
+  // ============================================================
+
   // ai_intents kaydı
   // Multi-intent: classifiedIntents varsa her biri için ayrı satır,
   // yoksa legacy fallback (tek satır, finalIntent ile)
@@ -1697,7 +1872,7 @@ async function upsertGuestAndConversation(args: {
   // Conversation upsert — doğrulama state sütunlarını da çek
   const { data: existingConv } = await supa
     .from('conversations')
-    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text')
+    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text, allergen_asked, allergen_pending')
     .eq('telegram_chat_id', chatId)
     .maybeSingle();
 
@@ -1713,6 +1888,8 @@ async function upsertGuestAndConversation(args: {
       verification_pending_intent: (existingConv.verification_pending_intent as string | null) ?? null,
       verification_attempts: (existingConv.verification_attempts as number) ?? 0,
       pending_request_text: (existingConv.pending_request_text as string | null) ?? null, // Modül 10.4
+      allergen_asked: (existingConv.allergen_asked as boolean) ?? false,   // Modül 3
+      allergen_pending: (existingConv.allergen_pending as boolean) ?? false, // Modül 3
     };
     await supa
       .from('conversations')
@@ -1738,6 +1915,8 @@ async function upsertGuestAndConversation(args: {
       verification_pending_intent: null,
       verification_attempts: 0,
       pending_request_text: null, // Modül 10.4
+      allergen_asked: false,      // Modül 3
+      allergen_pending: false,    // Modül 3
     };
   }
 
