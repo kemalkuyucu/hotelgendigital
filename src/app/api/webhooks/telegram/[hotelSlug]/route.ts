@@ -1054,7 +1054,6 @@ async function handleMessage(args: {
 
     if (isIrrelevant) {
       allergenStatus = 'asked_no_response';
-      // Kısa/anlamsız → normal AI cevabı yok, sadece kısa onay
       scReplyText = language === 'en'
         ? 'Understood, thank you.'
         : language === 'de'
@@ -1071,25 +1070,15 @@ async function handleMessage(args: {
           : 'Anlaşıldı, teşekkürler! Başka bir isteğiniz varsa lütfen belirtin.';
       console.log(`[allergen-sc] Alerji yok → status=none`);
     } else {
-      // Alerjen belirtmiş → reported
+      // Alerjen belirtmiş → reported (oda no henüz bilinmiyor olabilir, sonra sorulacak)
       allergenStatus = 'reported';
       allergenText = text.trim(); // ham metin (küçük harfe çevirme yok)
       reportedAt = new Date().toISOString();
-      scReplyText = language === 'en'
-        ? 'Thank you for letting us know! We have informed the relevant team about your allergy.'
-        : language === 'de'
-          ? 'Vielen Dank! Wir haben das zuständige Team über Ihre Allergie informiert.'
-          : 'Bilgilendirme için teşekkürler! İlgili ekibimizi alerjiniz hakkında haberdar ettik.';
+      // scReplyText oda no durumuna göre aşağıda belirleniyor
       console.log(`[allergen-sc] Alerjen bildirildi → status=reported text="${allergenText}"`);
     }
 
-    // conversation state güncelle
-    await supa
-      .from('conversations')
-      .update({ allergen_pending: false, allergen_asked: true })
-      .eq('id', conversationId);
-
-    // guest_allergens kaydını güncelle
+    // guest_allergens kaydını güncelle/oluştur
     const platformUserIdSc = String(userId);
     const updatePayloadSc: Record<string, unknown> = {
       status: allergenStatus,
@@ -1110,12 +1099,10 @@ async function handleMessage(args: {
     let resolvedAllergenId: string | null = allergenRowSc?.id ?? null;
 
     if (allergenRowSc) {
-      // Update mevcut kayıt — ID zaten biliniyor (allergenRowSc.id)
       await supa
         .from('guest_allergens')
         .update(updatePayloadSc)
         .eq('id', allergenRowSc.id);
-      // resolvedAllergenId = allergenRowSc.id (başta atandı, değişmez)
     } else {
       // Güvenli fallback: kayıt yoksa yeni oluştur
       const { data: insertedRow } = await supa
@@ -1136,10 +1123,11 @@ async function handleMessage(args: {
       console.error('[allergen-sc] KRITIK: resolvedAllergenId null — bildirim atlanamaz, kayıt kontrol edilmeli!');
     }
 
-    // ── Modül 4: Bildirim yönlendirme (sadece reported) ──────────────────────
+    // ── Modül 3+4: reported durumunda oda no kontrolü ─────────────────────────
+    // KURAL: alerji bildirildiyse → önce oda no var mı bak.
+    //   Varsa (doğrulanmış misafir): bildirimi hemen gönder.
+    //   Yoksa: oda no sor, bildirim SONRAYA ertelendi (allergen_room_verify akışı).
     if (allergenStatus === 'reported' && allergenText && resolvedAllergenId) {
-      // ODA NO KAYNAĞI: doğrudan guest_allergens kaydından al.
-      // (inhouse_guests eski tablo — verified_inhouse_guest_id bağlantısı null dönüyor.)
       const { data: gaRow } = await supa
         .from('guest_allergens')
         .select('room_number, guest_full_name')
@@ -1149,25 +1137,75 @@ async function handleMessage(args: {
       const notifyRoomNumber: string | null = (gaRow?.room_number as string | null) ?? null;
       const notifyGuestName: string | null  = (gaRow?.guest_full_name as string | null) ?? null;
 
-      console.log(`[allergen-sc] Modül 4 bildirim → room=${notifyRoomNumber} name=${notifyGuestName}`);
+      if (notifyRoomNumber) {
+        // ✅ Oda no zaten biliniyor (doğrulanmış misafir) → bildirimi hemen gönder
+        console.log(`[allergen-sc] Oda mevcut → bildirim hemen gönderiliyor. room=${notifyRoomNumber}`);
+        scReplyText = language === 'en'
+          ? 'Thank you for letting us know! We have informed the relevant team about your allergy.'
+          : language === 'de'
+            ? 'Vielen Dank! Wir haben das zuständige Team über Ihre Allergie informiert.'
+            : 'Bilgilendirme için teşekkürler! İlgili ekibimizi alerjiniz hakkında haberdar ettik.';
 
-      try {
-        await sendAllergenNotifications({
-          hotelSupa: supa,
-          tg,
-          guestAllergenId: resolvedAllergenId,
-          roomNumber: notifyRoomNumber,
-          guestFullName: notifyGuestName,
-          allergenText,
+        try {
+          await sendAllergenNotifications({
+            hotelSupa: supa,
+            tg,
+            guestAllergenId: resolvedAllergenId,
+            roomNumber: notifyRoomNumber,
+            guestFullName: notifyGuestName,
+            allergenText,
+          });
+        } catch (notifyErr) {
+          console.error(
+            '[allergen-sc] sendAllergenNotifications HATA (akış devam ediyor):',
+            notifyErr instanceof Error ? notifyErr.message : notifyErr,
+          );
+        }
+
+        // conversation state güncelle
+        await supa
+          .from('conversations')
+          .update({ allergen_pending: false, allergen_asked: true })
+          .eq('id', conversationId);
+
+      } else {
+        // ⏳ Oda no bilinmiyor → ŞİMDİ oda no sor, bildirim oda no alındıktan sonra gönderilecek
+        // KURAL: bu turda YALNIZCA oda no sorusu çıkar — başka hiçbir akış ÇALIŞMAZ.
+        console.log(`[allergen-sc] Oda no yok — allergen_room_verify akışı başlıyor, conversationId=${conversationId}`);
+        scReplyText = language === 'en'
+          ? 'Thank you for letting us know about your allergy! To notify our team, could you please share your room number, first name, and last name? Example: 101 John Smith'
+          : language === 'de'
+            ? 'Vielen Dank für die Information! Um unser Team zu informieren, teilen Sie bitte Zimmernummer, Vorname und Nachname mit. Beispiel: 101 Hans Müller'
+            : 'Bilgilendirme için teşekkürler! Ekibimizi haberdar edebilmemiz için lütfen oda numaranızı, adınızı ve soyadınızı paylaşır mısınız? Örnek: 101 Kemal Kuyucu';
+
+        // allergen_pending=false + allergen_asked=true + oda no için allergen_room_verify intent set
+        await supa
+          .from('conversations')
+          .update({
+            allergen_pending: false,
+            allergen_asked: true,
+            verification_pending_intent: 'allergen_room_verify',
+          })
+          .eq('id', conversationId);
+
+        await supa.from('bot_messages').insert({
+          conversation_id: conversationId,
+          direction: 'outbound',
+          text: scReplyText,
+          message_type: 'text',
         });
-      } catch (notifyErr) {
-        console.error(
-          '[allergen-sc] sendAllergenNotifications HATA (akış devam ediyor):',
-          notifyErr instanceof Error ? notifyErr.message : notifyErr,
-        );
+        await tg.sendMessage({ chat_id: chatId, text: scReplyText });
+        console.log(`[allergen-sc] Oda no sorusu gönderildi → conversationId=${conversationId}`);
+        return; // ← Başka hiçbir akışa girme — oda no bekleniyor (allergen_room_verify)
       }
+    } else {
+      // none / asked_no_response → conversation state güncelle
+      await supa
+        .from('conversations')
+        .update({ allergen_pending: false, allergen_asked: true })
+        .eq('id', conversationId);
     }
-    // ── Modül 4 bildirim SONU ─────────────────────────────────────────────────
+    // ── Modül 3+4 SONU ───────────────────────────────────────────────────────
 
     // Outbound mesajı kaydet
     await supa.from('bot_messages').insert({
@@ -1177,7 +1215,7 @@ async function handleMessage(args: {
       message_type: 'text',
     });
 
-    // Misafire tek ve net cevap gönder — oda no SORULMAZ, forward YOK
+    // Misafire tek ve net cevap gönder — forward YOK
     await tg.sendMessage({ chat_id: chatId, text: scReplyText });
 
     console.log(`[allergen-sc] Short-circuit tamamlandı → status=${allergenStatus}, conversationId=${conversationId}`);
@@ -1301,6 +1339,8 @@ async function handleMessage(args: {
   let finalIntent = aiRawIntent;
   // Modül 10.6/10.7: shouldForward=false (sosyal) VEYA KB cevabı → forward yok
   let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
+  // Modül 3: Bu turda oda no (doğrulama) sorusu sorulduysa true — alerji sorusu ASLA aynı turda çıkmasın
+  let verificationAskedThisRound = false;
 
   if (!aiShouldForward) {
     // Sosyal intent — doğrulama gate'ine GIRME, doğrudan bot cevabı gönder
@@ -1488,6 +1528,21 @@ async function handleMessage(args: {
     }
   }
 
+  // ── Modül 3: Alerji önce gelir — isFbIntent / canAskAllergen önceden hesapla ──
+  // KURAL: canAskAllergen=true olan turda doğrulama gate'i ÇALIŞMAZ.
+  //         Sıra: allerjen sor → allerjen cevabı al → oda no sor → doğrula → bildirim.
+  const isFbIntent =
+    finalIntent === 'fb' ||
+    (aiRawIntent != null && ['fb', 'room_service'].includes((aiRawIntent ?? '').toLowerCase()));
+
+  const verificationIsActive =
+    !!conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at);
+  const canAskAllergen =
+    isFbIntent &&
+    !conversation.allergen_asked &&
+    !conversation.allergen_pending &&
+    !verificationIsActive;
+
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
     // KB cevabı değilse forward yapılacak (skipForward zaten false/sosyal kontrolü yukarıda)
@@ -1507,7 +1562,11 @@ async function handleMessage(args: {
     });
     await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
     return;
-  } else if (aiShouldForward && (requiresVerification(aiRawIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at)))) {
+  } else if (
+    aiShouldForward &&
+    !canAskAllergen && // ← Modül 3: alerji önce sorulacak turda oda no sorusu ÇIKMASIN
+    (requiresVerification(aiRawIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at)))
+  ) {
     // Modül 10.7: verified misafir varsa doğrulama akışına GİRME (needsVerification = personalIntent && !persistentVerifiedGuest)
 
     const effectiveIntent = requiresVerification(aiRawIntent) ? aiRawIntent! : (conversation.verification_pending_intent ?? aiRawIntent ?? 'unknown');
@@ -1531,12 +1590,13 @@ async function handleMessage(args: {
       finalIntent = vResult.effectiveIntent;
       // Kilitlendi ve front_office → artık bildirim atıldı, forward atla
       skipForward = true;
+      // Modül 3: Bu turda oda no sorusu soruldu — alerji sorusu aynı turda çıkmasın
+      verificationAskedThisRound = true;
     } else {
       // Doğrulandı — success mesajı + orijinal akış
       finalResponseText = vResult.replyText;
       finalIntent = vResult.effectiveIntent;
       // Modül 10.4: Yeni doğrulama ile elde edilen verifiedGuest kaydını persistentVerifiedGuest'e ata
-      // (persistentVerifiedGuest daha önce null'dı — bu branch sadece fresh verification'da çalışır)
       if (vResult.verifiedGuestRecord) {
         persistentVerifiedGuest = {
           id: vResult.verifiedGuestRecord.id,
@@ -1549,18 +1609,79 @@ async function handleMessage(args: {
           is_active: true,
         };
       }
-      // Modül 10.4: Orijinal talebi override et (doğrulama cevabı yerine)
       if (vResult.originalRequestText) {
-        // forward'da guestMessage olarak originalRequestText kullanılacak (aşağıda override)
         console.log(`[verification] Orijinal talep forward'a aktarılacak: "${vResult.originalRequestText}"`);
       }
       if (vResult.embeddedRequest) {
         console.log(`[verification] Embedded request tespit edildi: "${vResult.embeddedRequest}" — doğrudan forward edilecek`);
       }
-      // Doğrulandıktan sonra forward yapılır (skipForward = false)
-      skipForward = false;
-      // vResult'u sakla — aşağıdaki forward çağrısında kullanmak için
-      // (TypeScript scope'u için referans dışarıya taşıyoruz)
+
+      // ── Modül 3: allergen_room_verify — alerji sonrası oda no doğrulaması tamamlandı ──
+      // Misafir daha önce alerji bildirdi, şimdi oda no + isim doğrulandı.
+      // guest_allergens güncelle → bildirim gönder → FB departmanına forward YAPMA.
+      if (effectiveIntent === 'allergen_room_verify' && vResult.verifiedGuestRecord) {
+        const platformUserIdAllergenVerify = String(userId);
+        const { data: allergenForVerify } = await supa
+          .from('guest_allergens')
+          .select('id, allergen_text')
+          .eq('platform', 'telegram')
+          .eq('platform_user_id', platformUserIdAllergenVerify)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (allergenForVerify) {
+          const verifiedRoomNumber = vResult.verifiedGuestRecord.room_number;
+          const verifiedGuestFullName =
+            `${vResult.verifiedGuestRecord.first_name ?? ''} ${vResult.verifiedGuestRecord.last_name ?? ''}`.trim();
+
+          await supa
+            .from('guest_allergens')
+            .update({
+              room_number: verifiedRoomNumber,
+              guest_full_name: verifiedGuestFullName,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', allergenForVerify.id);
+
+          console.log(`[allergen-verify] guest_allergens güncellendi → room=${verifiedRoomNumber} name=${verifiedGuestFullName}`);
+
+          try {
+            await sendAllergenNotifications({
+              hotelSupa: supa,
+              tg,
+              guestAllergenId: allergenForVerify.id,
+              roomNumber: verifiedRoomNumber,
+              guestFullName: verifiedGuestFullName,
+              allergenText: (allergenForVerify.allergen_text as string) ?? '',
+            });
+          } catch (notifyErr) {
+            console.error(
+              '[allergen-verify] sendAllergenNotifications HATA (akış devam ediyor):',
+              notifyErr instanceof Error ? notifyErr.message : notifyErr,
+            );
+          }
+
+          // Misafire bildirim onayı
+          finalResponseText = language === 'en'
+            ? `Thank you, ${vResult.verifiedGuestRecord.first_name ?? ''}! Your allergy information has been forwarded to our team. Have a pleasant stay!`
+            : language === 'de'
+              ? `Danke, ${vResult.verifiedGuestRecord.first_name ?? ''}! Ihre Allergieinformation wurde an unser Team weitergeleitet. Guten Aufenthalt!`
+              : `Teşekkürler, ${vResult.verifiedGuestRecord.first_name ?? ''}! Alerjiniz ilgili ekibimize iletildi. İyi konaklamalar!`;
+        } else {
+          console.warn('[allergen-verify] guest_allergens kaydı bulunamadı — bildirim atlandı');
+          finalResponseText = language === 'en'
+            ? 'Your information has been verified. Thank you!'
+            : language === 'de'
+              ? 'Ihre Angaben wurden überprüft. Danke!'
+              : 'Bilgileriniz doğrulandı. Teşekkürler!';
+        }
+        // allergen_room_verify tamamlandı — FB departmanına forward YAPMA
+        skipForward = true;
+      } else {
+        // Normal doğrulama (allergen_room_verify değil) — forward devam eder
+        skipForward = false;
+        // vResult'u sakla — aşağıdaki forward çağrısında kullanmak için
+      }
     }
   }
   // ─────────────────────────────────────────────────────────────────────────
@@ -1571,25 +1692,8 @@ async function handleMessage(args: {
   // allergen_pending=true → misafirin cevabını yorumla ve kaydet
   // ============================================================
 
-  // F&B mi? (fb veya room_service → fb'ye routelanıyor)
-  const isFbIntent =
-    finalIntent === 'fb' ||
-    (aiRawIntent != null && ['fb', 'room_service'].includes((aiRawIntent ?? '').toLowerCase()));
-
-  // Alerji sorma koşulu:
-  //   - F&B intent
-  //   - Henüz sormadık (allergen_asked=false)
-  //   - Şu an beklemiyoruz (allergen_pending=false)
-  //   - Doğrulama / oda eşleşme beklentisi YOK (diğer akışlarla çakışmasın)
-  // NOT: skipForward (KB cevabı dahil) ARTIK engel değil — F&B sorusuna
-  // KB'den cevap verilse bile alerji sorusu cevabın sonuna eklenir.
-  const verificationIsActive =
-    !!conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at);
-  const canAskAllergen =
-    isFbIntent &&
-    !conversation.allergen_asked &&
-    !conversation.allergen_pending &&
-    !verificationIsActive;
+  // isFbIntent, verificationIsActive, canAskAllergen yukarıda (doğrulama gate'inden ÖNCE) hesaplandı.
+  // KURAL: canAskAllergen=true ise o turda doğrulama gate'i çalışmadı (guard eklendi).
 
   if (canAskAllergen) {
     // Alerji sorusunu normal F&B cevabının sonuna ekle
