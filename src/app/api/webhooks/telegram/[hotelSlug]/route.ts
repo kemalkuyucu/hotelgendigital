@@ -1110,10 +1110,12 @@ async function handleMessage(args: {
     let resolvedAllergenId: string | null = allergenRowSc?.id ?? null;
 
     if (allergenRowSc) {
+      // Update mevcut kayıt — ID zaten biliniyor (allergenRowSc.id)
       await supa
         .from('guest_allergens')
         .update(updatePayloadSc)
         .eq('id', allergenRowSc.id);
+      // resolvedAllergenId = allergenRowSc.id (başta atandı, değişmez)
     } else {
       // Güvenli fallback: kayıt yoksa yeni oluştur
       const { data: insertedRow } = await supa
@@ -1130,44 +1132,40 @@ async function handleMessage(args: {
       resolvedAllergenId = (insertedRow as { id: string } | null)?.id ?? null;
     }
 
+    if (allergenStatus === 'reported' && !resolvedAllergenId) {
+      console.error('[allergen-sc] KRITIK: resolvedAllergenId null — bildirim atlanamaz, kayıt kontrol edilmeli!');
+    }
+
     // ── Modül 4: Bildirim yönlendirme (sadece reported) ──────────────────────
     if (allergenStatus === 'reported' && allergenText && resolvedAllergenId) {
-      // Doğrulanmış misafir bilgisi — conversation'daki verified_inhouse_guest_id ile çek
-      let notifyRoomNumber: string | null = null;
-      let notifyGuestName: string | null = null;
+      // ODA NO KAYNAĞI: doğrudan guest_allergens kaydından al.
+      // (inhouse_guests eski tablo — verified_inhouse_guest_id bağlantısı null dönüyor.)
+      const { data: gaRow } = await supa
+        .from('guest_allergens')
+        .select('room_number, guest_full_name')
+        .eq('id', resolvedAllergenId)
+        .maybeSingle();
 
-      if (conversation.verified_inhouse_guest_id) {
-        const { data: inhouseRec } = await supa
-          .from('inhouse_guests')
-          .select('room_number, first_name, last_name')
-          .eq('id', conversation.verified_inhouse_guest_id)
-          .maybeSingle();
-        if (inhouseRec) {
-          notifyRoomNumber = (inhouseRec.room_number as string | null) ?? null;
-          notifyGuestName  = `${inhouseRec.first_name ?? ''} ${inhouseRec.last_name ?? ''}`.trim() || null;
-        }
-      }
-
-      // guest_allergens'teki room_number fallback (eşleşme olmasa da oda no girilebilir)
-      if (!notifyRoomNumber) {
-        const { data: gaRow } = await supa
-          .from('guest_allergens')
-          .select('room_number, guest_full_name')
-          .eq('id', resolvedAllergenId)
-          .maybeSingle();
-        notifyRoomNumber = (gaRow?.room_number as string | null) ?? null;
-        if (!notifyGuestName) notifyGuestName = (gaRow?.guest_full_name as string | null) ?? null;
-      }
+      const notifyRoomNumber: string | null = (gaRow?.room_number as string | null) ?? null;
+      const notifyGuestName: string | null  = (gaRow?.guest_full_name as string | null) ?? null;
 
       console.log(`[allergen-sc] Modül 4 bildirim → room=${notifyRoomNumber} name=${notifyGuestName}`);
-      await sendAllergenNotifications({
-        hotelSupa: supa,
-        tg,
-        guestAllergenId: resolvedAllergenId,
-        roomNumber: notifyRoomNumber,
-        guestFullName: notifyGuestName,
-        allergenText,
-      });
+
+      try {
+        await sendAllergenNotifications({
+          hotelSupa: supa,
+          tg,
+          guestAllergenId: resolvedAllergenId,
+          roomNumber: notifyRoomNumber,
+          guestFullName: notifyGuestName,
+          allergenText,
+        });
+      } catch (notifyErr) {
+        console.error(
+          '[allergen-sc] sendAllergenNotifications HATA (akış devam ediyor):',
+          notifyErr instanceof Error ? notifyErr.message : notifyErr,
+        );
+      }
     }
     // ── Modül 4 bildirim SONU ─────────────────────────────────────────────────
 
