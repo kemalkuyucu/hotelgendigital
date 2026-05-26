@@ -481,21 +481,21 @@ async function handleVerificationFlow(args: {
     };
   }
 
-  // allergen_room_verify + zaten verified: mesajdaki oda/isimle verifyGuest çalıştır
-  // (normal doğrulama akışıyla aynı mantık — ama erken return'e takılmadan)
+  // allergen_room_verify + zaten verified: mesajdaki oda/isimle inhouse_guests_v2'ye bak
+  // (KALICI ÇÖZÜM: verifyGuest yerine v2 sorgusu — v2 kolonları: room_number + guest_name + status)
   if (
     aiIntent === 'allergen_room_verify' &&
     conversation.verified_inhouse_guest_id &&
     isVerificationValid(conversation.verified_at)
   ) {
-    console.log(`[verification] allergen_room_verify — verified misafir için verifyGuest çalıştırılıyor`);
+    console.log(`[verification] allergen_room_verify — inhouse_guests_v2 sorgusu başlıyor`);
     const parsedAllergen = parseVerificationInput(guestMessageText);
-    const { roomNumber: aRoom, firstName: aFirst, lastName: aLast } = parsedAllergen;
-    const hasCredAllergen = aRoom !== null && aFirst !== null && aLast !== null;
+    const { roomNumber: aRoom, lastName: aLast } = parsedAllergen;
 
-    if (!hasCredAllergen) {
+    // v2 için: oda no + soyad yeterli (first/last ayrı kolon yok v2'de)
+    if (!aRoom || !aLast) {
       // Format eksik → tekrar sor
-      console.log(`[verification] allergen_room_verify — eksik format: room=${aRoom} first=${aFirst} last=${aLast}`);
+      console.log(`[verification] allergen_room_verify — eksik format (v2): room=${aRoom} lastName=${aLast}`);
       const incompleteMsg = getIncompleteFormatMsg(language);
       return {
         shouldShortCircuit: true,
@@ -506,43 +506,60 @@ async function handleVerificationFlow(args: {
       };
     }
 
-    const allergenVerifyResult = await verifyGuest(supa, aRoom!, aFirst!, aLast!);
+    // inhouse_guests_v2: room_number birebir + status='active' kaydını çek
+    const { data: v2Rows, error: v2Error } = await supa
+      .from('inhouse_guests_v2')
+      .select('id, guest_name, room_number')
+      .eq('room_number', aRoom.trim())
+      .eq('status', 'active');
 
-    if (allergenVerifyResult.matched && allergenVerifyResult.guestId) {
-      // ✅ Eşleşti — verifiedGuestRecord dolu döndür
-      let allergenGuestRecord: VerificationFlowResult['verifiedGuestRecord'] = null;
-      const { data: agRec } = await supa
-        .from('inhouse_guests')
-        .select('id, first_name, last_name, room_number, language, gender')
-        .eq('id', allergenVerifyResult.guestId)
-        .maybeSingle();
-      if (agRec) {
-        allergenGuestRecord = {
-          id: agRec.id as string,
-          first_name: agRec.first_name as string | null,
-          last_name: agRec.last_name as string | null,
-          room_number: agRec.room_number as string,
-          language: agRec.language as string | null,
-          gender: agRec.gender as string | null,
-        };
-      }
+    if (v2Error) {
+      console.error('[allergen-verify] inhouse_guests_v2 sorgu hatası:', v2Error.message);
+    }
+
+    // Eşleşme: guest_name'in son kelimesi soyad ile case-insensitive karşılaştır
+    const aLastLower = aLast.trim().toLowerCase();
+    const matchedV2 = (v2Rows ?? []).find((row) => {
+      const guestName: string = (row.guest_name as string) ?? '';
+      const nameParts = guestName.trim().split(/\s+/);
+      const lastWord = nameParts[nameParts.length - 1]?.toLowerCase() ?? '';
+      return lastWord === aLastLower;
+    });
+
+    if (matchedV2) {
+      // ✅ Eşleşti — v2 kaydından verifiedGuestRecord oluştur
+      const guestNameFull: string = (matchedV2.guest_name as string) ?? '';
+      const nameParts = guestNameFull.trim().split(/\s+/);
+      const v2LastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : null;
+      const v2FirstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : guestNameFull;
+
+      const allergenGuestRecord: VerificationFlowResult['verifiedGuestRecord'] = {
+        id: matchedV2.id as string,
+        first_name: v2FirstName || null,
+        last_name: v2LastName,
+        room_number: matchedV2.room_number as string,
+        language: null,
+        gender: null,
+      };
+
       // verification_pending_intent'i temizle
       await supa
         .from('conversations')
         .update({ verification_pending_intent: null })
         .eq('id', conversationId);
       conversation.verification_pending_intent = null;
-      console.log(`[verification] allergen_room_verify — eşleşti guest_id=${allergenVerifyResult.guestId} room=${aRoom}`);
+
+      console.log(`[verification] allergen_room_verify — v2 eşleşti: v2_id=${matchedV2.id} room=${aRoom} guest_name="${guestNameFull}"`);
       return {
         shouldShortCircuit: false,
-        replyText: args.aiReplyText, // L1630 bloğu kendi finalResponseText'ini üretecek
-        verifiedGuestId: allergenVerifyResult.guestId,
+        replyText: args.aiReplyText, // allergen handler kendi finalResponseText'ini üretecek
+        verifiedGuestId: matchedV2.id as string,
         effectiveIntent: aiIntent,
         verifiedGuestRecord: allergenGuestRecord,
       };
     } else {
       // ❌ Eşleşmedi — log + fail mesajı, verification_pending_intent KALSIN (tekrar denesin)
-      console.log(`[verification] allergen_room_verify — eşleşmedi: room=${aRoom} first=${aFirst} last=${aLast}`);
+      console.log(`[verification] allergen_room_verify — v2 eşleşmedi: room=${aRoom} lastName=${aLast}`);
       const failMsg = getVerificationFailMsg(language);
       return {
         shouldShortCircuit: true,
