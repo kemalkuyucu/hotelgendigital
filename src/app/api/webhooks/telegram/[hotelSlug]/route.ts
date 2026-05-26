@@ -1563,9 +1563,17 @@ async function handleMessage(args: {
     await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
     return;
   } else if (
-    aiShouldForward &&
-    !canAskAllergen && // ← Modül 3: alerji önce sorulacak turda oda no sorusu ÇIKMASIN
-    (requiresVerification(aiRawIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at)))
+    // Modül 3 FIX: allergen_room_verify pending ise aiShouldForward koşulundan BAĞIMSIZ tetikle.
+    // AI "101 Kemal Kuyucu"yu sosyal/greeting sınıflandırsa bile bu akış çalışmalı.
+    (
+      conversation.verification_pending_intent === 'allergen_room_verify' &&
+      !isVerificationValid(conversation.verified_at)
+    ) ||
+    (
+      aiShouldForward &&
+      !canAskAllergen && // ← Modül 3: alerji önce sorulacak turda oda no sorusu ÇIKMASIN
+      (requiresVerification(aiRawIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at)))
+    )
   ) {
     // Modül 10.7: verified misafir varsa doğrulama akışına GİRME (needsVerification = personalIntent && !persistentVerifiedGuest)
 
@@ -1634,7 +1642,8 @@ async function handleMessage(args: {
           const verifiedGuestFullName =
             `${vResult.verifiedGuestRecord.first_name ?? ''} ${vResult.verifiedGuestRecord.last_name ?? ''}`.trim();
 
-          await supa
+          // ── guest_allergens güncelle: room_number + guest_full_name YAZ ────
+          const { error: gaUpdateError } = await supa
             .from('guest_allergens')
             .update({
               room_number: verifiedRoomNumber,
@@ -1643,8 +1652,16 @@ async function handleMessage(args: {
             })
             .eq('id', allergenForVerify.id);
 
-          console.log(`[allergen-verify] guest_allergens güncellendi → room=${verifiedRoomNumber} name=${verifiedGuestFullName}`);
+          if (gaUpdateError) {
+            console.error(
+              '[allergen-verify] guest_allergens UPDATE HATASI — room_number yazılamadı:',
+              gaUpdateError.message,
+            );
+          } else {
+            console.log(`[allergen-verify] guest_allergens güncellendi → room=${verifiedRoomNumber} name=${verifiedGuestFullName} id=${allergenForVerify.id}`);
+          }
 
+          // ── Bildirim gönder (try/catch — sessiz patlama olmasın) ────────────
           try {
             await sendAllergenNotifications({
               hotelSupa: supa,
@@ -1654,6 +1671,7 @@ async function handleMessage(args: {
               guestFullName: verifiedGuestFullName,
               allergenText: (allergenForVerify.allergen_text as string) ?? '',
             });
+            console.log(`[allergen-verify] sendAllergenNotifications OK → room=${verifiedRoomNumber}`);
           } catch (notifyErr) {
             console.error(
               '[allergen-verify] sendAllergenNotifications HATA (akış devam ediyor):',
