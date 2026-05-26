@@ -464,9 +464,13 @@ async function handleVerificationFlow(args: {
   const { supa, tg, botToken, conversationId, conversation, guestMessageText, aiIntent, language } = args;
 
   // 1. Zaten doğrulanmış ve TTL geçerli → normal akışa devam
+  // ÖZEL DURUM: allergen_room_verify intent'i için bu erken return'ü ATLA.
+  // Bu intent'in amacı doğrulama değil; misafirin oda no + ismini guest_allergens'a
+  // yazıp bildirim göndermektir. Bu nedenle her zaman verifyGuest çalıştır.
   if (
     conversation.verified_inhouse_guest_id &&
-    isVerificationValid(conversation.verified_at)
+    isVerificationValid(conversation.verified_at) &&
+    aiIntent !== 'allergen_room_verify'
   ) {
     console.log(`[verification] Zaten doğrulanmış guest_id=${conversation.verified_inhouse_guest_id}`);
     return {
@@ -475,6 +479,79 @@ async function handleVerificationFlow(args: {
       verifiedGuestId: conversation.verified_inhouse_guest_id,
       effectiveIntent: aiIntent,
     };
+  }
+
+  // allergen_room_verify + zaten verified: mesajdaki oda/isimle verifyGuest çalıştır
+  // (normal doğrulama akışıyla aynı mantık — ama erken return'e takılmadan)
+  if (
+    aiIntent === 'allergen_room_verify' &&
+    conversation.verified_inhouse_guest_id &&
+    isVerificationValid(conversation.verified_at)
+  ) {
+    console.log(`[verification] allergen_room_verify — verified misafir için verifyGuest çalıştırılıyor`);
+    const parsedAllergen = parseVerificationInput(guestMessageText);
+    const { roomNumber: aRoom, firstName: aFirst, lastName: aLast } = parsedAllergen;
+    const hasCredAllergen = aRoom !== null && aFirst !== null && aLast !== null;
+
+    if (!hasCredAllergen) {
+      // Format eksik → tekrar sor
+      console.log(`[verification] allergen_room_verify — eksik format: room=${aRoom} first=${aFirst} last=${aLast}`);
+      const incompleteMsg = getIncompleteFormatMsg(language);
+      return {
+        shouldShortCircuit: true,
+        replyText: incompleteMsg,
+        verifiedGuestId: null,
+        effectiveIntent: aiIntent,
+        verifiedGuestRecord: null,
+      };
+    }
+
+    const allergenVerifyResult = await verifyGuest(supa, aRoom!, aFirst!, aLast!);
+
+    if (allergenVerifyResult.matched && allergenVerifyResult.guestId) {
+      // ✅ Eşleşti — verifiedGuestRecord dolu döndür
+      let allergenGuestRecord: VerificationFlowResult['verifiedGuestRecord'] = null;
+      const { data: agRec } = await supa
+        .from('inhouse_guests')
+        .select('id, first_name, last_name, room_number, language, gender')
+        .eq('id', allergenVerifyResult.guestId)
+        .maybeSingle();
+      if (agRec) {
+        allergenGuestRecord = {
+          id: agRec.id as string,
+          first_name: agRec.first_name as string | null,
+          last_name: agRec.last_name as string | null,
+          room_number: agRec.room_number as string,
+          language: agRec.language as string | null,
+          gender: agRec.gender as string | null,
+        };
+      }
+      // verification_pending_intent'i temizle
+      await supa
+        .from('conversations')
+        .update({ verification_pending_intent: null })
+        .eq('id', conversationId);
+      conversation.verification_pending_intent = null;
+      console.log(`[verification] allergen_room_verify — eşleşti guest_id=${allergenVerifyResult.guestId} room=${aRoom}`);
+      return {
+        shouldShortCircuit: false,
+        replyText: args.aiReplyText, // L1630 bloğu kendi finalResponseText'ini üretecek
+        verifiedGuestId: allergenVerifyResult.guestId,
+        effectiveIntent: aiIntent,
+        verifiedGuestRecord: allergenGuestRecord,
+      };
+    } else {
+      // ❌ Eşleşmedi — log + fail mesajı, verification_pending_intent KALSIN (tekrar denesin)
+      console.log(`[verification] allergen_room_verify — eşleşmedi: room=${aRoom} first=${aFirst} last=${aLast}`);
+      const failMsg = getVerificationFailMsg(language);
+      return {
+        shouldShortCircuit: true,
+        replyText: failMsg,
+        verifiedGuestId: null,
+        effectiveIntent: aiIntent,
+        verifiedGuestRecord: null,
+      };
+    }
   }
 
   // 2. Kilitlenmiş mi? (attempts >= MAX ve hâlâ doğrulanmamış)
@@ -1627,74 +1704,98 @@ async function handleMessage(args: {
       // ── Modül 3: allergen_room_verify — alerji sonrası oda no doğrulaması tamamlandı ──
       // Misafir daha önce alerji bildirdi, şimdi oda no + isim doğrulandı.
       // guest_allergens güncelle → bildirim gönder → FB departmanına forward YAPMA.
-      if (effectiveIntent === 'allergen_room_verify' && vResult.verifiedGuestRecord) {
-        const platformUserIdAllergenVerify = String(userId);
-        const { data: allergenForVerify } = await supa
-          .from('guest_allergens')
-          .select('id, allergen_text')
-          .eq('platform', 'telegram')
-          .eq('platform_user_id', platformUserIdAllergenVerify)
-          .eq('is_active', true)
-          .maybeSingle();
-
-        if (allergenForVerify) {
-          const verifiedRoomNumber = vResult.verifiedGuestRecord.room_number;
-          const verifiedGuestFullName =
-            `${vResult.verifiedGuestRecord.first_name ?? ''} ${vResult.verifiedGuestRecord.last_name ?? ''}`.trim();
-
-          // ── guest_allergens güncelle: room_number + guest_full_name YAZ ────
-          const { error: gaUpdateError } = await supa
-            .from('guest_allergens')
-            .update({
-              room_number: verifiedRoomNumber,
-              guest_full_name: verifiedGuestFullName,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', allergenForVerify.id);
-
-          if (gaUpdateError) {
-            console.error(
-              '[allergen-verify] guest_allergens UPDATE HATASI — room_number yazılamadı:',
-              gaUpdateError.message,
-            );
-          } else {
-            console.log(`[allergen-verify] guest_allergens güncellendi → room=${verifiedRoomNumber} name=${verifiedGuestFullName} id=${allergenForVerify.id}`);
-          }
-
-          // ── Bildirim gönder (try/catch — sessiz patlama olmasın) ────────────
-          try {
-            await sendAllergenNotifications({
-              hotelSupa: supa,
-              tg,
-              guestAllergenId: allergenForVerify.id,
-              roomNumber: verifiedRoomNumber,
-              guestFullName: verifiedGuestFullName,
-              allergenText: (allergenForVerify.allergen_text as string) ?? '',
-            });
-            console.log(`[allergen-verify] sendAllergenNotifications OK → room=${verifiedRoomNumber}`);
-          } catch (notifyErr) {
-            console.error(
-              '[allergen-verify] sendAllergenNotifications HATA (akış devam ediyor):',
-              notifyErr instanceof Error ? notifyErr.message : notifyErr,
-            );
-          }
-
-          // Misafire bildirim onayı
+      if (effectiveIntent === 'allergen_room_verify') {
+        // verification_pending_intent'i her halükarda temizle (başarı veya başarısızlık)
+        // Not: başarılı durumda handleVerificationFlow zaten temizliyor;
+        //       başarısız (shouldShortCircuit=true) durumda buraya gelmez —
+        //       erken return yukarıda zaten yapıldı. Bu blok yalnızca
+        //       shouldShortCircuit=false (başarılı) durumda çalışır.
+        if (!vResult.verifiedGuestRecord) {
+          // Eşleşme olmadan shouldShortCircuit=false olamaz, ama savunma katmanı:
+          console.warn('[allergen-verify] allergen_room_verify başarılı ama verifiedGuestRecord null — bildirim atlandı');
           finalResponseText = language === 'en'
-            ? `Thank you, ${vResult.verifiedGuestRecord.first_name ?? ''}! Your allergy information has been forwarded to our team. Have a pleasant stay!`
+            ? 'Your room number and name could not be matched. Please try again.'
             : language === 'de'
-              ? `Danke, ${vResult.verifiedGuestRecord.first_name ?? ''}! Ihre Allergieinformation wurde an unser Team weitergeleitet. Guten Aufenthalt!`
-              : `Teşekkürler, ${vResult.verifiedGuestRecord.first_name ?? ''}! Alerjiniz ilgili ekibimize iletildi. İyi konaklamalar!`;
+              ? 'Zimmernummer und Name konnten nicht zugeordnet werden. Bitte versuchen Sie es erneut.'
+              : 'Oda numarası ve isim eşleşmedi. Lütfen tekrar deneyin.';
+          skipForward = true;
         } else {
-          console.warn('[allergen-verify] guest_allergens kaydı bulunamadı — bildirim atlandı');
-          finalResponseText = language === 'en'
-            ? 'Your information has been verified. Thank you!'
-            : language === 'de'
-              ? 'Ihre Angaben wurden überprüft. Danke!'
-              : 'Bilgileriniz doğrulandı. Teşekkürler!';
+          // ✅ Doğrulama başarılı ve verifiedGuestRecord dolu
+          const platformUserIdAllergenVerify = String(userId);
+          const { data: allergenForVerify } = await supa
+            .from('guest_allergens')
+            .select('id, allergen_text')
+            .eq('platform', 'telegram')
+            .eq('platform_user_id', platformUserIdAllergenVerify)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (allergenForVerify) {
+            const verifiedRoomNumber = vResult.verifiedGuestRecord.room_number;
+            const verifiedGuestFullName =
+              `${vResult.verifiedGuestRecord.first_name ?? ''} ${vResult.verifiedGuestRecord.last_name ?? ''}`.trim();
+
+            // ── guest_allergens güncelle: room_number + guest_full_name YAZ ────
+            const { error: gaUpdateError } = await supa
+              .from('guest_allergens')
+              .update({
+                room_number: verifiedRoomNumber,
+                guest_full_name: verifiedGuestFullName,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', allergenForVerify.id);
+
+            if (gaUpdateError) {
+              console.error(
+                '[allergen-verify] guest_allergens UPDATE HATASI — room_number yazılamadı:',
+                gaUpdateError.message,
+              );
+            } else {
+              console.log(`[allergen-verify] guest_allergens güncellendi → room=${verifiedRoomNumber} name=${verifiedGuestFullName} id=${allergenForVerify.id}`);
+            }
+
+            // ── Bildirim gönder (try/catch — sessiz patlama olmasın) ────────────
+            try {
+              await sendAllergenNotifications({
+                hotelSupa: supa,
+                tg,
+                guestAllergenId: allergenForVerify.id,
+                roomNumber: verifiedRoomNumber,
+                guestFullName: verifiedGuestFullName,
+                allergenText: (allergenForVerify.allergen_text as string) ?? '',
+              });
+              console.log(`[allergen-verify] sendAllergenNotifications OK → room=${verifiedRoomNumber}`);
+            } catch (notifyErr) {
+              console.error(
+                '[allergen-verify] sendAllergenNotifications HATA (akış devam ediyor):',
+                notifyErr instanceof Error ? notifyErr.message : notifyErr,
+              );
+            }
+
+            // ✅ Misafire başarı mesajı (kayıt + bildirim tamamlandı)
+            finalResponseText = language === 'en'
+              ? `Thank you, ${vResult.verifiedGuestRecord.first_name ?? ''}! Your allergy information has been forwarded to our team. Have a pleasant stay!`
+              : language === 'de'
+                ? `Danke, ${vResult.verifiedGuestRecord.first_name ?? ''}! Ihre Allergieinformation wurde an unser Team weitergeleitet. Guten Aufenthalt!`
+                : `Teşekkürler, ${vResult.verifiedGuestRecord.first_name ?? ''}! Alerjiniz ilgili ekibimize iletildi. İyi konaklamalar!`;
+          } else {
+            console.warn('[allergen-verify] guest_allergens kaydı bulunamadı — bildirim atlandı');
+            finalResponseText = language === 'en'
+              ? 'Your information has been verified. Thank you!'
+              : language === 'de'
+                ? 'Ihre Angaben wurden überprüft. Danke!'
+                : 'Bilgileriniz doğrulandı. Teşekkürler!';
+          }
+
+          // verification_pending_intent'i temizle (başarılı akış)
+          await supa
+            .from('conversations')
+            .update({ verification_pending_intent: null })
+            .eq('id', conversationId);
+
+          // allergen_room_verify tamamlandı — FB departmanına forward YAPMA
+          skipForward = true;
         }
-        // allergen_room_verify tamamlandı — FB departmanına forward YAPMA
-        skipForward = true;
       } else {
         // Normal doğrulama (allergen_room_verify değil) — forward devam eder
         skipForward = false;
