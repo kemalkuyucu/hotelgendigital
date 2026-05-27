@@ -348,6 +348,10 @@ interface ConversationState {
   // Modül 3 — Alerjen akışı
   allergen_asked: boolean;   // Bu konuşmada alerji sorusu soruldu mu?
   allergen_pending: boolean; // Şu an alerji cevabı bekleniyor mu?
+  // Modül 3 — Alerjen State İzolasyonu (015_allergen_state_isolation)
+  allergen_verify_pending: boolean;       // Oda no + isim doğrulaması bekleniyor (allergen_room_verify mini flow)
+  allergen_verify_pending_at: string | null; // TTL timestamp — 24h sonra otomatik temizlenir
+  allergen_verify_attempts: number;         // Max 3 deneme
 }
 
 interface VerificationFlowResult {
@@ -464,13 +468,9 @@ async function handleVerificationFlow(args: {
   const { supa, tg, botToken, conversationId, conversation, guestMessageText, aiIntent, language } = args;
 
   // 1. Zaten doğrulanmış ve TTL geçerli → normal akışa devam
-  // ÖZEL DURUM: allergen_room_verify intent'i için bu erken return'ü ATLA.
-  // Bu intent'in amacı doğrulama değil; misafirin oda no + ismini guest_allergens'a
-  // yazıp bildirim göndermektir. Bu nedenle her zaman verifyGuest çalıştır.
   if (
     conversation.verified_inhouse_guest_id &&
-    isVerificationValid(conversation.verified_at) &&
-    aiIntent !== 'allergen_room_verify'
+    isVerificationValid(conversation.verified_at)
   ) {
     console.log(`[verification] Zaten doğrulanmış guest_id=${conversation.verified_inhouse_guest_id}`);
     return {
@@ -479,96 +479,6 @@ async function handleVerificationFlow(args: {
       verifiedGuestId: conversation.verified_inhouse_guest_id,
       effectiveIntent: aiIntent,
     };
-  }
-
-  // allergen_room_verify + zaten verified: mesajdaki oda/isimle inhouse_guests_v2'ye bak
-  // (KALICI ÇÖZÜM: verifyGuest yerine v2 sorgusu — v2 kolonları: room_number + guest_name + status)
-  if (
-    aiIntent === 'allergen_room_verify' &&
-    conversation.verified_inhouse_guest_id &&
-    isVerificationValid(conversation.verified_at)
-  ) {
-    console.log(`[verification] allergen_room_verify — inhouse_guests_v2 sorgusu başlıyor`);
-    const parsedAllergen = parseVerificationInput(guestMessageText);
-    const { roomNumber: aRoom, lastName: aLast } = parsedAllergen;
-
-    // v2 için: oda no + soyad yeterli (first/last ayrı kolon yok v2'de)
-    if (!aRoom || !aLast) {
-      // Format eksik → tekrar sor
-      console.log(`[verification] allergen_room_verify — eksik format (v2): room=${aRoom} lastName=${aLast}`);
-      const incompleteMsg = getIncompleteFormatMsg(language);
-      return {
-        shouldShortCircuit: true,
-        replyText: incompleteMsg,
-        verifiedGuestId: null,
-        effectiveIntent: aiIntent,
-        verifiedGuestRecord: null,
-      };
-    }
-
-    // inhouse_guests_v2: room_number birebir + status='active' kaydını çek
-    const { data: v2Rows, error: v2Error } = await supa
-      .from('inhouse_guests_v2')
-      .select('id, guest_name, room_number')
-      .eq('room_number', aRoom.trim())
-      .eq('status', 'active');
-
-    if (v2Error) {
-      console.error('[allergen-verify] inhouse_guests_v2 sorgu hatası:', v2Error.message);
-    }
-
-    // Eşleşme: guest_name'in son kelimesi soyad ile case-insensitive karşılaştır
-    const aLastLower = aLast.trim().toLowerCase();
-    const matchedV2 = (v2Rows ?? []).find((row) => {
-      const guestName: string = (row.guest_name as string) ?? '';
-      const nameParts = guestName.trim().split(/\s+/);
-      const lastWord = nameParts[nameParts.length - 1]?.toLowerCase() ?? '';
-      return lastWord === aLastLower;
-    });
-
-    if (matchedV2) {
-      // ✅ Eşleşti — v2 kaydından verifiedGuestRecord oluştur
-      const guestNameFull: string = (matchedV2.guest_name as string) ?? '';
-      const nameParts = guestNameFull.trim().split(/\s+/);
-      const v2LastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : null;
-      const v2FirstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : guestNameFull;
-
-      const allergenGuestRecord: VerificationFlowResult['verifiedGuestRecord'] = {
-        id: matchedV2.id as string,
-        first_name: v2FirstName || null,
-        last_name: v2LastName,
-        room_number: matchedV2.room_number as string,
-        language: null,
-        gender: null,
-      };
-
-      // verification_pending_intent'i temizle
-      await supa
-        .from('conversations')
-        .update({ verification_pending_intent: null })
-        .eq('id', conversationId);
-      conversation.verification_pending_intent = null;
-
-      console.log(`[verification] allergen_room_verify — v2 eşleşti: v2_id=${matchedV2.id} room=${aRoom} guest_name="${guestNameFull}"`);
-      return {
-        shouldShortCircuit: false,
-        replyText: args.aiReplyText, // allergen handler kendi finalResponseText'ini üretecek
-        verifiedGuestId: matchedV2.id as string,
-        effectiveIntent: aiIntent,
-        verifiedGuestRecord: allergenGuestRecord,
-      };
-    } else {
-      // ❌ Eşleşmedi — log + fail mesajı, verification_pending_intent KALSIN (tekrar denesin)
-      console.log(`[verification] allergen_room_verify — v2 eşleşmedi: room=${aRoom} lastName=${aLast}`);
-      const failMsg = getVerificationFailMsg(language);
-      return {
-        shouldShortCircuit: true,
-        replyText: failMsg,
-        verifiedGuestId: null,
-        effectiveIntent: aiIntent,
-        verifiedGuestRecord: null,
-      };
-    }
   }
 
   // 2. Kilitlenmiş mi? (attempts >= MAX ve hâlâ doğrulanmamış)
@@ -1114,10 +1024,41 @@ async function handleMessage(args: {
   // MODULE 17.c SONU
 
   // ============================================================
-  // MODÜL 3 — ALERJEN SHORT-CIRCUIT (verification/AI/forward ÖNCESİNDE)
-  // allergen_pending=true ise bu mesaj KESİNLİKLE alerji cevabıdır.
-  // Başka hiçbir akışa (verification, intent, forward) GİRMEZ.
+  // MODÜL 3 — ALLERGEN GATE (tüm akışlardan ÖNCE)
+  // ─────────────────────────────────────────────────────────────
+  // KURAL 1: allergen_pending=true → bu mesaj alerji cevabıdır.
+  //          Verification, AI, forward'a GİRMEZ.
+  // KURAL 2: allergen_verify_pending=true → bu mesaj oda no + isim doğrulamasıdır.
+  //          Normal verification gate'e, AI'a, forward'a GİRMEZ.
+  //          verification_pending_intent KULLANILMAZ (tamamen izole).
   // ============================================================
+
+  // ── Adım 0: Stale TTL temizliği (24h) ──────────────────────────────────────
+  const now24h = new Date();
+  if (
+    conversation.allergen_verify_pending &&
+    conversation.allergen_verify_pending_at
+  ) {
+    const diffHours =
+      (now24h.getTime() - new Date(conversation.allergen_verify_pending_at).getTime()) /
+      (1000 * 60 * 60);
+    if (diffHours >= 24) {
+      console.log(`[allergen-gate] allergen_verify_pending TTL geçti (${diffHours.toFixed(1)}h) — temizleniyor`);
+      await supa
+        .from('conversations')
+        .update({
+          allergen_verify_pending: false,
+          allergen_verify_pending_at: null,
+          allergen_verify_attempts: 0,
+        })
+        .eq('id', conversationId);
+      conversation.allergen_verify_pending = false;
+      conversation.allergen_verify_pending_at = null;
+      conversation.allergen_verify_attempts = 0;
+    }
+  }
+  // ── Stale TTL temizliği SONU ───────────────────────────────────────────────
+
   if (conversation.allergen_pending) {
     console.log(`[allergen-sc] allergen_pending=true — short-circuit başlıyor. text="${text.slice(0, 80)}"`);
 
@@ -1272,15 +1213,21 @@ async function handleMessage(args: {
             ? 'Vielen Dank für die Information! Um unser Team zu informieren, teilen Sie bitte Zimmernummer, Vorname und Nachname mit. Beispiel: 101 Hans Müller'
             : 'Bilgilendirme için teşekkürler! Ekibimizi haberdar edebilmemiz için lütfen oda numaranızı, adınızı ve soyadınızı paylaşır mısınız? Örnek: 101 Kemal Kuyucu';
 
-        // allergen_pending=false + allergen_asked=true + oda no için allergen_room_verify intent set
+        // allergen_pending=false + allergen_asked=true + allergen_verify_pending=TRUE
+        // NOT: verification_pending_intent'e DOKUNULMAZ — alerjen kendi alanını kullanır
         await supa
           .from('conversations')
           .update({
             allergen_pending: false,
             allergen_asked: true,
-            verification_pending_intent: 'allergen_room_verify',
+            allergen_verify_pending: true,
+            allergen_verify_pending_at: new Date().toISOString(),
+            allergen_verify_attempts: 0,
           })
           .eq('id', conversationId);
+        conversation.allergen_verify_pending = true;
+        conversation.allergen_verify_pending_at = new Date().toISOString();
+        conversation.allergen_verify_attempts = 0;
 
         await supa.from('bot_messages').insert({
           conversation_id: conversationId,
@@ -1317,6 +1264,202 @@ async function handleMessage(args: {
   }
   // ============================================================
   // MODÜL 3 — ALERJEN SHORT-CIRCUIT SONU
+  // ============================================================
+
+  // ============================================================
+  // MODÜL 3 — ALLERGEN VERIFY GATE
+  // allergen_verify_pending=true: misafir oda no + isim cevabı bekleniyor.
+  // Bu blok tamamen izoledir: verification_pending_intent'e dokunmaz,
+  // normal doğrulama akışına girmez, AI'a gitmez.
+  // ============================================================
+  if (conversation.allergen_verify_pending) {
+    console.log(`[allergen-verify-gate] allergen_verify_pending=true — oda no doğrulaması. text="${text.slice(0, 80)}"`);
+
+    // Inbound mesajı kaydet
+    await supa.from('bot_messages').insert({
+      conversation_id: conversationId,
+      direction: 'inbound',
+      text,
+      message_type: msg.voice ? 'voice' : msg.photo ? 'photo' : 'text',
+      metadata: {
+        telegram_message_id: msg.message_id,
+        telegram_date: msg.date,
+        ...(msg.voice ? { voice_file_id: msg.voice.file_id } : {}),
+        ...(msg.photo ? { photo_file_ids: msg.photo.map((p) => p.file_id) } : {}),
+      },
+    });
+
+    const MAX_ALLERGEN_VERIFY_ATTEMPTS = 3;
+    const currentAttempt = (conversation.allergen_verify_attempts ?? 0) + 1;
+
+    // ─── Format parse ────────────────────────────────────────────────────────
+    // Beklenen format: "101 Kemal Kuyucu" (oda no + isim)
+    // parseVerificationInput ile parse et
+    const avParsed = parseVerificationInput(text);
+    const avRoom = avParsed.roomNumber;
+    const avLastName = avParsed.lastName;
+
+    if (!avRoom || !avLastName) {
+      // Format eksik → tekrar sor (deneme sayılmaz)
+      console.log(`[allergen-verify-gate] Eksik format: room=${avRoom} lastName=${avLastName}`);
+      const incompleteMsg =
+        language === 'en'
+          ? 'Please provide your room number and last name together. Example: 101 John Smith'
+          : language === 'de'
+            ? 'Bitte geben Sie Zimmernummer und Nachname an. Beispiel: 101 Hans Müller'
+            : 'Lütfen oda numaranızı ve soyadınızı birlikte yazın. Örnek: 101 Kemal Kuyucu';
+
+      await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: incompleteMsg, message_type: 'text' });
+      await tg.sendMessage({ chat_id: chatId, text: incompleteMsg });
+      return;
+    }
+
+    // ─── inhouse_guests_v2 sorgusu ─────────────────────────────────────────
+    const { data: avV2Rows, error: avV2Error } = await supa
+      .from('inhouse_guests_v2')
+      .select('id, guest_name, room_number')
+      .eq('room_number', avRoom.trim())
+      .eq('status', 'active');
+
+    if (avV2Error) {
+      console.error('[allergen-verify-gate] inhouse_guests_v2 sorgu hatası:', avV2Error.message);
+    }
+
+    // Eşleşme: guest_name case-insensitive, trim (son kelime = soyad)
+    const avLastLower = avLastName.trim().toLowerCase();
+    const avMatched = (avV2Rows ?? []).find((row) => {
+      const gn: string = (row.guest_name as string) ?? '';
+      const parts = gn.trim().split(/\s+/);
+      const lastWord = parts[parts.length - 1]?.toLowerCase() ?? '';
+      return lastWord === avLastLower;
+    });
+
+    if (avMatched) {
+      // ✅ Eşleşti — guest_allergens güncelle + bildirim gönder
+      const guestNameFull: string = (avMatched.guest_name as string) ?? '';
+      const nameParts = guestNameFull.trim().split(/\s+/);
+      const avFirstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : guestNameFull;
+      const verifiedRoom = avMatched.room_number as string;
+      const verifiedFullName = guestNameFull.trim();
+
+      console.log(`[allergen-verify-gate] ✅ Eşleşti: room=${verifiedRoom} name="${verifiedFullName}"`);
+
+      // guest_allergens güncelle
+      const avPlatformUserId = String(userId);
+      const { data: avAllergenRow } = await supa
+        .from('guest_allergens')
+        .select('id, allergen_text')
+        .eq('platform', 'telegram')
+        .eq('platform_user_id', avPlatformUserId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (avAllergenRow) {
+        const { error: avGaErr } = await supa
+          .from('guest_allergens')
+          .update({
+            room_number: verifiedRoom,
+            guest_full_name: verifiedFullName,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', avAllergenRow.id);
+
+        if (avGaErr) {
+          console.error('[allergen-verify-gate] guest_allergens UPDATE HATASI:', avGaErr.message);
+        } else {
+          console.log(`[allergen-verify-gate] guest_allergens güncellendi → room=${verifiedRoom} name=${verifiedFullName}`);
+        }
+
+        // Bildirim gönder
+        try {
+          await sendAllergenNotifications({
+            hotelSupa: supa,
+            tg,
+            guestAllergenId: avAllergenRow.id,
+            roomNumber: verifiedRoom,
+            guestFullName: verifiedFullName,
+            allergenText: (avAllergenRow.allergen_text as string) ?? '',
+          });
+          console.log(`[allergen-verify-gate] sendAllergenNotifications OK → room=${verifiedRoom}`);
+        } catch (notifyErr) {
+          console.error('[allergen-verify-gate] sendAllergenNotifications HATA:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
+        }
+      } else {
+        console.warn('[allergen-verify-gate] guest_allergens kaydı bulunamadı — bildirim atlandı');
+      }
+
+      // State temizle: allergen_verify_pending=false, allergen_asked=true
+      await supa
+        .from('conversations')
+        .update({
+          allergen_verify_pending: false,
+          allergen_verify_pending_at: null,
+          allergen_verify_attempts: 0,
+          allergen_asked: true,
+        })
+        .eq('id', conversationId);
+
+      // Başarı mesajı
+      const avSuccessMsg =
+        language === 'en'
+          ? `Thank you, ${avFirstName}! Your allergy information has been forwarded to our team. Have a pleasant stay!`
+          : language === 'de'
+            ? `Danke, ${avFirstName}! Ihre Allergieinformation wurde an unser Team weitergeleitet. Guten Aufenthalt!`
+            : `Teşekkürler, ${avFirstName}! Alerjiniz ilgili ekibimize iletildi. İyi konaklamalar!`;
+
+      await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: avSuccessMsg, message_type: 'text' });
+      await tg.sendMessage({ chat_id: chatId, text: avSuccessMsg });
+      console.log(`[allergen-verify-gate] Tamamlandı → conversationId=${conversationId}`);
+      return;
+
+    } else {
+      // ❌ Eşleşmedi
+      console.log(`[allergen-verify-gate] ❌ Eşleşmedi: room=${avRoom} lastName=${avLastName} attempt=${currentAttempt}/${MAX_ALLERGEN_VERIFY_ATTEMPTS}`);
+
+      if (currentAttempt >= MAX_ALLERGEN_VERIFY_ATTEMPTS) {
+        // Max deneme aşıldı → temizle, ön büroyu yönlendir
+        await supa
+          .from('conversations')
+          .update({
+            allergen_verify_pending: false,
+            allergen_verify_pending_at: null,
+            allergen_verify_attempts: 0,
+          })
+          .eq('id', conversationId);
+
+        const avGiveUpMsg =
+          language === 'en'
+            ? 'We could not match your room number and name. Please contact our front desk for assistance.'
+            : language === 'de'
+              ? 'Zimmernummer und Name konnten nicht zugeordnet werden. Bitte wenden Sie sich an die Rezeption.'
+              : 'Oda numarası ve isim eşleşmedi. Lütfen ön büromuza ulaşabilirsiniz.';
+
+        await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: avGiveUpMsg, message_type: 'text' });
+        await tg.sendMessage({ chat_id: chatId, text: avGiveUpMsg });
+        console.log(`[allergen-verify-gate] Max deneme aşıldı — state temizlendi, ön büro yönlendirmesi yapıldı`);
+        return;
+      }
+
+      // Deneme artır, tekrar sor
+      await supa
+        .from('conversations')
+        .update({ allergen_verify_attempts: currentAttempt })
+        .eq('id', conversationId);
+
+      const avRetryMsg =
+        language === 'en'
+          ? `Room number and name did not match (attempt ${currentAttempt}/${MAX_ALLERGEN_VERIFY_ATTEMPTS}). Please try again. Example: 101 John Smith`
+          : language === 'de'
+            ? `Zimmernummer und Name stimmen nicht überein (Versuch ${currentAttempt}/${MAX_ALLERGEN_VERIFY_ATTEMPTS}). Bitte erneut versuchen. Beispiel: 101 Hans Müller`
+            : `Oda numarası ve isim eşleşmedi (${currentAttempt}/${MAX_ALLERGEN_VERIFY_ATTEMPTS} deneme). Lütfen tekrar deneyin. Örnek: 101 Kemal Kuyucu`;
+
+      await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: avRetryMsg, message_type: 'text' });
+      await tg.sendMessage({ chat_id: chatId, text: avRetryMsg });
+      return;
+    }
+  }
+  // ============================================================
+  // MODÜL 3 — ALLERGEN VERIFY GATE SONU
   // ============================================================
 
   // Inbound mesajı kaydet
@@ -1657,17 +1800,11 @@ async function handleMessage(args: {
     await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
     return;
   } else if (
-    // Modül 3 FIX: allergen_room_verify pending ise aiShouldForward koşulundan BAĞIMSIZ tetikle.
-    // AI "101 Kemal Kuyucu"yu sosyal/greeting sınıflandırsa bile bu akış çalışmalı.
-    (
-      conversation.verification_pending_intent === 'allergen_room_verify' &&
-      !isVerificationValid(conversation.verified_at)
-    ) ||
-    (
-      aiShouldForward &&
-      !canAskAllergen && // ← Modül 3: alerji önce sorulacak turda oda no sorusu ÇIKMASIN
-      (requiresVerification(aiRawIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at)))
-    )
+    // Modül 10: Normal doğrulama gate
+    // NOT: allergen_room_verify artık buraya GELMİYOR — allergen_verify_pending kendi gate'inde işlendi (yukarıda).
+    aiShouldForward &&
+    !canAskAllergen && // ← Modül 3: alerji önce sorulacak turda oda no sorusu ÇIKMASIN
+    (requiresVerification(aiRawIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at)))
   ) {
     // Modül 10.7: verified misafir varsa doğrulama akışına GİRME (needsVerification = personalIntent && !persistentVerifiedGuest)
 
@@ -1718,106 +1855,9 @@ async function handleMessage(args: {
         console.log(`[verification] Embedded request tespit edildi: "${vResult.embeddedRequest}" — doğrudan forward edilecek`);
       }
 
-      // ── Modül 3: allergen_room_verify — alerji sonrası oda no doğrulaması tamamlandı ──
-      // Misafir daha önce alerji bildirdi, şimdi oda no + isim doğrulandı.
-      // guest_allergens güncelle → bildirim gönder → FB departmanına forward YAPMA.
-      if (effectiveIntent === 'allergen_room_verify') {
-        // verification_pending_intent'i her halükarda temizle (başarı veya başarısızlık)
-        // Not: başarılı durumda handleVerificationFlow zaten temizliyor;
-        //       başarısız (shouldShortCircuit=true) durumda buraya gelmez —
-        //       erken return yukarıda zaten yapıldı. Bu blok yalnızca
-        //       shouldShortCircuit=false (başarılı) durumda çalışır.
-        if (!vResult.verifiedGuestRecord) {
-          // Eşleşme olmadan shouldShortCircuit=false olamaz, ama savunma katmanı:
-          console.warn('[allergen-verify] allergen_room_verify başarılı ama verifiedGuestRecord null — bildirim atlandı');
-          finalResponseText = language === 'en'
-            ? 'Your room number and name could not be matched. Please try again.'
-            : language === 'de'
-              ? 'Zimmernummer und Name konnten nicht zugeordnet werden. Bitte versuchen Sie es erneut.'
-              : 'Oda numarası ve isim eşleşmedi. Lütfen tekrar deneyin.';
-          skipForward = true;
-        } else {
-          // ✅ Doğrulama başarılı ve verifiedGuestRecord dolu
-          const platformUserIdAllergenVerify = String(userId);
-          const { data: allergenForVerify } = await supa
-            .from('guest_allergens')
-            .select('id, allergen_text')
-            .eq('platform', 'telegram')
-            .eq('platform_user_id', platformUserIdAllergenVerify)
-            .eq('is_active', true)
-            .maybeSingle();
-
-          if (allergenForVerify) {
-            const verifiedRoomNumber = vResult.verifiedGuestRecord.room_number;
-            const verifiedGuestFullName =
-              `${vResult.verifiedGuestRecord.first_name ?? ''} ${vResult.verifiedGuestRecord.last_name ?? ''}`.trim();
-
-            // ── guest_allergens güncelle: room_number + guest_full_name YAZ ────
-            const { error: gaUpdateError } = await supa
-              .from('guest_allergens')
-              .update({
-                room_number: verifiedRoomNumber,
-                guest_full_name: verifiedGuestFullName,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', allergenForVerify.id);
-
-            if (gaUpdateError) {
-              console.error(
-                '[allergen-verify] guest_allergens UPDATE HATASI — room_number yazılamadı:',
-                gaUpdateError.message,
-              );
-            } else {
-              console.log(`[allergen-verify] guest_allergens güncellendi → room=${verifiedRoomNumber} name=${verifiedGuestFullName} id=${allergenForVerify.id}`);
-            }
-
-            // ── Bildirim gönder (try/catch — sessiz patlama olmasın) ────────────
-            try {
-              await sendAllergenNotifications({
-                hotelSupa: supa,
-                tg,
-                guestAllergenId: allergenForVerify.id,
-                roomNumber: verifiedRoomNumber,
-                guestFullName: verifiedGuestFullName,
-                allergenText: (allergenForVerify.allergen_text as string) ?? '',
-              });
-              console.log(`[allergen-verify] sendAllergenNotifications OK → room=${verifiedRoomNumber}`);
-            } catch (notifyErr) {
-              console.error(
-                '[allergen-verify] sendAllergenNotifications HATA (akış devam ediyor):',
-                notifyErr instanceof Error ? notifyErr.message : notifyErr,
-              );
-            }
-
-            // ✅ Misafire başarı mesajı (kayıt + bildirim tamamlandı)
-            finalResponseText = language === 'en'
-              ? `Thank you, ${vResult.verifiedGuestRecord.first_name ?? ''}! Your allergy information has been forwarded to our team. Have a pleasant stay!`
-              : language === 'de'
-                ? `Danke, ${vResult.verifiedGuestRecord.first_name ?? ''}! Ihre Allergieinformation wurde an unser Team weitergeleitet. Guten Aufenthalt!`
-                : `Teşekkürler, ${vResult.verifiedGuestRecord.first_name ?? ''}! Alerjiniz ilgili ekibimize iletildi. İyi konaklamalar!`;
-          } else {
-            console.warn('[allergen-verify] guest_allergens kaydı bulunamadı — bildirim atlandı');
-            finalResponseText = language === 'en'
-              ? 'Your information has been verified. Thank you!'
-              : language === 'de'
-                ? 'Ihre Angaben wurden überprüft. Danke!'
-                : 'Bilgileriniz doğrulandı. Teşekkürler!';
-          }
-
-          // verification_pending_intent'i temizle (başarılı akış)
-          await supa
-            .from('conversations')
-            .update({ verification_pending_intent: null })
-            .eq('id', conversationId);
-
-          // allergen_room_verify tamamlandı — FB departmanına forward YAPMA
-          skipForward = true;
-        }
-      } else {
-        // Normal doğrulama (allergen_room_verify değil) — forward devam eder
-        skipForward = false;
-        // vResult'u sakla — aşağıdaki forward çağrısında kullanmak için
-      }
+      // Normal doğrulama (verification_pending_intent, allergen değil) — forward devam eder
+      skipForward = false;
+      // vResult'u sakla — aşağıdaki forward çağrısında kullanmak için
     }
   }
   // ─────────────────────────────────────────────────────────────────────────
@@ -2202,7 +2242,7 @@ async function upsertGuestAndConversation(args: {
   // Conversation upsert — doğrulama state sütunlarını da çek
   const { data: existingConv } = await supa
     .from('conversations')
-    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text, allergen_asked, allergen_pending')
+    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text, allergen_asked, allergen_pending, allergen_verify_pending, allergen_verify_pending_at, allergen_verify_attempts')
     .eq('telegram_chat_id', chatId)
     .maybeSingle();
 
@@ -2218,8 +2258,11 @@ async function upsertGuestAndConversation(args: {
       verification_pending_intent: (existingConv.verification_pending_intent as string | null) ?? null,
       verification_attempts: (existingConv.verification_attempts as number) ?? 0,
       pending_request_text: (existingConv.pending_request_text as string | null) ?? null, // Modül 10.4
-      allergen_asked: (existingConv.allergen_asked as boolean) ?? false,   // Modül 3
-      allergen_pending: (existingConv.allergen_pending as boolean) ?? false, // Modül 3
+      allergen_asked: (existingConv.allergen_asked as boolean) ?? false,             // Modül 3
+      allergen_pending: (existingConv.allergen_pending as boolean) ?? false,         // Modül 3
+      allergen_verify_pending: (existingConv.allergen_verify_pending as boolean) ?? false,         // Modül 3 izolasyon
+      allergen_verify_pending_at: (existingConv.allergen_verify_pending_at as string | null) ?? null, // Modül 3 izolasyon
+      allergen_verify_attempts: (existingConv.allergen_verify_attempts as number) ?? 0,             // Modül 3 izolasyon
     };
     await supa
       .from('conversations')
@@ -2244,9 +2287,12 @@ async function upsertGuestAndConversation(args: {
       verified_at: null,
       verification_pending_intent: null,
       verification_attempts: 0,
-      pending_request_text: null, // Modül 10.4
-      allergen_asked: false,      // Modül 3
-      allergen_pending: false,    // Modül 3
+      pending_request_text: null,          // Modül 10.4
+      allergen_asked: false,               // Modül 3
+      allergen_pending: false,             // Modül 3
+      allergen_verify_pending: false,      // Modül 3 izolasyon
+      allergen_verify_pending_at: null,    // Modül 3 izolasyon
+      allergen_verify_attempts: 0,         // Modül 3 izolasyon
     };
   }
 
