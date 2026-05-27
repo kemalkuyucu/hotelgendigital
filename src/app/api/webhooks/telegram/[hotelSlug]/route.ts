@@ -264,22 +264,22 @@ function getVerificationAskMsg(lang: string): string {
 
 function getVerificationFailMsg(lang: string): string {
   const msgs: Record<string, string> = {
-    tr: 'Oda numarası ve soyad eşleşmedi. Lütfen tekrar deneyin veya ön büromuza ulaşın.',
-    en: 'Room number and last name did not match. Please try again or contact our front desk.',
-    de: 'Zimmernummer und Nachname stimmen nicht überein. Bitte versuchen Sie es erneut oder wenden Sie sich an die Rezeption.',
-    ru: 'Номер комнаты и фамилия не совпадают. Пожалуйста, попробуйте ещё раз или обратитесь на стойку регистрации.',
-    ar: 'رقم الغرفة واسم العائلة غير متطابقين. يرجى المحاولة مرة أخرى أو التواصل مع مكتب الاستقبال.',
+    tr: 'Bilgilerinizi doğrulayamadım. Oda numarası ve soyadınızı kontrol edip tekrar deneyebilir misiniz? Örnek: 312 Kuyucu',
+    en: 'I could not verify your details. Could you double-check your room number and last name and try again? Example: 312 Smith',
+    de: 'Ihre Angaben konnten nicht bestätigt werden. Bitte prüfen Sie Zimmernummer und Nachname. Beispiel: 312 Müller',
+    ru: 'Не удалось подтвердить данные. Проверьте номер комнаты и фамилию и попробуйте снова. Пример: 312 Иванов',
+    ar: 'تعذّر التحقق من بياناتك. يرجى التحقق من رقم الغرفة واسم العائلة والمحاولة مجدداً. مثال: 312 علي',
   };
   return msgs[lang] ?? msgs['tr'];
 }
 
 function getVerificationLockedMsg(lang: string): string {
   const msgs: Record<string, string> = {
-    tr: 'Doğrulama başarısız oldu. Lütfen ön büromuza ulaşın.',
-    en: 'Verification failed. Please contact our front desk.',
-    de: 'Verifizierung fehlgeschlagen. Bitte wenden Sie sich an die Rezeption.',
-    ru: 'Верификация не удалась. Пожалуйста, обратитесь на стойку регистрации.',
-    ar: 'فشل التحقق. يرجى التواصل مع مكتب الاستقبال.',
+    tr: 'Birkaç deneme sonuç vermedi. Sizi resepsiyonumuza yönlendiriyorum, orada hemen yardımcı olacaklar.',
+    en: 'After a few attempts, I wasn\'t able to verify your details. Please visit our front desk — they will be happy to help.',
+    de: 'Nach mehreren Versuchen konnte ich Ihre Daten nicht bestätigen. Bitte wenden Sie sich an unsere Rezeption.',
+    ru: 'После нескольких попыток не удалось подтвердить данные. Пожалуйста, обратитесь на стойку регистрации.',
+    ar: 'بعد عدة محاولات، لم أتمكن من التحقق من بياناتك. يرجى التوجه إلى مكتب الاستقبال للمساعدة.',
   };
   return msgs[lang] ?? msgs['tr'];
 }
@@ -1872,11 +1872,8 @@ async function handleMessage(args: {
   // KURAL: canAskAllergen=true ise o turda doğrulama gate'i çalışmadı (guard eklendi).
 
   if (canAskAllergen) {
-    // Alerji sorusunu normal F&B cevabının sonuna ekle
-    const allergenQuestion =
-      '\n\nKonaklamanız boyunca size daha iyi hizmet verebilmemiz için: herhangi bir gıda alerjiniz var mı? ' +
-      'Varsa lütfen belirtin (örn. fıstık, deniz ürünleri). Yoksa \'yok\' yazmanız yeterli.';
-    finalResponseText = finalResponseText + allergenQuestion;
+    // (a) Alerji sorusu F&B cevabına EKLENMEZ — 900ms sonra ayrı mesaj olarak gönderilir.
+    // finalResponseText değiştirilmez.
 
     // allergen_pending=true yap
     await supa
@@ -2178,6 +2175,25 @@ async function handleMessage(args: {
     chat_id: chatId,
     text: finalResponseText,
   });
+
+  // (a) Alerji sorusu — F&B cevabından 900ms sonra ayrı mesaj
+  if (canAskAllergen) {
+    const allergenQuestion =
+      language === 'en'
+        ? 'Do you have any food allergies or dietary requirements? If yes, please let us know. If not, just reply \'none\'.'
+        : language === 'de'
+          ? 'Haben Sie Lebensmittelallergien oder besondere Ernährungsbedürfnisse? Falls ja, teilen Sie uns diese bitte mit. Falls nein, schreiben Sie einfach \'nein\'.'
+          : 'Herhangi bir gıda alerjiniz var mı? Varsa belirtir misiniz, yoksa \'yok\' yazmanız yeterli.';
+    await new Promise<void>((resolve) => setTimeout(resolve, 900));
+    await supa.from('bot_messages').insert({
+      conversation_id: conversationId,
+      direction: 'outbound',
+      text: allergenQuestion,
+      message_type: 'text',
+    });
+    await tg.sendMessage({ chat_id: chatId, text: allergenQuestion });
+    console.log(`[allergen] Alerji sorusu ayrı mesaj olarak gönderildi (900ms) → conversationId=${conversationId}`);
+  }
 
   // Modül 15.4 — Auto-file belge gönderme
   try {

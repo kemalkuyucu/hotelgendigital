@@ -263,11 +263,24 @@ export async function sendAllergenNotifications(
 
     // Mutfak mesajı
     const kitchenText =
-      `⚠️ <b>ALERJEN</b> — Oda ${escHtml(room)}, ${escHtml(name)}: ${escHtml(allergenText)}. Konuya dikkat.\n🕐 ${trTimeStr}`;
+      `⚠️ <b>ALERJEN BİLDİRİMİ</b>\n` +
+      `━━━━━━━━━━\n` +
+      `🛏 <b>Oda:</b> ${escHtml(room)}\n` +
+      `👤 <b>Misafir:</b> ${escHtml(name)}\n` +
+      `🤧 <b>Alerji:</b> ${escHtml(allergenText)}\n` +
+      `━━━━━━━━━━\n` +
+      `🕐 ${trTimeStr}`;
 
     // GR mesajı
     const grText =
-      `⚠️ <b>ALERJEN</b> — Oda ${escHtml(room)}, ${escHtml(name)}: ${escHtml(allergenText)}. Lütfen kontrol edin.\n🕐 ${trTimeStr}`;
+      `⚠️ <b>ALERJEN BİLDİRİMİ</b>\n` +
+      `━━━━━━━━━━\n` +
+      `🛏 <b>Oda:</b> ${escHtml(room)}\n` +
+      `👤 <b>Misafir:</b> ${escHtml(name)}\n` +
+      `🤧 <b>Alerji:</b> ${escHtml(allergenText)}\n` +
+      `━━━━━━━━━━\n` +
+      `ℹ️ Lütfen misafir ile ilgilenin.\n` +
+      `🕐 ${trTimeStr}`;
 
     // 1. FB primary
     for (const staff of fbPrimary) {
@@ -296,8 +309,14 @@ export async function sendAllergenNotifications(
       console.log('[allergen-notify] GR mesai dışı — resepsiyon + ön büro müdürüne ek uyarı');
 
       const offHoursText =
-        `⚠️ <b>ALERJEN</b> — Oda ${escHtml(room)}, ${escHtml(name)}: ${escHtml(allergenText)}. ` +
-        `GR mesai dışı, lütfen GR'ye not bırakın.\n🕐 ${trTimeStr}`;
+        `⚠️ <b>ALERJEN BİLDİRİMİ</b> (GR Mesai Dışı)\n` +
+        `━━━━━━━━━━\n` +
+        `🛏 <b>Oda:</b> ${escHtml(room)}\n` +
+        `👤 <b>Misafir:</b> ${escHtml(name)}\n` +
+        `🤧 <b>Alerji:</b> ${escHtml(allergenText)}\n` +
+        `━━━━━━━━━━\n` +
+        `📌 GR şu an mesai dışı. Lütfen GR'ye not bırakın.\n` +
+        `🕐 ${trTimeStr}`;
 
       const { data: foStaffData } = await hotelSupa
         .from('department_staff')
@@ -320,8 +339,14 @@ export async function sendAllergenNotifications(
   const scenario = 'B';
 
   const grTextB =
-    `ℹ️ <b>ALERJEN</b> — ${escHtml(name)} henüz oda almamış, şu alerjisi var: ${escHtml(allergenText)}. Oda alınca ilgilenin.\n` +
-    `🚪 Belirtilen oda: ${escHtml(room)}\n🕐 ${trTimeStr}`;
+    `ℹ️ <b>ALERJEN BİLDİRİMİ</b> (Oda Bekliyor)\n` +
+    `━━━━━━━━━━\n` +
+    `👤 <b>Misafir:</b> ${escHtml(name)}\n` +
+    `🛏 <b>Belirtilen oda:</b> ${escHtml(room)}\n` +
+    `🤧 <b>Alerji:</b> ${escHtml(allergenText)}\n` +
+    `━━━━━━━━━━\n` +
+    `📌 Misafir henüz oda almamış. Oda alınınca lütfen ilgilenin.\n` +
+    `🕐 ${trTimeStr}`;
 
   for (const staff of grAll) {
     await sendAndLog({ hotelSupa, tg, guestAllergenId, staff, recipientType: 'gr', scenario, notificationText: grTextB });
