@@ -5,14 +5,16 @@ import HotelInfoSubTab from './hotel-settings/HotelInfoSubTab';
 import KnowledgeBaseSubTab from './hotel-settings/KnowledgeBaseSubTab';
 import DocumentsSubTab from './hotel-settings/DocumentsSubTab';
 import PerplexityDiscoverySubTab from './hotel-settings/PerplexityDiscoverySubTab';
+import MeetingRoomsSubTab from './hotel-settings/MeetingRoomsSubTab';
 
-type SubTab = 'info' | 'knowledge' | 'documents' | 'discovery';
+type SubTab = 'info' | 'knowledge' | 'documents' | 'discovery' | 'meeting-rooms';
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
-  { id: 'info',      label: 'Otel Bilgileri' },
-  { id: 'knowledge', label: 'Bilgi Tabanı' },
-  { id: 'documents', label: 'Belgeler' },
-  { id: 'discovery', label: 'Çevre Keşfi' },
+  { id: 'info',          label: 'Otel Bilgileri' },
+  { id: 'knowledge',     label: 'Bilgi Tabanı' },
+  { id: 'documents',     label: 'Belgeler' },
+  { id: 'discovery',     label: 'Çevre Keşfi' },
+  { id: 'meeting-rooms', label: '🏛️ Toplantı Salonları' },
 ];
 
 export default function HotelSettingsTab() {
@@ -55,10 +57,11 @@ export default function HotelSettingsTab() {
         id={`subtabpanel-${activeSubTab}`}
         aria-labelledby={`subtab-${activeSubTab}`}
       >
-        {activeSubTab === 'info'      && <HotelInfoSubTab />}
-        {activeSubTab === 'knowledge' && <KnowledgeBaseSubTab />}
-        {activeSubTab === 'documents' && <DocumentsSubTab />}
-        {activeSubTab === 'discovery' && <PerplexityDiscoverySubTab />}
+        {activeSubTab === 'info'          && <HotelInfoSubTab />}
+        {activeSubTab === 'knowledge'     && <KnowledgeBaseSubTab />}
+        {activeSubTab === 'documents'     && <DocumentsSubTab />}
+        {activeSubTab === 'discovery'     && <PerplexityDiscoverySubTab />}
+        {activeSubTab === 'meeting-rooms' && <MeetingRoomsSubTab />}
       </div>
     </div>
   );
