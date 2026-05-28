@@ -127,3 +127,81 @@ export async function hotelAdminLogout(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(COOKIE_NAME);
 }
+
+// ---------------------------------------------------------------------------
+// DUAL-AUTH: hg_manager_session (super_admin) VEYA hg_hotel_session (hotel admin)
+// ---------------------------------------------------------------------------
+// Manager panelinden hotel-admin paneline geçişte route'ların her iki
+// cookie'yi de kabul etmesi için kullanılır.
+// Dönen değer null değilse istek yetkilendirilmiş demektir.
+// ---------------------------------------------------------------------------
+
+export interface DualAuthIdentity {
+  source: 'manager_session' | 'hotel_session';
+  id: string;
+  username?: string;
+  full_name?: string;
+  role: string;
+  hotel_slug?: string;
+  hotel_id?: string;
+}
+
+export async function getManagerOrHotelAdmin(): Promise<DualAuthIdentity | null> {
+  // 1. Önce hg_manager_session dene (mevcut super_admin akışı bozulmasın)
+  try {
+    const { getCentralSupabase } = await import('@/lib/supabase-client');
+    const crypto = (await import('crypto')).default;
+    const cookieStore = await cookies();
+    const managerToken = cookieStore.get('hg_manager_session')?.value;
+    if (managerToken) {
+      const tokenHash = crypto.createHash('sha256').update(managerToken).digest('hex');
+      const supabase = getCentralSupabase();
+      const { data: session } = await supabase
+        .from('master_admin_sessions')
+        .select('admin_id, expires_at')
+        .eq('token_hash', tokenHash)
+        .single();
+      if (session && new Date(session.expires_at) >= new Date()) {
+        const { data: manager } = await supabase
+          .from('master_admins')
+          .select('id, username, full_name, role, is_active')
+          .eq('id', session.admin_id)
+          .eq('role', 'super_admin')
+          .single();
+        if (manager && manager.is_active) {
+          // last_activity güncelle (fire-and-forget)
+          supabase
+            .from('master_admin_sessions')
+            .update({ last_activity_at: new Date().toISOString() })
+            .eq('token_hash', tokenHash)
+            .then(() => {});
+          return {
+            source: 'manager_session',
+            id: manager.id,
+            username: manager.username,
+            full_name: manager.full_name,
+            role: manager.role,
+          };
+        }
+      }
+    }
+  } catch {
+    // manager session yoksa veya hata varsa hotel session'a geç
+  }
+
+  // 2. hg_hotel_session JWT dene (hotel-admin paneli)
+  const hotelAdmin = await getHotelAdminFromCookie();
+  if (hotelAdmin) {
+    return {
+      source: 'hotel_session',
+      id: hotelAdmin.sub,
+      username: hotelAdmin.username,
+      full_name: hotelAdmin.full_name,
+      role: hotelAdmin.role,
+      hotel_slug: hotelAdmin.hotel_slug,
+      hotel_id: hotelAdmin.hotel_id,
+    };
+  }
+
+  return null;
+}

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionManager } from '@/lib/auth/manager-session';
+import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth';
 import { getDemoHotelSupabase } from '@/lib/supabase-client';
 
 // presign endpoint'inden dönen path formatı: uploads/<uuid>-<filename>
@@ -22,7 +22,7 @@ const VALID_POLICIES = ['manual', 'auto_file', 'auto_text'];
 // GET — tüm belgeleri listele (uploaded_at DESC)
 // ──────────────────────────────────────────────────────────
 export async function GET() {
-  const session = await getSessionManager();
+  const session = await getManagerOrHotelAdmin();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const supabase = getDemoHotelSupabase();
@@ -41,7 +41,7 @@ export async function GET() {
 //        yüklenmiş olmalı, buraya sadece metadata gelir)
 // ──────────────────────────────────────────────────────────
 export async function POST(request: Request) {
-  const session = await getSessionManager();
+  const session = await getManagerOrHotelAdmin();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // ── JSON parse ──

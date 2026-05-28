@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSessionManager } from '@/lib/auth/manager-session'
+import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth'
 import { getDemoHotelSupabase } from '@/lib/supabase-client'
 
 // hotel_settings is a singleton table — no hotel_id column exists.
@@ -62,7 +62,7 @@ function validateLocationInfo(val: unknown): LocationInfo | null | { error: stri
 // ── GET /api/manager/hotel-settings ──────────────────────────────────────────
 export async function GET() {
   try {
-    const manager = await getSessionManager()
+    const manager = await getManagerOrHotelAdmin()
     if (!manager) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -98,7 +98,7 @@ export async function GET() {
 // ── PUT /api/manager/hotel-settings ──────────────────────────────────────────
 export async function PUT(req: NextRequest) {
   try {
-    const manager = await getSessionManager()
+    const manager = await getManagerOrHotelAdmin()
     if (!manager) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

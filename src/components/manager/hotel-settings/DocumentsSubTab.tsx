@@ -158,7 +158,7 @@ export default function DocumentsSubTab() {
   const fetchDocuments = useCallback(async () => {
     setIsLoadingList(true);
     try {
-      const res = await fetch('/api/manager/documents');
+      const res = await fetch('/api/manager/documents', { credentials: 'include' });
       const data = await res.json();
       if (res.ok) setDocuments(data.documents ?? []);
     } catch {
@@ -261,6 +261,7 @@ export default function DocumentsSubTab() {
     // 1) Presign URL al
     const presignRes = await fetch('/api/manager/documents/presign', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fileName: f.name, fileMime: f.type, fileSize: f.size }),
     });
@@ -382,6 +383,7 @@ export default function DocumentsSubTab() {
 
       const res = await fetch(url, {
         method,
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(jsonBody),
       });

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSessionManager } from '@/lib/auth/manager-session'
+import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth'
 import { getDemoHotelSupabase } from '@/lib/supabase-client'
 
 // ── GET /api/manager/knowledge ────────────────────────────────────────────────
 export async function GET() {
   try {
-    const manager = await getSessionManager()
+    const manager = await getManagerOrHotelAdmin()
     if (!manager) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -40,7 +40,7 @@ export async function GET() {
 // ── POST /api/manager/knowledge ───────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const manager = await getSessionManager()
+    const manager = await getManagerOrHotelAdmin()
     if (!manager) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

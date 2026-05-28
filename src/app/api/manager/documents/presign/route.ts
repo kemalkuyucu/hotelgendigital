@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionManager } from '@/lib/auth/manager-session';
+import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth';
 import { getDemoHotelSupabase } from '@/lib/supabase-client';
 import { randomUUID } from 'crypto';
 
@@ -27,7 +27,7 @@ function sanitizeFileName(name: string): string {
 // POST — Supabase Storage direct upload için signed URL üret
 export async function POST(request: Request) {
   try {
-    const session = await getSessionManager();
+    const session = await getManagerOrHotelAdmin();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     let body: { fileName?: unknown; fileMime?: unknown; fileSize?: unknown };

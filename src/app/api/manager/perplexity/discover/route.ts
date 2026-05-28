@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionManager } from '@/lib/auth/manager-session';
+import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth';
 import { getDemoHotelSupabase } from '@/lib/supabase-client';
 import { queryPerplexity } from '@/lib/perplexity/client';
 import { getCategoryByTag, PERPLEXITY_CATEGORIES } from '@/lib/perplexity/categories';
@@ -10,7 +10,7 @@ import type { InterestTag } from '@/lib/perplexity/types';
  * Query: ?tag=restaurant (opsiyonel filtre)
  */
 export async function GET(request: Request) {
-  const session = await getSessionManager();
+  const session = await getManagerOrHotelAdmin();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
  * Body: { tag: 'restaurant', force_refresh?: boolean }
  */
 export async function POST(request: Request) {
-  const session = await getSessionManager();
+  const session = await getManagerOrHotelAdmin();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body: { tag?: string; force_refresh?: boolean };
