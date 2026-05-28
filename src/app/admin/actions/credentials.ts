@@ -6,7 +6,8 @@ import { getSessionAdmin } from '@/lib/auth/session'
 import { logAudit } from '@/lib/auth/audit'
 import { encryptCredential } from '@/lib/encryption'
 import { clearHotelClientCache } from '@/lib/tenant/get-hotel-client'
-import { testBridge } from '@/lib/tenant/test-bridge'
+import { testBridgeWithTelegram } from '@/lib/tenant/test-bridge'
+import { refreshTelegramWebhook } from '@/app/admin/(protected)/hotels/[id]/actions'
 
 export async function saveCredentialsAction(hotelId: string, formData: FormData) {
   const admin = await getSessionAdmin()
@@ -19,6 +20,7 @@ export async function saveCredentialsAction(hotelId: string, formData: FormData)
   }
 
   const update: Record<string, unknown> = {
+    hotel_id: hotelId, // upsert için gerekli
     manychat_workspace_id: String(formData.get('manychat_workspace_id') ?? '').trim() || null,
     telegram_bot_username: String(formData.get('telegram_bot_username') ?? '').trim() || null,
     whatsapp_business_id: String(formData.get('whatsapp_business_id') ?? '').trim() || null,
@@ -44,23 +46,35 @@ export async function saveCredentialsAction(hotelId: string, formData: FormData)
   update.is_healthy = false
   update.last_verified_at = null
 
+  // BUG FIX: .update() → .upsert() — eğer kayıt yoksa oluştur, varsa güncelle
   const { error: updateError } = await supabase
     .from('bridge_credentials')
-    .update(update)
-    .eq('hotel_id', hotelId)
+    .upsert(update, { onConflict: 'hotel_id' })
 
   if (updateError) {
-    // Hata varsa redirect'ten önce logla ama akışı kesme
-    console.error('[credentials] DB update error:', updateError.message)
+    console.error('[credentials] DB upsert error:', updateError.message)
   }
 
   // Cache'i temizle — yeni credential'lar bir sonraki istekte kullanılsın
   clearHotelClientCache(hotelId)
 
-  // OTOMATİK BAĞLANTI TESTİ — Kaydet sonrası bridge'i hemen doğrula
-  // is_healthy güncellemesi testBridge içinde persistResult tarafından yapılır
+  // Eğer Telegram bot token yeni girilmişse → webhook'u otomatik yenile (401 fix)
+  if (telegram) {
+    // Hotel slug'ını bul
+    const { data: hotelRow } = await supabase
+      .from('hotels')
+      .select('slug')
+      .eq('id', hotelId)
+      .single()
+    if (hotelRow?.slug) {
+      const webhookResult = await refreshTelegramWebhook(hotelRow.slug)
+      console.log(`[credentials] webhook kayıt: ${webhookResult.ok ? 'BAŞARILI' : 'BAŞARISIZ'} — ${webhookResult.message}`)
+    }
+  }
+
+  // OTOMATİK BAĞLANTI TESTİ — Kaydet sonrası bridge + Telegram'ı hemen doğrula
   try {
-    const testResult = await testBridge(hotelId)
+    const testResult = await testBridgeWithTelegram(hotelId)
     console.log(`[credentials] otomatik test: ${testResult.ok ? 'BAŞARILI' : 'BAŞARISIZ'} — ${testResult.message}`)
 
     await logAudit({
@@ -72,7 +86,6 @@ export async function saveCredentialsAction(hotelId: string, formData: FormData)
       details: { ok: testResult.ok, message: testResult.message, latencyMs: testResult.latencyMs },
     })
 
-    // Test sonucunu redirect param olarak aktar
     await logAudit({
       actorId: admin.id,
       actorUsername: admin.username,

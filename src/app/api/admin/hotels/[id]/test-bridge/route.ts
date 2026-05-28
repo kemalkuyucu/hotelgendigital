@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSessionAdmin } from '@/lib/auth/session'
-import { testBridge } from '@/lib/tenant/test-bridge'
+import { testBridgeWithTelegram } from '@/lib/tenant/test-bridge'
 import { logAudit } from '@/lib/auth/audit'
 import { clearHotelClientCache } from '@/lib/tenant/get-hotel-client'
 
@@ -14,7 +14,8 @@ export async function POST(
   const { id } = await params
   // Önbelleği temizle ki yeni credential'lar varsa onları kullansın
   clearHotelClientCache(id)
-  const result = await testBridge(id)
+  // testBridgeWithTelegram: Supabase + Telegram getMe doğrulaması
+  const result = await testBridgeWithTelegram(id)
 
   await logAudit({
     actorId: admin.id,
