@@ -73,6 +73,10 @@ export async function saveCredentialsAction(hotelId: string, formData: FormData)
   }
 
   // OTOMATİK BAĞLANTI TESTİ — Kaydet sonrası bridge + Telegram'ı hemen doğrula
+  // ÖNEMLİ: Next.js redirect() içten NEXT_REDIRECT exception fırlatır.
+  // Bu nedenle redirect() çağrıları try/catch DIŞINDA yapılmalı;
+  // aksi hâlde catch bloğu redirect'i yakalayıp "Test calistirilamadi" döndürür.
+  let redirectUrl: string
   try {
     const testResult = await testBridgeWithTelegram(hotelId)
     console.log(`[credentials] otomatik test: ${testResult.ok ? 'BAŞARILI' : 'BAŞARISIZ'} — ${testResult.message}`)
@@ -94,24 +98,29 @@ export async function saveCredentialsAction(hotelId: string, formData: FormData)
       hotelId,
     })
 
-    revalidatePath(`/admin/hotels/${hotelId}/credentials`)
     if (testResult.ok) {
-      redirect(`/admin/hotels/${hotelId}/credentials?saved=1&tested=ok`)
+      redirectUrl = `/admin/hotels/${hotelId}/credentials?saved=1&tested=ok`
     } else {
       // Hata mesajını URL-encode et (max 200 karakter)
       const errParam = encodeURIComponent(testResult.message.slice(0, 200))
-      redirect(`/admin/hotels/${hotelId}/credentials?saved=1&tested=fail&err=${errParam}`)
+      redirectUrl = `/admin/hotels/${hotelId}/credentials?saved=1&tested=fail&err=${errParam}`
     }
   } catch (testErr) {
-    console.error('[credentials] otomatik test hatası:', testErr)
+    const rawMsg = testErr instanceof Error ? testErr.message : String(testErr)
+    console.error('[credentials] otomatik test hatası:', rawMsg)
     await logAudit({
       actorId: admin.id,
       actorUsername: admin.username,
       action: 'credentials.update',
       resourceType: 'bridge_credentials',
       hotelId,
+      details: { testError: rawMsg },
     })
-    revalidatePath(`/admin/hotels/${hotelId}/credentials`)
-    redirect(`/admin/hotels/${hotelId}/credentials?saved=1&tested=fail&err=Test+calistirilamadi`)
+    const errParam = encodeURIComponent(rawMsg.slice(0, 200))
+    redirectUrl = `/admin/hotels/${hotelId}/credentials?saved=1&tested=fail&err=${errParam}`
   }
+
+  // redirect() try/catch DIŞINDA — NEXT_REDIRECT exception yakalanmasın
+  revalidatePath(`/admin/hotels/${hotelId}/credentials`)
+  redirect(redirectUrl)
 }

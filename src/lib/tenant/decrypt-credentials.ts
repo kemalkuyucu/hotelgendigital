@@ -24,6 +24,7 @@ export async function getDecryptedBridge(hotelId: string): Promise<DecryptedBrid
   if (error || !data) return null
   if (!data.supabase_url_encrypted) return null // henüz doldurulmamış
 
+  // NOT: decrypt hatası sessizce null'a çevrilmiyoruz — caller somut mesaj alsın
   try {
     return {
       hotelId: data.hotel_id,
@@ -41,7 +42,9 @@ export async function getDecryptedBridge(hotelId: string): Promise<DecryptedBrid
       whatsappBusinessId: data.whatsapp_business_id ?? null,
     }
   } catch (e) {
-    console.error('[bridge] decrypt failed for hotel', hotelId, e)
-    return null
+    const msg = (e as Error).message ?? String(e)
+    console.error('[bridge] decrypt failed for hotel', hotelId, msg)
+    // Sessizce null döndürmek yerine fırlat — test fonksiyonu somut mesaj gösterebilsin
+    throw new Error(`Şifre çözme başarısız (hotel=${hotelId}): ${msg}`)
   }
 }
