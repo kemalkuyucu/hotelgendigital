@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface MeetingRoom {
@@ -43,13 +43,25 @@ function serializeRoom(r: MeetingRoom) {
   };
 }
 
+// ─── Önerilen ekipmanlar (hızlı ekle) ────────────────────────────────────────
+const EQUIPMENT_SUGGESTIONS = [
+  'LCD Projeksiyon', 'Flipchart', 'Tepegöz', 'Barkovizyon',
+  'Multimedya Player', 'Kablolu İnternet', 'Kablosuz İnternet',
+  'İnteraktif TV', 'Akıllı Board', 'Mikrofon', 'Fax Sistemi',
+  'Video Konferans', 'Ses Sistemi', 'Işık Sistemi', 'Kayıt Sistemi',
+];
+
 // ─── MeetingRoomsCard ─────────────────────────────────────────────────────────
 export function MeetingRoomsCard() {
   const [rooms, setRooms] = useState<MeetingRoom[]>([]);
+  const [equipment, setEquipment] = useState<string[]>([]);
+  const [newEquipment, setNewEquipment] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [savingRooms, setSavingRooms] = useState(false);
   const [roomsToast, setRoomsToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [settingsCache, setSettingsCache] = useState<Record<string, unknown> | null>(null);
+  const eqInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     (async () => {
@@ -62,19 +74,41 @@ export function MeetingRoomsCard() {
           if (Array.isArray(mr) && mr.length > 0) {
             setRooms(mr.map((r: MeetingRoom) => ({ ...EMPTY_ROOM(), ...r })));
           }
+          const eq = json.settings.meeting_equipment;
+          if (Array.isArray(eq)) {
+            setEquipment(eq.filter((e: unknown) => typeof e === 'string'));
+          }
         }
       } catch { /* ignore */ }
       finally { setLoadingRooms(false); }
     })();
   }, []);
 
+  // ── Salon CRUD ───────────────────────────────────────────────────────────────
   const updateRoom = (idx: number, field: keyof MeetingRoom, val: string | boolean) => {
     setRooms((prev) => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
   };
-
   const addRoom = () => setRooms((prev) => [...prev, EMPTY_ROOM()]);
   const deleteRoom = (idx: number) => setRooms((prev) => prev.filter((_, i) => i !== idx));
 
+  // ── Ekipman CRUD ─────────────────────────────────────────────────────────────
+  const addEquipment = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || equipment.includes(trimmed)) return;
+    setEquipment((prev) => [...prev, trimmed]);
+    setNewEquipment('');
+    setShowSuggestions(false);
+  };
+
+  const deleteEquipment = (idx: number) => {
+    setEquipment((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const filteredSuggestions = EQUIPMENT_SUGGESTIONS.filter(
+    (s) => !equipment.includes(s) && s.toLowerCase().includes(newEquipment.toLowerCase())
+  );
+
+  // ── Kaydet ───────────────────────────────────────────────────────────────────
   const handleSaveRooms = async () => {
     setSavingRooms(true);
     setRoomsToast(null);
@@ -91,6 +125,7 @@ export function MeetingRoomsCard() {
         general_rules: cache.general_rules as string | null,
         location_info: cache.location_info ?? null,
         meeting_rooms: rooms.map(serializeRoom),
+        meeting_equipment: equipment,
       };
       const res = await fetch('/api/manager/hotel-settings', {
         method: 'PUT',
@@ -102,7 +137,7 @@ export function MeetingRoomsCard() {
       if (!res.ok) {
         setRoomsToast({ msg: json.error ?? 'Kaydedilemedi', type: 'error' });
       } else {
-        setRoomsToast({ msg: 'Toplantı salonları kaydedildi ✓', type: 'success' });
+        setRoomsToast({ msg: 'Toplantı salonları ve ekipmanlar kaydedildi ✓', type: 'success' });
         const r2 = await fetch('/api/manager/hotel-settings', { credentials: 'include' });
         const j2 = await r2.json();
         if (r2.ok && j2.settings) setSettingsCache(j2.settings as Record<string, unknown>);
@@ -136,6 +171,7 @@ export function MeetingRoomsCard() {
       padding: '20px 24px',
       marginBottom: 24,
     }}>
+      {/* ── Başlık + Satır Ekle ──────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', margin: '0 0 4px' }}>🏛️ Toplantı Salonları</h3>
@@ -154,6 +190,7 @@ export function MeetingRoomsCard() {
         </button>
       </div>
 
+      {/* ── Toast ───────────────────────────────────────────────── */}
       {roomsToast && (
         <div style={{
           marginBottom: 12, padding: '8px 14px', borderRadius: 8, fontSize: 13,
@@ -163,6 +200,7 @@ export function MeetingRoomsCard() {
         }}>{roomsToast.msg}</div>
       )}
 
+      {/* ── Salon Tablosu ────────────────────────────────────────── */}
       {loadingRooms ? (
         <div style={{ color: '#64748b', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>Yükleniyor...</div>
       ) : rooms.length === 0 ? (
@@ -236,7 +274,143 @@ export function MeetingRoomsCard() {
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+      {/* ── Teknik Ekipmanlar ─────────────────────────────────────── */}
+      <div style={{
+        marginTop: 28,
+        paddingTop: 22,
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        <div style={{ marginBottom: 14 }}>
+          <h4 style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            🔧 Teknik Ekipmanlar
+          </h4>
+          <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>
+            Tüm salonlarda mevcut teknik donanım listesi (AI bağlamına otomatik eklenir)
+          </p>
+        </div>
+
+        {/* Mevcut ekipman etiketleri */}
+        {equipment.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+            {equipment.map((eq, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '5px 10px', borderRadius: 20,
+                  background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)',
+                  color: '#c084fc', fontSize: 12, fontWeight: 500,
+                }}
+              >
+                {eq}
+                <button
+                  id={`eq-del-${idx}`}
+                  onClick={() => deleteEquipment(idx)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 16, height: 16, borderRadius: '50%', fontSize: 10, lineHeight: 1,
+                    background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.35)',
+                    color: '#f87171', cursor: 'pointer', padding: 0, fontWeight: 700,
+                  }}
+                  title="Sil"
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {equipment.length === 0 && !loadingRooms && (
+          <div style={{ fontSize: 12, color: '#475569', marginBottom: 12 }}>
+            Henüz ekipman eklenmedi.
+          </div>
+        )}
+
+        {/* Yeni ekipman ekle */}
+        <div style={{ position: 'relative', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
+            <input
+              ref={eqInputRef}
+              id="new-equipment-input"
+              type="text"
+              value={newEquipment}
+              onChange={(e) => { setNewEquipment(e.target.value); setShowSuggestions(true); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEquipment(newEquipment); } }}
+              placeholder="Ekipman adı yaz veya seç..."
+              style={{
+                width: '100%', padding: '7px 12px',
+                border: '1px solid rgba(168,85,247,0.3)', borderRadius: 8,
+                background: 'rgba(255,255,255,0.04)', color: '#e2e8f0',
+                fontSize: 13, outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+            {/* Öneri dropdown */}
+            {showSuggestions && filteredSuggestions.length > 0 && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
+                marginTop: 4, borderRadius: 10,
+                background: 'rgba(15,20,40,0.97)',
+                border: '1px solid rgba(168,85,247,0.3)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                maxHeight: 200, overflowY: 'auto',
+              }}>
+                {filteredSuggestions.map((s) => (
+                  <button
+                    key={s}
+                    onMouseDown={() => addEquipment(s)}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '8px 12px', fontSize: 13, color: '#c084fc',
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(168,85,247,0.15)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            id="eq-add-btn"
+            onClick={() => addEquipment(newEquipment)}
+            style={{
+              padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.35)', color: '#c084fc',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            + Ekle
+          </button>
+        </div>
+
+        {/* Hızlı ekle chip'leri — eklenmemişler */}
+        {EQUIPMENT_SUGGESTIONS.filter((s) => !equipment.includes(s)).length > 0 && (
+          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <span style={{ fontSize: 11, color: '#475569', alignSelf: 'center', marginRight: 4 }}>Hızlı ekle:</span>
+            {EQUIPMENT_SUGGESTIONS.filter((s) => !equipment.includes(s)).slice(0, 8).map((s) => (
+              <button
+                key={s}
+                onClick={() => addEquipment(s)}
+                style={{
+                  padding: '3px 10px', borderRadius: 12, fontSize: 11, cursor: 'pointer',
+                  background: 'rgba(100,116,139,0.15)', border: '1px solid rgba(100,116,139,0.25)',
+                  color: '#94a3b8', fontWeight: 500,
+                }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Kaydet ──────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
         <button
           id="meeting-rooms-save-btn"
           onClick={handleSaveRooms}

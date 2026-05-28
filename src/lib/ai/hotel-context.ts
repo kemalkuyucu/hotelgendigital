@@ -42,7 +42,7 @@ export async function buildHotelContext(
   // Tüm hotel_settings alanlarını tek sorguda çek
   const { data: settingsRow } = await supabase
     .from('hotel_settings')
-    .select('hotel_name, address, contact_phone, contact_email, concept, check_in_time, check_out_time, general_rules, wifi_info, location_info, meeting_rooms')
+    .select('hotel_name, address, contact_phone, contact_email, concept, check_in_time, check_out_time, general_rules, wifi_info, location_info, meeting_rooms, meeting_equipment')
     .limit(1)
     .maybeSingle();
 
@@ -65,6 +65,15 @@ export async function buildHotelContext(
       settingsRow?.contact_phone as string | null | undefined,
     );
     if (mrBlock) hotelInfoParts.push('\n' + mrBlock);
+  }
+
+  // --- Teknik ekipmanlar (dolu ise) ---
+  const eqList = settingsRow?.meeting_equipment;
+  if (Array.isArray(eqList) && eqList.length > 0) {
+    const eqFiltered = (eqList as unknown[]).filter((e): e is string => typeof e === 'string' && e.trim().length > 0);
+    if (eqFiltered.length > 0) {
+      hotelInfoParts.push(`Toplanti Teknik Ekipmanlari: ${eqFiltered.join(', ')}`);
+    }
   }
 
   const hotelInfo = hotelInfoParts.length > 0

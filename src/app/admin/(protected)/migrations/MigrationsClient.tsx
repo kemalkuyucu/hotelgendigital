@@ -78,7 +78,7 @@ function DetailModal({
   status: StatusWithName;
   onClose: () => void;
 }) {
-  const allVersions = ['001', '002', '003', '004', '005', '006', '008', '009', '010', '011', '012', '013', '014', '015', '016'];
+  const allVersions = ['001', '002', '003', '004', '005', '006', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017'];
   const appliedVersions = new Set(status.applied.map((a) => a.version));
 
   return (
@@ -191,6 +191,7 @@ function getPendingName(version: string) {
     '014': 'allergen_notification_log',
     '015': 'allergen_state_isolation',
     '016': 'meeting_rooms',
+    '017': 'meeting_equipment',
   };
   return names[version] ?? 'bilinmeyen';
 }

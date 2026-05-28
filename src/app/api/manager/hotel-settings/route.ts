@@ -45,6 +45,7 @@ interface HotelSettingsPayload {
   general_rules?: string | null
   location_info?: LocationInfo | null
   meeting_rooms?: MeetingRoom[] | null
+  meeting_equipment?: string[] | null
 }
 
 // ── Validate location_info structure ──────────────────────────────────────────
@@ -91,7 +92,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from('hotel_settings')
       .select(
-        'id, hotel_name, contact_phone, contact_email, address, concept_type, check_in_time, check_out_time, general_rules, location_info, meeting_rooms'
+        'id, hotel_name, contact_phone, contact_email, address, concept_type, check_in_time, check_out_time, general_rules, location_info, meeting_rooms, meeting_equipment'
       )
       .maybeSingle()
 
@@ -164,6 +165,7 @@ export async function PUT(req: NextRequest) {
       general_rules: body.general_rules?.trim() || null,
       location_info: locationResult,
       meeting_rooms: Array.isArray(body.meeting_rooms) ? body.meeting_rooms : [],
+      meeting_equipment: Array.isArray(body.meeting_equipment) ? body.meeting_equipment.filter((e) => typeof e === 'string' && e.trim().length > 0) : [],
       updated_at: new Date().toISOString(),
     }
 
