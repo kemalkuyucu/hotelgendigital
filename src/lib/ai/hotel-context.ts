@@ -29,6 +29,8 @@ export type HotelContext = {
   locationInfo: string;
   /** system_safety_responses tablosundan aktif güvenlik kuralları (priority ASC) */
   safetyRules: SafetyRule[];
+  /** hotel_settings.meeting_rooms JSONB'sinden formatlanmış toplantı salonu bloğu; boş olabilir */
+  meetingRoomsBlock: string;
 };
 
 /**
@@ -75,7 +77,22 @@ export async function buildHotelContext(
     }
   }
 
-  return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo, safetyRules };
+  // hotel_settings.meeting_rooms JSONB'sini oku ve formatla
+  let meetingRoomsBlock = '';
+  const { data: mrSettingsRow } = await supabase
+    .from('hotel_settings')
+    .select('meeting_rooms, contact_phone')
+    .limit(1)
+    .maybeSingle();
+
+  if (mrSettingsRow?.meeting_rooms && Array.isArray(mrSettingsRow.meeting_rooms) && mrSettingsRow.meeting_rooms.length > 0) {
+    meetingRoomsBlock = formatMeetingRoomsBlock(
+      mrSettingsRow.meeting_rooms as MeetingRoomRecord[],
+      mrSettingsRow.contact_phone as string | null | undefined,
+    );
+  }
+
+  return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo, safetyRules, meetingRoomsBlock };
 }
 
 /**
@@ -341,4 +358,106 @@ ${ctx.locationInfo}`);
 
   if (blocks.length === 0) return '';
   return blocks.join('\n\n---\n\n');
+}
+
+// ── Modül 16.b — Toplantı Salonu Intent Tespiti ───────────────────────────────
+
+/**
+ * Ham mesaj metninde toplantı/etkinlik/salon niyeti var mı?
+ * Safety pre-classifier'dan SONRA, AI'dan ÖNCE çalışır.
+ * true → meeting rooms short-circuit aktif.
+ * false → normal akış devam eder.
+ */
+export function detectMeetingRoomIntent(message: string): boolean {
+  const normalized = message
+    .toLowerCase()
+    .replace(/[İI]/g, 'i')
+    .replace(/[Şş]/g, 's')
+    .replace(/[Ğğ]/g, 'g')
+    .replace(/[Üü]/g, 'u')
+    .replace(/[Öö]/g, 'o')
+    .replace(/[Çç]/g, 'c')
+    .replace(/[Aa]/g, 'a');
+
+  const keywords = [
+    'toplanti salonu', 'toplanti salonlari', 'toplanti salonu var mi',
+    'toplanti', 'etkinlik', 'dugun', 'dugün', 'kongre', 'balo',
+    'seminer', 'banket', 'konferans', 'organizasyon',
+    'salon kapasitesi', 'salon fiyat', 'salon kirala',
+    'meeting room', 'event hall', 'ballroom', 'conference',
+  ];
+
+  return keywords.some((kw) => normalized.includes(kw));
+}
+
+// ── Toplantı Salonu Blocked-Format Formatter ──────────────────────────────────
+
+/** Dahili tip: hotel_settings.meeting_rooms JSONB'sinden bir salon kaydı */
+export type MeetingRoomRecord = {
+  ad?: string | null;
+  m2?: number | null;
+  tiyatro?: number | null;
+  sinif?: number | null;
+  u_duzen?: number | null;
+  banket?: number | null;
+  kokteyl?: number | null;
+  gun_isigi?: boolean | null;
+  en?: number | null;
+  boy?: number | null;
+  yukseklik?: number | null;
+};
+
+/**
+ * Salon listesini misafire gösterilecek yapısal blocked-format metne dönüştürür.
+ * Türkçe alfabe kuralı (16.a ile aynı mantık): standart Latin/Türkçe harfler kullanılır.
+ *
+ * Örnek çıktı:
+ *   === TOPLANTI SALONLARI ===
+ *   ...
+ *   Detayli kapasite/fiyat icin: 📞 +90 123 ...
+ */
+export function formatMeetingRoomsBlock(
+  rooms: MeetingRoomRecord[],
+  contactPhone?: string | null,
+): string {
+  const activeRooms = rooms.filter((r) => r.ad && String(r.ad).trim().length > 0);
+  if (activeRooms.length === 0) return '';
+
+  const lines: string[] = ['=== TOPLANTI SALONLARI ===', ''];
+
+  for (const room of activeRooms) {
+    const name = String(room.ad ?? '').trim();
+    lines.push(`🏛 ${name}`);
+
+    if (room.m2 && Number(room.m2) > 0) {
+      lines.push(`   Alan: ${room.m2} m²`);
+    }
+
+    // Kapasite düzenleri — yalnızca dolu (>0) olanlar
+    const layouts: string[] = [];
+    if (room.tiyatro && Number(room.tiyatro) > 0) layouts.push(`Tiyatro: ${room.tiyatro} kisi`);
+    if (room.sinif && Number(room.sinif) > 0) layouts.push(`Sinif: ${room.sinif} kisi`);
+    if (room.u_duzen && Number(room.u_duzen) > 0) layouts.push(`U-duzen: ${room.u_duzen} kisi`);
+    if (room.banket && Number(room.banket) > 0) layouts.push(`Banket: ${room.banket} kisi`);
+    if (room.kokteyl && Number(room.kokteyl) > 0) layouts.push(`Kokteyl: ${room.kokteyl} kisi`);
+
+    if (layouts.length > 0) {
+      lines.push(`   Kapasite: ${layouts.join(' | ')}`);
+    }
+
+    if (room.gun_isigi) {
+      lines.push(`   Gun isigi: Evet`);
+    }
+
+    lines.push(''); // salon arası boşluk
+  }
+
+  // Yönlendirme cümlesi
+  if (contactPhone && contactPhone.trim().length > 0) {
+    lines.push(`Daha buyuk organizasyonlar veya detayli kapasite/fiyat icin: 📞 ${contactPhone.trim()}`);
+  } else {
+    lines.push(`Daha buyuk organizasyonlar veya detayli kapasite/fiyat icin resepsiyonumuzla iletisime gecebilirsiniz.`);
+  }
+
+  return lines.join('\n');
 }
