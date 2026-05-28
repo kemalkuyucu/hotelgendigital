@@ -29,8 +29,6 @@ export type HotelContext = {
   locationInfo: string;
   /** system_safety_responses tablosundan aktif güvenlik kuralları (priority ASC) */
   safetyRules: SafetyRule[];
-  /** hotel_settings.meeting_rooms JSONB'sinden formatlanmış toplantı salonu bloğu; boş olabilir */
-  meetingRoomsBlock: string;
 };
 
 /**
@@ -41,58 +39,70 @@ export async function buildHotelContext(
   supabase: SupabaseClient,
   options: HotelContextOptions = {},
 ): Promise<HotelContext> {
-  const [
-    hotelInfo,
-    generalRules,
-    knowledgeFacts,
-    documents,
-    nearbyPlaces,
-    safetyRules,
-  ] = await Promise.all([
-    fetchHotelInfo(supabase),
-    fetchGeneralRules(supabase),
-    fetchKnowledgeFacts(supabase),
-    fetchDocuments(supabase, options.departmentHint),
-    fetchNearbyPlaces(supabase, options.perplexityInterestHint),
-    fetchSafetyRules(),
-  ]);
-
-  // hotel_settings.location_info JSONB'sini oku ve formatla
-  let locationInfo = '';
+  // Tüm hotel_settings alanlarını tek sorguda çek
   const { data: settingsRow } = await supabase
     .from('hotel_settings')
-    .select('location_info, hotel_name')
+    .select('hotel_name, address, contact_phone, contact_email, concept, check_in_time, check_out_time, general_rules, wifi_info, location_info, meeting_rooms')
     .limit(1)
     .maybeSingle();
 
+  // --- Temel otel bilgileri (NULL/boş alanlar atlanır) ---
+  const hotelInfoParts: string[] = [];
+  if (settingsRow?.hotel_name)     hotelInfoParts.push(`Otel Adi: ${settingsRow.hotel_name}`);
+  if (settingsRow?.address)        hotelInfoParts.push(`Adres: ${settingsRow.address}`);
+  if (settingsRow?.contact_phone)  hotelInfoParts.push(`Telefon: ${settingsRow.contact_phone}`);
+  if (settingsRow?.contact_email)  hotelInfoParts.push(`E-posta: ${settingsRow.contact_email}`);
+  if (settingsRow?.concept)        hotelInfoParts.push(`Konsept: ${settingsRow.concept}`);
+  if (settingsRow?.check_in_time)  hotelInfoParts.push(`Check-in: ${settingsRow.check_in_time}`);
+  if (settingsRow?.check_out_time) hotelInfoParts.push(`Check-out: ${settingsRow.check_out_time}`);
+  if (settingsRow?.wifi_info)      hotelInfoParts.push(`Wi-Fi: ${settingsRow.wifi_info}`);
+
+  // --- Toplantı / etkinlik salonları (yapısal) ---
+  const mrList = settingsRow?.meeting_rooms;
+  if (Array.isArray(mrList) && mrList.length > 0) {
+    const mrBlock = formatMeetingRoomsBlock(
+      mrList as MeetingRoomRecord[],
+      settingsRow?.contact_phone as string | null | undefined,
+    );
+    if (mrBlock) hotelInfoParts.push('\n' + mrBlock);
+  }
+
+  const hotelInfo = hotelInfoParts.length > 0
+    ? `=== OTEL TEMEL BILGILERI ===\n${hotelInfoParts.join('\n')}`
+    : '';
+
+  // --- Genel kurallar ---
+  const generalRules = settingsRow?.general_rules
+    ? `GENEL KURALLAR:\n${settingsRow.general_rules}`
+    : '';
+
+  // --- Konum bilgisi (location_info JSONB) ---
+  let locationInfo = '';
   if (settingsRow?.location_info) {
     const loc = settingsRow.location_info as Record<string, unknown>;
     const hasContent =
       Boolean(loc['maps_link']) ||
       Boolean(loc['general_directions']) ||
       (Array.isArray(loc['details']) && (loc['details'] as unknown[]).length > 0);
-
     if (hasContent) {
       locationInfo = formatLocationDocument(loc, settingsRow.hotel_name ?? undefined);
     }
   }
 
-  // hotel_settings.meeting_rooms JSONB'sini oku ve formatla
-  let meetingRoomsBlock = '';
-  const { data: mrSettingsRow } = await supabase
-    .from('hotel_settings')
-    .select('meeting_rooms, contact_phone')
-    .limit(1)
-    .maybeSingle();
+  // --- Paralel: KB facts, belgeler, yakın çevre, güvenlik kuralları ---
+  const [
+    knowledgeFacts,
+    documents,
+    nearbyPlaces,
+    safetyRules,
+  ] = await Promise.all([
+    fetchKnowledgeFacts(supabase),
+    fetchDocuments(supabase, options.departmentHint),
+    fetchNearbyPlaces(supabase, options.perplexityInterestHint),
+    fetchSafetyRules(),
+  ]);
 
-  if (mrSettingsRow?.meeting_rooms && Array.isArray(mrSettingsRow.meeting_rooms) && mrSettingsRow.meeting_rooms.length > 0) {
-    meetingRoomsBlock = formatMeetingRoomsBlock(
-      mrSettingsRow.meeting_rooms as MeetingRoomRecord[],
-      mrSettingsRow.contact_phone as string | null | undefined,
-    );
-  }
-
-  return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo, safetyRules, meetingRoomsBlock };
+  return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo, safetyRules };
 }
 
 /**
@@ -120,43 +130,8 @@ async function fetchSafetyRules(): Promise<SafetyRule[]> {
   }
 }
 
-/**
- * Otel temel bilgileri: ad, adres, check-in/out saatleri, konsept, telefon.
- */
-async function fetchHotelInfo(supabase: SupabaseClient): Promise<string> {
-  const { data } = await supabase
-    .from('hotel_settings')
-    .select('hotel_name, address, contact_phone, contact_email, concept, check_in_time, check_out_time')
-    .limit(1)
-    .maybeSingle();
-
-  if (!data) return '';
-
-  const parts: string[] = [];
-  if (data.hotel_name) parts.push(`Otel: ${data.hotel_name}`);
-  if (data.address) parts.push(`Adres: ${data.address}`);
-  if (data.contact_phone) parts.push(`Telefon: ${data.contact_phone}`);
-  if (data.contact_email) parts.push(`E-posta: ${data.contact_email}`);
-  if (data.concept) parts.push(`Konsept: ${data.concept}`);
-  if (data.check_in_time) parts.push(`Check-in: ${data.check_in_time}`);
-  if (data.check_out_time) parts.push(`Check-out: ${data.check_out_time}`);
-
-  return parts.length > 0 ? `OTEL BILGILERI:\n${parts.join('\n')}` : '';
-}
-
-/**
- * Otelin genel kuralları (Otel Bilgileri sekmesindeki "Genel Kurallar" alanı).
- */
-async function fetchGeneralRules(supabase: SupabaseClient): Promise<string> {
-  const { data } = await supabase
-    .from('hotel_settings')
-    .select('general_rules')
-    .limit(1)
-    .maybeSingle();
-
-  if (!data?.general_rules) return '';
-  return `GENEL KURALLAR:\n${data.general_rules}`;
-}
+// fetchHotelInfo ve fetchGeneralRules kaldırıldı:
+// buildHotelContext() artık tek sorguda hotel_settings'in TÜM alanlarını çekiyor.
 
 /**
  * hotel_facts tablosundaki aktif fact'leri kategoriye göre derler.
@@ -330,31 +305,60 @@ export function detectInterestTag(message: string): string | null {
 /**
  * Bütün context bloklarını tek bir metin haline getirir.
  * AI system prompt'una eklenmek için hazır.
+ *
+ * HOTEL CONTEXT bloğu:
+ *   - Temel otel bilgileri (ad, adres, telefon, check-in/out, wifi, meeting rooms)
+ *   - Genel kurallar
+ *   - Bilgi Tabanı (SSS / hotel_facts)
+ *   - Belgeler
+ *   - Yakın çevre
+ *   - Konum detayı
  */
 export function formatContextForPrompt(ctx: HotelContext): string {
-  const blocks = [
-    ctx.hotelInfo,
-    ctx.generalRules,
-    ctx.knowledgeFacts,
-    ctx.documents,
-    ctx.nearbyPlaces,
-  ].filter((b) => b.trim().length > 0);
+  const blocks: string[] = [];
 
-  if (ctx.locationInfo && ctx.locationInfo.trim().length > 0) {
-    blocks.push(`=== OTELE NASIL GELINIR (KONUM BILGISI) ===
-Misafir "nasil gelirim", "adres", "konum", "yol tarifi", "nerede" gibi sorular sordugunda asagidaki bilgileri AYNI YAPIDA cevapla:
-- Once genel adres/mesafe paragrafi
-- Her yon detayini AYRI PARAGRAF olarak, basinda "<Yon adi>'ndan/dan geliyorsaniz:" baslik cumlesi
-- Yol tarifini ve dikkat notunu ayri satirlarda yaz
-- En altta "Google Maps:" satiri
-- Paragraflar arasinda BIR BOS SATIR birak
-- En sonda otel adi imzasini koru (--- <otel adi> formatinda)
+  // Türkçe alfabe kuralı — EN ÖNCE
+  blocks.push(
+    `DIL KURALI (16.a): Cevaplarinda SADECE standart Turk alfabesi kullan ` +
+    `(a b c c d e f g g h i i j k l m n o o p r s s t u u v y z). ` +
+    `Kiril, Yunan veya benzer alfabelerden harf KARISTIRMA. ` +
+    `Telefon numarasi, link, isim yazarken bile sadece Latin/Turkce karakter kullan.`
+  );
 
-${ctx.locationInfo}`);
+  // Ana HOTEL CONTEXT bloğu
+  const contextParts: string[] = [];
+  if (ctx.hotelInfo)      contextParts.push(ctx.hotelInfo);
+  if (ctx.generalRules)   contextParts.push(ctx.generalRules);
+  if (ctx.knowledgeFacts) contextParts.push(ctx.knowledgeFacts);
+  if (ctx.documents)      contextParts.push(ctx.documents);
+  if (ctx.nearbyPlaces)   contextParts.push(ctx.nearbyPlaces);
+
+  if (contextParts.length > 0) {
+    blocks.push(
+      `=== HOTEL CONTEXT — YALNIZCA BU BILGILERI KULLAN ===\n\n` +
+      `KURAL 1: Asagidaki HOTEL CONTEXT disindaki bilgileri KESINLIKLE UYDURMA.\n` +
+      `KURAL 2: Baglamda bilgi VARSA net ve kesin cevap ver — "resepsiyona danisin" DEME.\n` +
+      `KURAL 3: Baglamda YOKSA kibarca bilmedigini soyle ve otel telefona yonlendir` +
+      (ctx.hotelInfo?.includes('Telefon:') ? ` (yukardaki Telefon numarasini kullan).` : `.`) +
+      `\n\n` +
+      contextParts.join('\n\n')
+    );
   }
 
-  // DIL KURALI: Normal cevaplar icin de gecerli — EN USTE eklenir
-  blocks.unshift(`DIL KURALI: Cevaplarinda SADECE standart Turk alfabesi kullan (a b c c d e f g g h i i j k l m n o o p r s s t u u v y z). Kiril, Yunan veya benzer alfabelerden harf KARISTIRMA. Telefon numarasi, link, isim yazarken bile sadece Latin/Turkce karakter kullan.`);
+  if (ctx.locationInfo && ctx.locationInfo.trim().length > 0) {
+    blocks.push(
+      `=== OTELE NASIL GELINIR (KONUM BILGISI) ===\n` +
+      `Misafir "nasil gelirim", "adres", "konum", "yol tarifi", "nerede" gibi sorular sordugunda ` +
+      `asagidaki bilgileri AYNI YAPIDA cevapla:\n` +
+      `- Once genel adres/mesafe paragrafi\n` +
+      `- Her yon detayini AYRI PARAGRAF olarak, basinda "<Yon adi>'ndan/dan geliyorsaniz:" baslik cumlesi\n` +
+      `- Yol tarifini ve dikkat notunu ayri satirlarda yaz\n` +
+      `- En altta "Google Maps:" satiri\n` +
+      `- Paragraflar arasinda BIR BOS SATIR birak\n` +
+      `- En sonda otel adi imzasini koru (--- <otel adi> formatinda)\n\n` +
+      ctx.locationInfo
+    );
+  }
 
   if (blocks.length === 0) return '';
   return blocks.join('\n\n---\n\n');

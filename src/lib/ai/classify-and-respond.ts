@@ -113,9 +113,21 @@ export async function classifyAndRespond(
   const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments, knowledgeSummary);
 
   const hotelContextText = hotelContext ? formatContextForPrompt(hotelContext) : '';
-  const finalSystemPrompt = systemPrompt + (hotelContextText
-    ? `\n\n=== OTEL BILGI KAYNAKLARI ===\n${hotelContextText}\n=== SON ===\n\nYukaridaki bilgileri kullanarak misafirin sorusuna kisa, net, sicak bir cevap ver. Bilgi kaynaklarinda yoksa "Bu konuyu netlestirmek icin onburoya yonlendirecegim" de.`
-    : '');
+  // HOTEL CONTEXT'i system prompt'a göm — TÜM otel verisi (meeting_rooms dahil) burada
+  const contextInjection = hotelContextText
+    ? (
+        `\n\n` +
+        hotelContextText +
+        `\n\n--- CEVAP KURALLARI (MUTLAK) ---\n` +
+        `1. Yukaridaki HOTEL CONTEXT disindaki bilgileri KESINLIKLE UYDURMA.\n` +
+        `2. HOTEL CONTEXT'te bilgi VARSA (toplanti salonu, wifi, telefon, check-in/out, her sey) NET ve KESIN cevap ver.\n` +
+        `   \"Resepsiyona danisin\", \"Onburoya sorun\" DEME — bilgi varken yonlendirme YASAK.\n` +
+        `3. HOTEL CONTEXT'te bilgi YOKSA: Kibarca bilmedigini soyle ve otel telefon numarasina yonlendir.\n` +
+        `4. Toplanti salonu, etkinlik, dugun, konferans, salon kapasitesi sorularinda:\n` +
+        `   HOTEL CONTEXT > \"TOPLANTI SALONLARI\" blokunu kullan, UYDURMA.`
+      )
+    : '';
+  const finalSystemPrompt = systemPrompt + contextInjection;
 
   // Context mesajlarını Anthropic message formatına çevir
   const messages = input.context.map((m) => ({

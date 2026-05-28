@@ -28,12 +28,8 @@ import {
 } from '@/lib/telegram/send-document';
 // Modül 4: Alerjen bildirim yönlendirme
 import { sendAllergenNotifications } from '@/lib/telegram/allergen-notify';
-// Modül 16.b: Toplantı Salonu Bot Entegrasyonu (Faz 2)
-import {
-  detectMeetingRoomIntent,
-  formatMeetingRoomsBlock,
-  type MeetingRoomRecord,
-} from '@/lib/ai/hotel-context';
+// Modül 16.b (refactor): meeting_rooms artık hotel-context.ts içinde HOTEL CONTEXT'e gömülü gelir.
+// detectMeetingRoomIntent / formatMeetingRoomsBlock gate'i kaldırıldı.
 
 
 export const runtime = 'nodejs';
@@ -1530,57 +1526,7 @@ async function handleMessage(args: {
     display_name: d.display_name,
   }));
 
-  // ============================================================
-  // MODÜL 16.b — TOPLANTI SALONU SHORT-CIRCUIT (Faz 2)
-  // ─────────────────────────────────────────────────────────────
-  // Kural:
-  //   1. Mesajda toplantı/salon niyeti varsa → kontrol et.
-  //   2. hotel_settings.meeting_rooms dolu ise → yapısal yanıt gönder, return.
-  //   3. meeting_rooms boş/yok ise → buradan GEÇ, normal AI akışı devam et.
-  // Güvenlik: safety pre-classifier önce çalıştı (yukarıda) — biz buraya
-  //           safety match olmadan geldik. Bu gate sonraki.
-  // ============================================================
-  if (detectMeetingRoomIntent(text)) {
-    console.log(`[meeting-rooms-gate] Toplantı salonu niyeti tespit edildi. chatId=${chatId}`);
-
-    const { data: mrSettings } = await supa
-      .from('hotel_settings')
-      .select('meeting_rooms, contact_phone')
-      .limit(1)
-      .maybeSingle();
-
-    const mrList = mrSettings?.meeting_rooms;
-    const hasRooms = Array.isArray(mrList) && mrList.length > 0;
-
-    if (hasRooms) {
-      const mrBlock = formatMeetingRoomsBlock(
-        mrList as MeetingRoomRecord[],
-        mrSettings?.contact_phone as string | null | undefined,
-      );
-
-      if (mrBlock.length > 0) {
-        console.log(`[meeting-rooms-gate] Salon verisi bulundu (${mrList.length} salon) — yapısal yanıt gönderiliyor.`);
-
-        // Outbound kaydet
-        await supa.from('bot_messages').insert({
-          conversation_id: conversationId,
-          direction: 'outbound',
-          text: mrBlock,
-          message_type: 'text',
-        });
-
-        await tg.sendMessage({ chat_id: chatId, text: mrBlock });
-
-        console.log(`[meeting-rooms-gate] Yanıt gönderildi → conversationId=${conversationId}`);
-        return; // AI çağrısı YOK, forward YOK
-      }
-    } else {
-      console.log(`[meeting-rooms-gate] meeting_rooms boş — normal AI akışına devam.`);
-    }
-  }
-  // ============================================================
-  // MODÜL 16.b — TOPLANTI SALONU SHORT-CIRCUIT SONU
-  // ============================================================
+  // (Modül 16.b gate kaldırıldı — meeting_rooms artık HOTEL CONTEXT bloğunda AI'a gidiyor)
 
   // Claude AI çağrısı
   let aiResult: Awaited<ReturnType<typeof classifyAndRespond>> | null = null;
