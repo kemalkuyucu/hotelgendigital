@@ -17,7 +17,7 @@ const VALID_DEPARTMENTS = [
   'front_office', 'housekeeping', 'technical', 'fb',
   'guest_relation', 'spa', 'animation'
 ];
-const VALID_POLICIES = ['manual', 'auto_file', 'auto_text'];
+const VALID_POLICIES = ['manual_only', 'auto_file', 'auto_text'];
 
 // ──────────────────────────────────────────────────────────
 // GET — tüm belgeleri listele (uploaded_at DESC)
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   const document_type    = body.document_type    as string | null | undefined;
   const language         = (body.language         as string | null | undefined) ?? 'tr';
   const department       = body.department        as string | null | undefined;
-  const delivery_policy  = (body.delivery_policy  as string | null | undefined) ?? 'manual';
+  const delivery_policy  = (body.delivery_policy  as string | null | undefined) ?? 'manual_only';
   const display_text     = body.display_text      as string | null | undefined;
   const structured_data  = body.structured_data   as object | null | undefined;
   const file_url         = body.file_url          as string | null | undefined;
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     }
     // file_url auto_text modunda opsiyonel (dosya + yazılı cevap senaryosu)
   }
-  // delivery_policy === 'manual' → dosya/text tamamen opsiyonel
+  // delivery_policy === 'manual_only' → dosya/text tamamen opsiyonel
 
   // ── file_url format validasyonu (presign path kontrolü) ──
   if (file_url != null && file_url !== '') {

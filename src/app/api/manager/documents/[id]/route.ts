@@ -19,7 +19,7 @@ const VALID_DEPARTMENTS = [
   'front_office', 'housekeeping', 'technical', 'fb',
   'guest_relation', 'spa', 'animation',
 ];
-const VALID_POLICIES = ['manual', 'auto_file', 'auto_text'];
+const VALID_POLICIES = ['manual_only', 'auto_file', 'auto_text'];
 
 // ──────────────────────────────────────────────────────────
 // DELETE — belgeyi sil (DB + Storage)

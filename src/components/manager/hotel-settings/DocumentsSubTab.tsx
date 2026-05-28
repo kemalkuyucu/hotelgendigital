@@ -14,7 +14,7 @@ type Department =
   | 'front_office' | 'housekeeping' | 'technical' | 'fb'
   | 'guest_relation' | 'spa' | 'animation';
 
-type DeliveryPolicy = 'manual' | 'auto_file' | 'auto_text';
+type DeliveryPolicy = 'manual_only' | 'auto_file' | 'auto_text';
 
 const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   concept: 'Konsept',
@@ -61,7 +61,7 @@ export default function DocumentsSubTab() {
   const [documentType, setDocumentType] = useState<DocumentType>('concept');
   const [language, setLanguage] = useState<Language>('tr');
   const [department, setDepartment] = useState<Department | ''>('');
-  const [deliveryPolicy, setDeliveryPolicy] = useState<DeliveryPolicy>('manual');
+  const [deliveryPolicy, setDeliveryPolicy] = useState<DeliveryPolicy>('manual_only');
   const [displayText, setDisplayText] = useState('');
 
   type IbanAccount = {
@@ -114,7 +114,7 @@ export default function DocumentsSubTab() {
 
   const isEditMode = editingDocId !== null;
   // Edit modunda dosya zorunlu değil; create modunda auto_text harici zorunlu
-  const fileRequired = !isEditMode && deliveryPolicy !== 'auto_text';
+  const fileRequired = !isEditMode && deliveryPolicy !== 'auto_text';  // 'manual_only' ve 'auto_file' dosya gerektirir
 
   function clearMessages() {
     setError(null);
@@ -207,7 +207,7 @@ export default function DocumentsSubTab() {
   }
 
   const POLICY_LABELS: Record<string, string> = {
-    manual: 'Manuel',
+    manual_only: 'Manuel',
     auto_file: 'Dosya Gönder',
     auto_text: 'Yazılı Cevap',
   };
@@ -217,7 +217,7 @@ export default function DocumentsSubTab() {
     setDocumentType('concept');
     setLanguage('tr');
     setDepartment('');
-    setDeliveryPolicy('manual');
+    setDeliveryPolicy('manual_only');
     setDisplayText('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     setIbanAccounts([EMPTY_IBAN_ACCOUNT]);
@@ -229,9 +229,8 @@ export default function DocumentsSubTab() {
     setDocumentType(doc.document_type as DocumentType);
     setLanguage(doc.language as Language);
     setDepartment((doc.department_code ?? '') as Department | '');
-    // DB'de eski kayıtlar 'manual_only' olabilir → 'manual'e normalize et
-    const normalizedPolicy = doc.delivery_policy === 'manual_only' ? 'manual' : doc.delivery_policy;
-    setDeliveryPolicy(normalizedPolicy as DeliveryPolicy);
+    // DB constraint: 'manual_only', 'auto_file', 'auto_text'
+    setDeliveryPolicy((doc.delivery_policy as DeliveryPolicy) ?? 'manual_only');
     setDisplayText(doc.display_text ?? '');
     setFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -502,13 +501,13 @@ export default function DocumentsSubTab() {
         <p className="policy-hint">Bu belge sorulduğunda sistem nasıl davransın?</p>
 
         <div className="policy-options">
-          <label className={`policy-option ${deliveryPolicy === 'manual' ? 'is-selected' : ''}`}>
+          <label className={`policy-option ${deliveryPolicy === 'manual_only' ? 'is-selected' : ''}`}>
             <input
               type="radio"
               name="delivery_policy"
-              value="manual"
-              checked={deliveryPolicy === 'manual'}
-              onChange={() => { setDeliveryPolicy('manual'); clearMessages(); }}
+              value="manual_only"
+              checked={deliveryPolicy === 'manual_only'}
+              onChange={() => { setDeliveryPolicy('manual_only'); clearMessages(); }}
             />
             <div>
               <strong>Manuel</strong>
