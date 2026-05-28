@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSessionManager } from '@/lib/auth/manager-session'
+import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth'
 import { getDemoHotelSupabase } from '@/lib/supabase-client'
+import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
 
 // ── PATCH /api/manager/knowledge/[id] ────────────────────────────────────────
 export async function PATCH(
@@ -8,7 +9,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const manager = await getSessionManager()
+    const manager = await getManagerOrHotelAdmin()
     if (!manager) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -38,7 +39,9 @@ export async function PATCH(
 
     patch.updated_at = new Date().toISOString()
 
-    const supabase = getDemoHotelSupabase()
+    const supabase = manager.hotel_slug
+      ? (await resolveTenantBySlug(manager.hotel_slug)).hotelSupabase
+      : getDemoHotelSupabase()
 
     const { data, error } = await supabase
       .from('hotel_facts')
@@ -78,13 +81,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const manager = await getSessionManager()
+    const manager = await getManagerOrHotelAdmin()
     if (!manager) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const { id } = await params
-    const supabase = getDemoHotelSupabase()
+    const supabase = manager.hotel_slug
+      ? (await resolveTenantBySlug(manager.hotel_slug)).hotelSupabase
+      : getDemoHotelSupabase()
 
     const { error } = await supabase
       .from('hotel_facts')

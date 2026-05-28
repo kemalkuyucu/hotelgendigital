@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth';
 import { getDemoHotelSupabase } from '@/lib/supabase-client';
+import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant';
 
 // presign endpoint'inden dönen path formatı: uploads/<uuid>-<filename>
 const FILE_URL_REGEX = /^uploads\/[a-f0-9\-]+-[^/]+$/i;
@@ -25,7 +26,9 @@ export async function GET() {
   const session = await getManagerOrHotelAdmin();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const supabase = getDemoHotelSupabase();
+  const supabase = session.hotel_slug
+    ? (await resolveTenantBySlug(session.hotel_slug)).hotelSupabase
+    : getDemoHotelSupabase();
   const { data, error } = await supabase
     .from('hotel_documents')
     .select('*')
@@ -112,8 +115,10 @@ export async function POST(request: Request) {
     }
   }
 
-  // ── DB INSERT ──
-  const supabase = getDemoHotelSupabase();
+  // ── DB INSERT (tenant-aware) ──
+  const supabase = session.hotel_slug
+    ? (await resolveTenantBySlug(session.hotel_slug)).hotelSupabase
+    : getDemoHotelSupabase();
   const { data, error } = await supabase
     .from('hotel_documents')
     .insert({

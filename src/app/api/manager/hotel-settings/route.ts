@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth'
 import { getDemoHotelSupabase } from '@/lib/supabase-client'
+import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
 
 // hotel_settings is a singleton table — no hotel_id column exists.
 
@@ -67,7 +68,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const supabase = getDemoHotelSupabase()
+    const supabase = manager.hotel_slug
+      ? (await resolveTenantBySlug(manager.hotel_slug)).hotelSupabase
+      : getDemoHotelSupabase()
 
     const { data, error } = await supabase
       .from('hotel_settings')
@@ -116,7 +119,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: locationResult.error }, { status: 400 })
     }
 
-    const supabase = getDemoHotelSupabase()
+    const supabase = manager.hotel_slug
+      ? (await resolveTenantBySlug(manager.hotel_slug)).hotelSupabase
+      : getDemoHotelSupabase()
 
     // Check if a row already exists (singleton table — no hotel_id column)
     const { data: existing, error: selectError } = await supabase

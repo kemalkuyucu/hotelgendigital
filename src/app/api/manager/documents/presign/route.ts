@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth';
 import { getDemoHotelSupabase } from '@/lib/supabase-client';
+import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant';
 import { randomUUID } from 'crypto';
 
 const BUCKET = 'hotel_documents';
@@ -63,8 +64,10 @@ export async function POST(request: Request) {
     const sanitized = sanitizeFileName(fileName.trim());
     const storagePath = `uploads/${randomUUID()}-${sanitized}`;
 
-    // --- Signed upload URL al ---
-    const supabase = getDemoHotelSupabase();
+    // --- Signed upload URL al (tenant-aware) ---
+    const supabase = session.hotel_slug
+      ? (await resolveTenantBySlug(session.hotel_slug)).hotelSupabase
+      : getDemoHotelSupabase();
     const { data, error } = await supabase.storage
       .from(BUCKET)
       .createSignedUploadUrl(storagePath);

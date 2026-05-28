@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getSessionManager } from '@/lib/auth/manager-session';
+import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth';
 import { getDemoHotelSupabase } from '@/lib/supabase-client';
+import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant';
 
 const BUCKET = 'hotel_documents';
 
@@ -27,11 +28,13 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSessionManager();
+  const session = await getManagerOrHotelAdmin();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  const supabase = getDemoHotelSupabase();
+  const supabase = session.hotel_slug
+    ? (await resolveTenantBySlug(session.hotel_slug)).hotelSupabase
+    : getDemoHotelSupabase();
 
   // Önce file_url al
   const { data: doc, error: fetchError } = await supabase
@@ -72,11 +75,13 @@ export async function PATCH(
 ) {
   try {
     // ── Auth ──
-    const session = await getSessionManager();
+    const session = await getManagerOrHotelAdmin();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
-    const supabase = getDemoHotelSupabase();
+    const supabase = session.hotel_slug
+      ? (await resolveTenantBySlug(session.hotel_slug)).hotelSupabase
+      : getDemoHotelSupabase();
 
     // ── Mevcut kaydı oku ──
     const { data: existing, error: fetchError } = await supabase

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth'
 import { getDemoHotelSupabase } from '@/lib/supabase-client'
+import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
 
 // ── GET /api/manager/knowledge ────────────────────────────────────────────────
 export async function GET() {
@@ -10,7 +11,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const supabase = getDemoHotelSupabase()
+    const supabase = manager.hotel_slug
+      ? (await resolveTenantBySlug(manager.hotel_slug)).hotelSupabase
+      : getDemoHotelSupabase()
 
     const { data, error } = await supabase
       .from('hotel_facts')
@@ -56,7 +59,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const supabase = getDemoHotelSupabase()
+    const supabase = manager.hotel_slug
+      ? (await resolveTenantBySlug(manager.hotel_slug)).hotelSupabase
+      : getDemoHotelSupabase()
 
     // Calculate next display_order
     const { data: maxRow } = await supabase

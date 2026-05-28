@@ -271,18 +271,18 @@ export default function DocumentsSubTab() {
     }
     const presignJson = await presignRes.json() as {
       signedUrl: string;
-      token: string;
       path: string;
       bucket: string;
     };
-    const { signedUrl, token, path: storagePath } = presignJson;
+    const { signedUrl, path: storagePath } = presignJson;
 
     // 2) Supabase signed upload URL'ye PUT
+    // NOT: Authorization header EKLENMİYOR — signed URL zaten token'ı query param'da taşıyor.
+    // Ekstra Bearer header CORS OPTIONS preflight'ı tetikler ve yüklemeyi askıya alır.
     const putRes = await fetch(signedUrl, {
       method: 'PUT',
       headers: {
         'Content-Type': f.type,
-        Authorization: `Bearer ${token}`,
       },
       body: f,
     });
