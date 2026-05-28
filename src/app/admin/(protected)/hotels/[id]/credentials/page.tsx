@@ -17,10 +17,10 @@ export default async function CredentialsPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ saved?: string }>
+  searchParams: Promise<{ saved?: string; tested?: string; err?: string }>
 }) {
   const { id } = await params
-  const { saved } = await searchParams
+  const { saved, tested, err } = await searchParams
 
   const supabase = await getCentralServerClient()
   const [{ data: hotel }, { data: cred }] = await Promise.all([
@@ -46,7 +46,21 @@ export default async function CredentialsPage({
         <h1 className="text-3xl font-bold text-gray-900 mb-1">Bridge Credentials</h1>
         <p className="text-gray-500 text-sm mb-8">{hotel.name}</p>
 
-        {saved && (
+        {saved && tested === 'ok' && (
+          <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
+            ✅ Credentials kaydedildi ve bağlantı doğrulandı — Sağlıklı!
+          </div>
+        )}
+
+        {saved && tested === 'fail' && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            <div className="font-semibold mb-1">⚠️ Credentials kaydedildi fakat bağlantı doğrulanamadı</div>
+            {err && <div className="text-xs mt-1 font-mono">{decodeURIComponent(err)}</div>}
+            <div className="text-xs mt-2 opacity-75">Anahtarları kontrol edip tekrar kaydedin veya &quot;Bağlantıyı Test Et&quot; butonunu kullanın.</div>
+          </div>
+        )}
+
+        {saved && !tested && (
           <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
             ✅ Credentials başarıyla kaydedildi.
           </div>

@@ -5,6 +5,7 @@ import { verifyTelegramSecret } from '@/lib/telegram/verify';
 import type { TelegramUpdate, TelegramMessage } from '@/lib/telegram/types';
 import { getHotelBySlug } from '@/lib/tenant/get-hotel-by-slug';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
+import { getDecryptedBridge } from '@/lib/tenant/decrypt-credentials';
 import { classifyAndRespond } from '@/lib/ai/classify-and-respond';
 import type { ConversationContextMessage } from '@/lib/ai/classify-and-respond';
 import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-hours';
@@ -89,9 +90,21 @@ function buildForwardableItems(
   return items;
 }
 
-function getBotTokenForHotel(slug: string): string | null {
-  if (slug === 'demo-hotel') return process.env.TELEGRAM_BOT_TOKEN_DEMO ?? null;
-  return null;
+/**
+ * Bot token'ı belirle:
+ * 1. demo-hotel → env var (geriye dönük uyumluluk)
+ * 2. Diğer oteller → bridge_credentials tablosundan decrypt et
+ */
+async function getBotTokenForHotel(
+  slug: string,
+  hotelId: string,
+): Promise<string | null> {
+  if (slug === 'demo-hotel') {
+    return process.env.TELEGRAM_BOT_TOKEN_DEMO ?? null;
+  }
+  // Tenant oteller: bridge_credentials'dan decrypt et
+  const bridge = await getDecryptedBridge(hotelId);
+  return bridge?.telegramBotToken ?? null;
 }
 
 function getDemoHotelClient(): SupabaseClient | null {
@@ -129,9 +142,9 @@ export async function POST(
     return NextResponse.json({ ok: true, info: 'hotel inactive' });
   }
 
-  const botToken = getBotTokenForHotel(hotelSlug);
+  const botToken = await getBotTokenForHotel(hotelSlug, hotel.id);
   if (!botToken) {
-    console.error(`[telegram] bot token yok: ${hotelSlug}`);
+    console.error(`[telegram] bot token yok — slug=${hotelSlug} hotelId=${hotel.id}. Bridge credentials'da telegram_bot_token_encrypted eksik.`);
     return NextResponse.json({ ok: true, info: 'no token' });
   }
   const tg = new TelegramClient(botToken);
