@@ -78,7 +78,7 @@ function DetailModal({
   status: StatusWithName;
   onClose: () => void;
 }) {
-  const allVersions = ['001', '002', '003', '004', '005', '006', '008', '009', '010'];
+  const allVersions = ['001', '002', '003', '004', '005', '006', '008', '009', '010', '011', '012', '013', '014', '015', '016'];
   const appliedVersions = new Set(status.applied.map((a) => a.version));
 
   return (
@@ -185,6 +185,12 @@ function getPendingName(version: string) {
     '008': 'module17_7_multi_match_flag',
     '009': 'module22_department_staff_created_by',
     '010': 'reservation_links',
+    '011': 'guest_allergens',
+    '012': 'allergen_staff_flags',
+    '013': 'allergen_conversation_state',
+    '014': 'allergen_notification_log',
+    '015': 'allergen_state_isolation',
+    '016': 'meeting_rooms',
   };
   return names[version] ?? 'bilinmeyen';
 }

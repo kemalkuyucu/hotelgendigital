@@ -18,6 +18,21 @@ interface LocationInfo {
   details: LocationDetail[]
 }
 
+// ── Meeting room schema ───────────────────────────────────────────────────────
+interface MeetingRoom {
+  ad: string
+  m2?: number | null
+  en?: number | null
+  boy?: number | null
+  yukseklik?: number | null
+  gun_isigi?: boolean
+  tiyatro?: number | null
+  sinif?: number | null
+  u_duzen?: number | null
+  banket?: number | null
+  kokteyl?: number | null
+}
+
 // ── Shape of the fields we manage ─────────────────────────────────────────────
 interface HotelSettingsPayload {
   hotel_name: string
@@ -29,6 +44,7 @@ interface HotelSettingsPayload {
   check_out_time?: string | null
   general_rules?: string | null
   location_info?: LocationInfo | null
+  meeting_rooms?: MeetingRoom[] | null
 }
 
 // ── Validate location_info structure ──────────────────────────────────────────
@@ -75,7 +91,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from('hotel_settings')
       .select(
-        'id, hotel_name, contact_phone, contact_email, address, concept_type, check_in_time, check_out_time, general_rules, location_info'
+        'id, hotel_name, contact_phone, contact_email, address, concept_type, check_in_time, check_out_time, general_rules, location_info, meeting_rooms'
       )
       .maybeSingle()
 
@@ -147,6 +163,7 @@ export async function PUT(req: NextRequest) {
       check_out_time: body.check_out_time || '12:00',
       general_rules: body.general_rules?.trim() || null,
       location_info: locationResult,
+      meeting_rooms: Array.isArray(body.meeting_rooms) ? body.meeting_rooms : [],
       updated_at: new Date().toISOString(),
     }
 
