@@ -3,6 +3,34 @@ import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth'
 import { getDemoHotelSupabase } from '@/lib/supabase-client'
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
 
+// ── Legacy Turkish → English fact_key normalization map ──────────────────────
+// Eski Türkçe anahtar adlarını şablon sistemiyle (factTemplates.ts) uyumlu
+// İngilizce anahtarlara dönüştürür. GET sırasında uygulanır; DB'ye dokunmaz.
+const LEGACY_KEY_MAP: Record<string, string> = {
+  otel_adi:               'hotel_name',
+  otel_telefonu:          'hotel_phone',
+  otel_email:             'hotel_email',
+  otel_adresi:            'hotel_address',
+  giris_saati:            'check_in_time',
+  cikis_saati:            'check_out_time',
+  pansiyon_konsepti:      'concept_type',
+  kahvalti_baslangic:     'breakfast_start',
+  kahvalti_bitis:         'breakfast_end',
+  havuz_acilis:           'pool_open',
+  havuz_kapanis:          'pool_close',
+  plaj_acilis:            'beach_open',
+  plaj_kapanis:           'beach_close',
+  wifi_ssid:              'wifi_ssid',
+  wifi_sifre:             'wifi_password',
+  wifi_sifresi:           'wifi_password',
+  oda_servisi_saatleri:   'room_service_hours',
+  oda_servisi_ucretli_mi: 'room_service_paid',
+}
+
+function normalizeFactKey(key: string): string {
+  return LEGACY_KEY_MAP[key] ?? key
+}
+
 // ── GET /api/manager/knowledge ────────────────────────────────────────────────
 export async function GET() {
   try {
@@ -29,7 +57,25 @@ export async function GET() {
       )
     }
 
-    return NextResponse.json({ facts: data ?? [] }, { status: 200 })
+    // Normalize legacy Turkish keys → English so mergeFactsWithTemplates() matches correctly.
+    // Duplicate resolution: if two rows map to the same normalized key, keep the more recently
+    // updated one (latest updated_at wins).
+    type FactRow = NonNullable<typeof data>[number]
+    const seen = new Map<string, FactRow>()
+    for (const row of data ?? []) {
+      const normalizedKey = normalizeFactKey(row.fact_key)
+      const existing = seen.get(normalizedKey)
+      if (!existing) {
+        seen.set(normalizedKey, { ...row, fact_key: normalizedKey })
+      } else {
+        // Keep the one with the later updated_at
+        if (row.updated_at > existing.updated_at) {
+          seen.set(normalizedKey, { ...row, fact_key: normalizedKey })
+        }
+      }
+    }
+
+    return NextResponse.json({ facts: Array.from(seen.values()) }, { status: 200 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[knowledge GET] unexpected error:', message)
@@ -41,6 +87,7 @@ export async function GET() {
 }
 
 // ── POST /api/manager/knowledge ───────────────────────────────────────────────
+// UPSERT: aynı fact_key zaten varsa güncelle, yoksa ekle.
 export async function POST(req: NextRequest) {
   try {
     const manager = await getManagerOrHotelAdmin()
@@ -49,7 +96,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { fact_key, fact_label, fact_value, category, is_active } = body
+    const { fact_key, fact_label, fact_value, category, is_active, display_order: bodyOrder } = body
 
     // Basic validation
     if (!fact_key || !fact_label || !fact_value) {
@@ -59,28 +106,76 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const normalizedKey = fact_key.trim().toLowerCase()
+
     const supabase = manager.hotel_slug
       ? (await resolveTenantBySlug(manager.hotel_slug)).hotelSupabase
       : getDemoHotelSupabase()
 
-    // Calculate next display_order
-    const { data: maxRow } = await supabase
+    // ── Check if a row with this fact_key already exists (UPSERT logic) ──────
+    // Includes legacy Turkish aliases so saving 'hotel_name' also finds 'otel_adi'.
+    const legacyKeys = Object.entries(LEGACY_KEY_MAP)
+      .filter(([, eng]) => eng === normalizedKey)
+      .map(([tr]) => tr)
+    const keysToCheck = [normalizedKey, ...legacyKeys]
+
+    const { data: existing } = await supabase
       .from('hotel_facts')
-      .select('display_order')
-      .order('display_order', { ascending: false })
+      .select('id, display_order')
+      .in('fact_key', keysToCheck)
+      // If multiple duplicates exist (bug), grab the latest one
+      .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    const nextOrder = (maxRow?.display_order ?? -1) + 1
+    if (existing) {
+      // UPDATE the existing row
+      const { data, error } = await supabase
+        .from('hotel_facts')
+        .update({
+          fact_key:  normalizedKey,          // normalize key if it was Turkish
+          fact_label: fact_label.trim(),
+          fact_value: fact_value.trim(),
+          category:  category ?? 'general',
+          is_active: is_active ?? true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('[knowledge POST/upsert update] error:', error)
+        return NextResponse.json(
+          { error: 'Bilgi güncellenemedi', detail: error.message },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({ fact: data }, { status: 200 })
+    }
+
+    // ── INSERT new row ────────────────────────────────────────────────────────
+    // Calculate next display_order only when inserting
+    let nextOrder = typeof bodyOrder === 'number' ? bodyOrder : undefined
+    if (nextOrder === undefined) {
+      const { data: maxRow } = await supabase
+        .from('hotel_facts')
+        .select('display_order')
+        .order('display_order', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      nextOrder = (maxRow?.display_order ?? -1) + 1
+    }
 
     const { data, error } = await supabase
       .from('hotel_facts')
       .insert({
-        fact_key: fact_key.trim().toLowerCase(),
-        fact_label: fact_label.trim(),
-        fact_value: fact_value.trim(),
-        category: category ?? 'general',
-        is_active: is_active ?? true,
+        fact_key:      normalizedKey,
+        fact_label:    fact_label.trim(),
+        fact_value:    fact_value.trim(),
+        category:      category ?? 'general',
+        is_active:     is_active ?? true,
         display_order: nextOrder,
       })
       .select()
@@ -88,13 +183,6 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error('[knowledge POST] insert error:', error)
-      // Unique constraint violation
-      if (error.code === '23505') {
-        return NextResponse.json(
-          { error: 'Bu fact_key zaten kullanımda', field: 'fact_key' },
-          { status: 409 }
-        )
-      }
       return NextResponse.json(
         { error: 'Bilgi eklenemedi', detail: error.message },
         { status: 500 }
