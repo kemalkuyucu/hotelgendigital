@@ -24,6 +24,7 @@ type NavItemKey =
   | 'bilgi-tabani'
   | 'belgeler'
   | 'cevre-kesfi'
+  | 'toplanti-salonlari'
   | 'departman-personeli'
 
 interface NavItem {
@@ -81,10 +82,11 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
   // Bilgi Yönetimi alt menü (sadece hotel_owner)
   const showBilgiYonetimi = BILGI_ROLES.includes(adminRole)
   const bilgiItems: NavItem[] = [
-    { key: 'bilgi-otel',  label: 'Otel Bilgileri', href: `/hotel-admin/${slug}/bilgi-yonetimi/otel-bilgileri`, isSubItem: true },
-    { key: 'bilgi-tabani',label: 'Bilgi Tabanı',   href: `/hotel-admin/${slug}/bilgi-yonetimi/bilgi-tabani`,  isSubItem: true },
-    { key: 'belgeler',    label: 'Belgeler',        href: `/hotel-admin/${slug}/bilgi-yonetimi/belgeler`,      isSubItem: true },
-    { key: 'cevre-kesfi', label: 'Çevre Keşfi',    href: `/hotel-admin/${slug}/bilgi-yonetimi/cevre-kesfi`,   isSubItem: true },
+    { key: 'bilgi-otel',         label: 'Otel Bilgileri',        href: `/hotel-admin/${slug}/bilgi-yonetimi/otel-bilgileri`,      isSubItem: true },
+    { key: 'bilgi-tabani',       label: 'Bilgi Tabanı',          href: `/hotel-admin/${slug}/bilgi-yonetimi/bilgi-tabani`,         isSubItem: true },
+    { key: 'belgeler',           label: 'Belgeler',               href: `/hotel-admin/${slug}/bilgi-yonetimi/belgeler`,             isSubItem: true },
+    { key: 'cevre-kesfi',        label: 'Çevre Keşfi',           href: `/hotel-admin/${slug}/bilgi-yonetimi/cevre-kesfi`,          isSubItem: true },
+    { key: 'toplanti-salonlari', label: '🏛️ Toplantı Salonları', href: `/hotel-admin/${slug}/bilgi-yonetimi/toplanti-salonlari`,   isSubItem: true },
   ]
 
   async function handleLogout() {
