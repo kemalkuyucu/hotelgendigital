@@ -41,7 +41,6 @@ export async function buildHotelContext(
 ): Promise<HotelContext> {
   // ── TEMP DEBUG START (meeting_rooms debug) ──────────────────────────────
   // Supabase URL'i logla — hangi tenant DB'ye bağlı?
-  // @ts-expect-error -- internal property for debug only
   const _dbUrl: string = (supabase as unknown as Record<string, unknown>)?.supabaseUrl
     // @ts-expect-error
     ?? (supabase as unknown as Record<string, unknown>)?.rest?.url
