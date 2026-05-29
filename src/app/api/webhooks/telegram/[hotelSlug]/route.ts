@@ -394,9 +394,13 @@ function isInfoOnlyQuery(text: string): boolean {
 
   // ── 3. Otel hizmetleri / genel bilgi soruları ─────────────────────────────
   const infoKeywords = [
-    // Toplantı / salon
-    'toplanti salon', 'konferans salon', 'event', 'balo salon',
-    'seminer', 'organizasyon', 'etkinlik',
+    // Toplantı / salon / etkinlik — GENİŞLETİLDİ
+    'toplanti', 'toplanti salon', 'konferans', 'konferans salon', 'event',
+    'balo', 'balo salon', 'seminer', 'sempozyum', 'kongre',
+    'organizasyon', 'etkinlik', 'dugun', 'nisan', 'kokteyl',
+    // Toplantı ekipmanları — YENİ
+    'projeksiyon', 'mikrofon', 'ses sistemi', 'ekran', 'beyaz tahta',
+    'tahta', 'flip chart', 'iklimlendirme', 'kapasi', 'kac kisilik',
     // Konaklama/rezervasyon bilgisi
     'check-in', 'check in', 'check-out', 'check out',
     'oda fiyat', 'fiyat nedir', 'fiyat listesi', 'tarife',
@@ -413,9 +417,11 @@ function isInfoOnlyQuery(text: string): boolean {
     // Pet / genel
     'pet', 'hayvan', 'evcil',
     'sigara', 'smoking',
-    // Bilgi sorusu kalıpları
+    // Bilgi sorusu kalıpları — GENİŞLETİLDİ
     'var mi', 'var mi?', 'hizmet veriyor', 'sunuluyor',
     'saatler', 'calisma saati', 'acilis', 'kapanis',
+    'kac', 'kacta', 'ne zaman', 'nasil',
+    'ozellik', 'imkan', 'ozellikler', 'imkanlar',
   ];
   if (infoKeywords.some((p) => t.includes(p))) return true;
 
@@ -828,15 +834,10 @@ async function handleMessage(args: {
   if (!userId) return;
 
   if (text.startsWith('/start')) {
-    // Module 17.c: /start flow → upsert guest+conversation, then ask for room if not linked
-    const { conversationId: startConvId } = await upsertGuestAndConversation({ supa, msg });
-
-    // Check if already linked to an inhouse guest
-    const { data: startConv } = await supa
-      .from('conversations')
-      .select('inhouse_match_guest_id')
-      .eq('id', startConvId)
-      .maybeSingle();
+    // Fix C: /start → sadece sıcak hoşgeldin mesajı. Oda no SORMA.
+    // Misafir mesaj yazınca AI bilgi sorusu mu / talep mi ayırt eder.
+    // Talep ise (oda servisi, şikayet vb.) o zaman oda no istenir.
+    await upsertGuestAndConversation({ supa, msg });
 
     // Dinamik otel adı: hotel_settings.hotel_name > hotels.name
     const { data: hsRow } = await supa
@@ -846,17 +847,10 @@ async function handleMessage(args: {
       .maybeSingle();
     const displayHotelName = (hsRow?.hotel_name as string | null | undefined) || hotelName;
 
-    if (startConv?.inhouse_match_guest_id) {
-      await tg.sendMessage({
-        chat_id: chatId,
-        text: `Merhaba! ${displayHotelName}'e hos geldiniz. Nasil yardimci olabilirim?`,
-      });
-    } else {
-      await tg.sendMessage({
-        chat_id: chatId,
-        text: `Merhaba! ${displayHotelName}'e hos geldiniz. Size daha iyi hizmet verebilmemiz icin lutfen oda numaranizi yaziniz.`,
-      });
-    }
+    await tg.sendMessage({
+      chat_id: chatId,
+      text: `Merhaba! ${displayHotelName}'e hos geldiniz. Size nasil yardimci olabilirim?`,
+    });
     return;
   }
   if (text.startsWith('/help')) {

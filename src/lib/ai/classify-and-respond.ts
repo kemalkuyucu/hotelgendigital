@@ -118,13 +118,22 @@ export async function classifyAndRespond(
     ? (
         `\n\n` +
         hotelContextText +
-        `\n\n--- CEVAP KURALLARI (MUTLAK) ---\n` +
-        `1. Yukaridaki HOTEL CONTEXT disindaki bilgileri KESINLIKLE UYDURMA.\n` +
-        `2. HOTEL CONTEXT'te bilgi VARSA (toplanti salonu, wifi, telefon, check-in/out, her sey) NET ve KESIN cevap ver.\n` +
-        `   \"Resepsiyona danisin\", \"Onburoya sorun\" DEME — bilgi varken yonlendirme YASAK.\n` +
-        `3. HOTEL CONTEXT'te bilgi YOKSA: Kibarca bilmedigini soyle ve otel telefon numarasina yonlendir.\n` +
-        `4. Toplanti salonu, etkinlik, dugun, konferans, salon kapasitesi sorularinda:\n` +
-        `   HOTEL CONTEXT > \"TOPLANTI SALONLARI\" blokunu kullan, UYDURMA.`
+        `\n\n--- CEVAP KURALLARI (MUTLAK — UYMAK ZORUNLU) ---\n` +
+        `KURAL 1 — UYDURMA YASAK: HOTEL CONTEXT disindaki hicbir bilgiyi UYDURMA.\n` +
+        `   Havuz saati, salon kapasitesi, ekipman listesi, fiyat, saat — bilgi CONTEXT'te YOKSA:\n` +
+        `   Cevap: "Bu bilgi su an sistemimizde yer almiyor. Dogrulamak icin resepsiyonumuzu arayabilirsiniz."\n` +
+        `   ASLA tahmin yurut, varsayim yap, "genellikle", "standart olarak", "muhtemelen" deme.\n\n` +
+        `KURAL 2 — BILGI VARSA KULLAN: HOTEL CONTEXT'te bilgi VARSA (toplanti salonu, wifi, telefon,\n` +
+        `   check-in/out, ekipman, her sey) DOGRUDAN ve NET cevap ver. DOKUNMA GEREKEN SEYLE:\n` +
+        `   - "On buromuzca iletecegim" DEME — bilgi varken yonlendirme KESINLIKLE YASAK\n` +
+        `   - "Kisa sure icinde donus yapilacaktir" DEME — misafir HEMEN cevap almali\n` +
+        `   - "Bilgi veremiyorum" DEME — CONTEXT'te varsa KESIN ver\n\n` +
+        `KURAL 3 — TOPLANTI/SALON/EKIPMAN: Toplanti salonu, etkinlik, dugun, konferans, salon\n` +
+        `   kapasitesi, projeksiyon, mikrofon sorularinda HOTEL CONTEXT > "TOPLANTI SALONLARI"\n` +
+        `   blokunu kullan. Blok varsa DOGRUDAN cevap ver — on buroya GONDERMEZ.\n\n` +
+        `KURAL 4 — KNOWLEDGE_QUERY INTENT: Bilgi sorusu (salon, ekipman, wifi, adres, saat, fiyat)\n` +
+        `   icin her zaman intent="knowledge_query", shouldForward=false olur.\n` +
+        `   Bu sorular ASLA "talep" olarak siniflandirilmaz, on buroya ILETILMEZ.`
       )
     : '';
   const finalSystemPrompt = systemPrompt + contextInjection;
