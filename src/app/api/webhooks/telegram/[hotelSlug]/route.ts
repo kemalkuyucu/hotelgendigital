@@ -35,6 +35,37 @@ import { sendAllergenNotifications } from '@/lib/telegram/allergen-notify';
 
 export const runtime = 'nodejs';
 
+// ============================================================
+// KATMAN 1 — RATE LIMIT (module-level in-memory, cold start'ta sıfırlanır)
+// 60 saniyelik sliding window'da kullanıcı başına max 10 mesaj.
+// ============================================================
+const _rateLimitMap = new Map<number, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60_000; // 60 saniye
+const RATE_LIMIT_MAX_MSGS  = 10;     // max 10 mesaj / pencere
+
+function checkRateLimit(userId: number): boolean {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const timestamps = (_rateLimitMap.get(userId) ?? []).filter((t) => t > windowStart);
+  if (timestamps.length >= RATE_LIMIT_MAX_MSGS) {
+    return false; // drop — sessizce
+  }
+  timestamps.push(now);
+  _rateLimitMap.set(userId, timestamps);
+  return true; // allow
+}
+// ── RATE LIMIT SONU ───────────────────────────────────────────────────────────
+
+// ============================================================
+// KATMAN 3 — URL FİLTRESİ regex (AI/Haiku token harcamadan)
+// ============================================================
+const URL_PATTERN = /(https?:\/\/[^\s]+|www\.[^\s]+|t\.me\/[^\s]*|telegram\.me\/[^\s]*|[a-zA-Z0-9-]+\.(com|net|org|io|co|me|tr|dev|app|info|biz|gov|edu|uk|de|fr|nl|es|it|pl|pt|se|no|fi|dk|be|at|ch|cz|sk|hu|ro|bg|hr|rs|si|lt|lv|ee|gr|cy|mt|lu|ie|is|li|ba|mk|al|ge|am|az|kz|uz|by|ua|mn|vn|th|ph|my|sg|id|in|pk|bd|lk|np|af|ir|iq|sa|ae|qa|kw|bh|om|jo|lb|sy|eg|ly|tn|dz|ma|gh|ng|ke|za|br|ar|cl|pe|ve|mx|ca|au|nz))(\/[^\s]*)?/i;
+
+function containsUrl(text: string): boolean {
+  return URL_PATTERN.test(text);
+}
+// ── URL FİLTRE SONU ──────────────────────────────────────────────────────────
+
 function stripMarkdown(text: string): string {
   return text
     .replace(/\*\*(.+?)\*\*/g, '$1')
@@ -771,6 +802,17 @@ async function handleMessage(args: {
   const userId = msg.from?.id;
 
   // ============================================================
+  // KATMAN 1 — RATE LIMIT GATE (AI/DB'den önce — para riski sıfır)
+  // ============================================================
+  if (userId !== undefined) {
+    if (!checkRateLimit(userId)) {
+      console.log(`[rate-limit] dropped user=${userId}`);
+      return; // HTTP 200 dönecek (sessizce, spammer anlamasın)
+    }
+  }
+  // ── RATE LIMIT GATE SONU ─────────────────────────────────────────────────
+
+  // ============================================================
   // MODÜL 10.5 — VOICE DETECTION
   // ============================================================
   let rawText = msg.text ?? msg.caption ?? '';
@@ -832,6 +874,54 @@ async function handleMessage(args: {
   }
 
   if (!userId) return;
+
+  // ============================================================
+  // KATMAN 2 — MEDYA FİLTRESİ (rate limit'ten sonra, safety'den önce)
+  // Voice/audio zaten yukarıda Whisper ile transcript'e çevrildi.
+  // Diğer medya tipleri: photo, video, document, sticker, animation, video_note.
+  // Caption varsa rawText zaten dolu → bu if'e girmez, normal akışa devam.
+  // Caption yoksa rawText boş → sabit cevap, AI'a/classifier'a gitme.
+  // ============================================================
+  {
+    const hasNonAudioMedia =
+      !!msg.photo ||
+      !!msg.video ||
+      !!msg.document ||
+      !!msg.sticker ||
+      !!msg.animation ||
+      !!msg.video_note;
+
+    if (hasNonAudioMedia && !text) {
+      const mediaType =
+        msg.photo     ? 'photo'      :
+        msg.video     ? 'video'      :
+        msg.document  ? 'document'   :
+        msg.sticker   ? 'sticker'    :
+        msg.animation ? 'animation'  :
+        'video_note';
+      console.log(`[media-filter] type=${mediaType} user=${userId}`);
+      await tg.sendMessage({
+        chat_id: chatId,
+        text: 'Sadece metin mesajlarına yardımcı olabiliyorum. Sorunuzu yazabilir misiniz? 🙂',
+      });
+      return;
+    }
+  }
+  // ── MEDYA FİLTRESİ SONU ──────────────────────────────────────────────────
+
+  // ============================================================
+  // KATMAN 3 — URL FİLTRESİ (medya filtresinden sonra, safety'den önce)
+  // Regex tabanlı — AI/Haiku token harcamadan çalışır, DB kaydı yok.
+  // ============================================================
+  if (text && containsUrl(text)) {
+    console.log(`[url-filter] user=${userId}`);
+    await tg.sendMessage({
+      chat_id: chatId,
+      text: 'Lütfen sorunuzu yazılı olarak iletebilir misiniz? Link içeren mesajları işleyemiyoruz.',
+    });
+    return;
+  }
+  // ── URL FİLTRESİ SONU ────────────────────────────────────────────────────
 
   if (text.startsWith('/start')) {
     // Fix C: /start → sadece sıcak hoşgeldin mesajı. Oda no SORMA.
