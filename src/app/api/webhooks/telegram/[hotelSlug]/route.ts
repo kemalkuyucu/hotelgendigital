@@ -352,6 +352,80 @@ function detectLanguage(msg: TelegramMessage): string {
   return 'tr';
 }
 
+// ── Bilgi sorusu tespiti (Module 17.c bypass) ────────────────────────────────
+//
+// Misafir oda no vermeden GENEL BİLGİ sorusu soruyorsa (toplantı salonu,
+// wifi, adres, telefon, otel hizmetleri vb.) — oda no zorunluluğunu atlat.
+// Sadece kişisel talep/şikayet/servis için oda no bağlantısı gereklidir.
+//
+// Yaklaşım: keyword tabanlı pre-classifier (detectInterestTag + social-intent-override
+// ile aynı mantık). AI'dan önce çalışır — ucuz ve hızlı.
+
+function isInfoOnlyQuery(text: string): boolean {
+  if (!text || text.trim().length < 2) return false;
+
+  const t = text
+    .toLowerCase()
+    .replace(/[İ]/g, 'i')
+    .replace(/[Şş]/g, 's')
+    .replace(/[Ğğ]/g, 'g')
+    .replace(/[Üü]/g, 'u')
+    .replace(/[Öö]/g, 'o')
+    .replace(/[Çç]/g, 'c')
+    .replace(/[Ii]/g, 'i');
+
+  // ── 1. Açık "konaklamıyorum / bilgi almak istiyorum" bildirimleri ─────────
+  const nonGuestPatterns = [
+    'konaklam', // konaklamıyorum, konaklama
+    'misafir degil', 'musteri degil',
+    'bilgi almak', 'bilgi istiyorum', 'bilgi alabilir',
+    'sormak istiyorum', 'merak ediyorum',
+    'rezervasyon yaptirmak', 'rezervasyon yapmak',
+  ];
+  if (nonGuestPatterns.some((p) => t.includes(p))) return true;
+
+  // ── 2. Sıradan selamlama / sosyal mesaj ───────────────────────────────────
+  const socialPatterns = [
+    'merhaba', 'selam', 'iyi gunler', 'iyi aksamlar', 'iyi geceler',
+    'nasils', 'nasilsin', 'hello', 'hi ', 'hey ',
+    'tesekkur', 'sagol', 'tamam', 'peki', 'anladim',
+  ];
+  if (socialPatterns.some((p) => t.includes(p))) return true;
+
+  // ── 3. Otel hizmetleri / genel bilgi soruları ─────────────────────────────
+  const infoKeywords = [
+    // Toplantı / salon
+    'toplanti salon', 'konferans salon', 'event', 'balo salon',
+    'seminer', 'organizasyon', 'etkinlik',
+    // Konaklama/rezervasyon bilgisi
+    'check-in', 'check in', 'check-out', 'check out',
+    'oda fiyat', 'fiyat nedir', 'fiyat listesi', 'tarife',
+    'musaitlik', 'uygun oda', 'bos oda',
+    // Otel olanakları
+    'havuz', 'spa', 'restoran', 'kahvalti', 'bar ', 'fitness',
+    'otopark', 'vale', 'transfer', 'servis',
+    'wifi', 'internet', 'sifre', 'parola',
+    // Adres / konum
+    'adres', 'nerede', 'konum', 'ulasim', 'nasil gelinir',
+    'yol tarifi', 'harita', 'maps',
+    // İletişim
+    'telefon', 'mail', 'eposta', 'iletisim',
+    // Pet / genel
+    'pet', 'hayvan', 'evcil',
+    'sigara', 'smoking',
+    // Bilgi sorusu kalıpları
+    'var mi', 'var mi?', 'hizmet veriyor', 'sunuluyor',
+    'saatler', 'calisma saati', 'acilis', 'kapanis',
+  ];
+  if (infoKeywords.some((p) => t.includes(p))) return true;
+
+  // ── 4. Soru işareti içeren kısa mesajlar (talep değil, sorgu) ────────────
+  // "?" + uzunluk < 80 → büyük ihtimalle bilgi sorusu
+  if (t.includes('?') && text.trim().length < 80) return true;
+
+  return false;
+}
+
 // ── Doğrulama akışı ────────────────────────────────────────────────────────────
 
 interface ConversationState {
@@ -764,15 +838,23 @@ async function handleMessage(args: {
       .eq('id', startConvId)
       .maybeSingle();
 
+    // Dinamik otel adı: hotel_settings.hotel_name > hotels.name
+    const { data: hsRow } = await supa
+      .from('hotel_settings')
+      .select('hotel_name')
+      .limit(1)
+      .maybeSingle();
+    const displayHotelName = (hsRow?.hotel_name as string | null | undefined) || hotelName;
+
     if (startConv?.inhouse_match_guest_id) {
       await tg.sendMessage({
         chat_id: chatId,
-        text: 'Merhaba! HotelGen Demo Hotel\'e hos geldiniz. Nasil yardimci olabilirim?',
+        text: `Merhaba! ${displayHotelName}'e hos geldiniz. Nasil yardimci olabilirim?`,
       });
     } else {
       await tg.sendMessage({
         chat_id: chatId,
-        text: 'Merhaba! HotelGen Demo Hotel\'e hos geldiniz. Size daha iyi hizmet verebilmemiz icin lutfen oda numaranizi yaziniz.',
+        text: `Merhaba! ${displayHotelName}'e hos geldiniz. Size daha iyi hizmet verebilmemiz icin lutfen oda numaranizi yaziniz.`,
       });
     }
     return;
@@ -806,6 +888,14 @@ async function handleMessage(args: {
     const multiMatchNotified = (convMatch?.multi_match_notified as boolean) ?? false;
 
     if (!isLinkedToInhouse) {
+      // ── Modül 17.c: Bilgi sorusu bypass ──────────────────────────────────────
+      // Misafir oda no vermeden sadece bilgi sorusu soruyorsa (salon, wifi, adres vb.)
+      // oda no bağlantısı zorunlu DEĞİL — AI'a ilet, doğrulama gate'ine düşürme.
+      // Sadece kişisel talep/şikayet/servis için oda no bağlantısı gerekli.
+      if (isInfoOnlyQuery(text)) {
+        console.log(`[17c] Bilgi sorusu tespit edildi — oda no gate atlanıyor. text="${text.slice(0, 80)}"`);
+        // Fall through: Module 17.c block sona erer, normal AI akışı başlar.
+      } else {
       // Treat message as a room number attempt
       const roomAttempt = text.trim().replace(/[^0-9a-zA-Z]/g, '');
       const looksLikeRoom = /^\d{1,4}[a-zA-Z]?$/.test(roomAttempt) && roomAttempt.length > 0;
@@ -1030,12 +1120,20 @@ async function handleMessage(args: {
       // ── Modül 17.7-B SONU (multi_match_pending_room yoksa) ────────────────
 
       // Not a room number and not linked → ask for room number
+      // Dinamik otel adı: hotel_settings.hotel_name > hotels.name
+      const { data: hsRowFallback } = await supa
+        .from('hotel_settings')
+        .select('hotel_name')
+        .limit(1)
+        .maybeSingle();
+      const displayHotelNameFallback = (hsRowFallback?.hotel_name as string | null | undefined) || hotelName;
       await tg.sendMessage({
         chat_id: chatId,
-        text: 'Merhaba! HotelGen Demo Hotel\'e hos geldiniz. Size daha iyi hizmet verebilmemiz icin lutfen oda numaranizi yaziniz.',
+        text: `Merhaba! ${displayHotelNameFallback}'e hos geldiniz. Size daha iyi hizmet verebilmemiz icin lutfen oda numaranizi yaziniz.`,
       });
       return;
-    }
+    } // if (!isInfoOnlyQuery) end
+    } // if (!isLinkedToInhouse) end
   }
   // MODULE 17.c SONU
 
