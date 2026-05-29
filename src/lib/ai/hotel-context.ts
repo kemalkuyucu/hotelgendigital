@@ -39,12 +39,29 @@ export async function buildHotelContext(
   supabase: SupabaseClient,
   options: HotelContextOptions = {},
 ): Promise<HotelContext> {
+  // ── TEMP DEBUG START (meeting_rooms debug) ──────────────────────────────
+  // Supabase URL'i logla — hangi tenant DB'ye bağlı?
+  // @ts-expect-error -- internal property for debug only
+  const _dbUrl: string = (supabase as unknown as Record<string, unknown>)?.supabaseUrl
+    // @ts-expect-error
+    ?? (supabase as unknown as Record<string, unknown>)?.rest?.url
+    ?? 'URL_ALINAMADI';
+  console.log('[DEBUG:buildHotelContext] supabaseUrl=', _dbUrl);
+  // ── TEMP DEBUG END ────────────────────────────────────────────────────────
+
   // Tüm hotel_settings alanlarını tek sorguda çek
-  const { data: settingsRow } = await supabase
+  const { data: settingsRow, error: settingsError } = await supabase
     .from('hotel_settings')
     .select('hotel_name, address, contact_phone, contact_email, concept, check_in_time, check_out_time, general_rules, wifi_info, location_info, meeting_rooms, meeting_equipment')
     .limit(1)
     .maybeSingle();
+
+  // ── TEMP DEBUG START ──────────────────────────────────────────────────────
+  console.log('[DEBUG:buildHotelContext] hotel_settings sorgu hatası:', settingsError ?? 'YOK');
+  console.log('[DEBUG:buildHotelContext] hotel_settings satırı:', JSON.stringify(settingsRow));
+  console.log('[DEBUG:buildHotelContext] meeting_rooms RAW:', JSON.stringify(settingsRow?.meeting_rooms));
+  console.log('[DEBUG:buildHotelContext] meeting_equipment RAW:', JSON.stringify(settingsRow?.meeting_equipment));
+  // ── TEMP DEBUG END ────────────────────────────────────────────────────────
 
   // --- Temel otel bilgileri (NULL/boş alanlar atlanır) ---
   const hotelInfoParts: string[] = [];
@@ -59,11 +76,17 @@ export async function buildHotelContext(
 
   // --- Toplantı / etkinlik salonları (yapısal) ---
   const mrList = settingsRow?.meeting_rooms;
+  // ── TEMP DEBUG START ──────────────────────────────────────────────────────
+  console.log('[DEBUG:buildHotelContext] Array.isArray(mrList)=', Array.isArray(mrList), 'length=', Array.isArray(mrList) ? mrList.length : 'N/A');
+  // ── TEMP DEBUG END ────────────────────────────────────────────────────────
   if (Array.isArray(mrList) && mrList.length > 0) {
     const mrBlock = formatMeetingRoomsBlock(
       mrList as MeetingRoomRecord[],
       settingsRow?.contact_phone as string | null | undefined,
     );
+    // ── TEMP DEBUG START ──────────────────────────────────────────────────────
+    console.log('[DEBUG:buildHotelContext] formatMeetingRoomsBlock sonucu:', mrBlock ? mrBlock.slice(0, 300) : 'BOŞ/NULL');
+    // ── TEMP DEBUG END ────────────────────────────────────────────────────────
     if (mrBlock) hotelInfoParts.push('\n' + mrBlock);
   }
 
@@ -370,7 +393,12 @@ export function formatContextForPrompt(ctx: HotelContext): string {
   }
 
   if (blocks.length === 0) return '';
-  return blocks.join('\n\n---\n\n');
+  const finalCtx = blocks.join('\n\n---\n\n');
+  // ── TEMP DEBUG START (meeting_rooms debug) ──────────────────────────────
+  console.log('[DEBUG:formatContextForPrompt] FINAL CONTEXT STRING (tam):');
+  console.log(finalCtx);
+  // ── TEMP DEBUG END ────────────────────────────────────────────────────────
+  return finalCtx;
 }
 
 // ── Modül 16.b — Toplantı Salonu Intent Tespiti ───────────────────────────────
