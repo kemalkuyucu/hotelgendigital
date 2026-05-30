@@ -144,13 +144,34 @@ export function parseVerificationInput(text: string): ParsedVerification {
 }
 
 /**
- * Modül 10.2: inhouse_guests'ta 3'lü AND eşleşme ara.
- * Match kuralı:
- *  - room_number eşit (TEXT karşılaştırma)
- *  - first_name ILIKE eşit (case-insensitive)
- *  - last_name  ILIKE eşit (case-insensitive)
- *  - is_active = true
+ * Türkçe karakter normalize: büyük/küçük + Türkçe özel harf toleransı.
+ * Örn: "Kemal" ve "kemal" eşleşir; "Ş" ve "s" eşleşir (tolerant).
+ */
+function normalizeTr(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[İI]/g, 'i')
+    .replace(/[Şş]/g, 's')
+    .replace(/[Ğğ]/g, 'g')
+    .replace(/[Üü]/g, 'u')
+    .replace(/[Öö]/g, 'o')
+    .replace(/[Çç]/g, 'c')
+    .replace(/ı/g, 'i');
+}
+
+/**
+ * Modül 10.2 v2: inhouse_guests_v2 önce sorgulanır (v2 şeması: room_number TEXT,
+ * guest_name TEXT tek alan, status, check_out_date).
+ * v2'de kayıt bulunamazsa eski inhouse_guests'a fallback yapılır.
+ *
+ * v2 match kuralı:
+ *  - room_number = trimmedRoom (TEXT)
+ *  - status = 'active'
  *  - check_out_date >= bugün
+ *  - guest_name içinde BOTH firstName AND lastName geçmeli (case-insensitive + Türkçe tolerans)
+ *
+ * Eski tablo match kuralı:
+ *  - room_number eşit, first_name ILIKE, last_name ILIKE, is_active=true, check_out >= bugün
  */
 export async function verifyGuest(
   supa: SupabaseClient,
@@ -167,7 +188,65 @@ export async function verifyGuest(
   }
 
   const today = new Date().toISOString().slice(0, 10);
+  const normFirst = normalizeTr(trimmedFirst);
+  const normLast = normalizeTr(trimmedLast);
 
+  // ── ADIM 1: inhouse_guests_v2 (öncelikli) ────────────────────────────────
+  const { data: v2Rows, error: v2Error } = await supa
+    .from('inhouse_guests_v2')
+    .select('id, guest_name, room_number, status, check_out_date')
+    .eq('room_number', trimmedRoom)
+    .eq('status', 'active')
+    .gte('check_out_date', today);
+
+  if (v2Error) {
+    console.error('[verify-guest] v2 Supabase error:', v2Error.message);
+    // v2 hata verdi → eski tabloya düş
+  } else if (v2Rows && v2Rows.length > 0) {
+    // JS tarafında guest_name içinde her iki token'ı ara (Türkçe tolerant)
+    const v2Match = v2Rows.find((row) => {
+      const normName = normalizeTr((row.guest_name as string) ?? '');
+      return normName.includes(normFirst) && normName.includes(normLast);
+    });
+
+    if (v2Match) {
+      // guest_name'i firstName/lastName olarak parçala (son kelime = soyad)
+      const guestNameRaw = (v2Match.guest_name as string).trim();
+      const nameParts = guestNameRaw.split(/\s+/);
+      const parsedLast = nameParts.length > 1 ? nameParts[nameParts.length - 1] : guestNameRaw;
+      const parsedFirst = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : null;
+
+      console.log('[verify-guest] v2 eşleşme BULUNDU', {
+        room: trimmedRoom,
+        guest_name: guestNameRaw,
+        v2RowId: v2Match.id,
+      });
+
+      return {
+        matched: true,
+        guestId: v2Match.id as string,
+        guestFullName: guestNameRaw,
+        guestFirstName: parsedFirst ?? undefined,
+        guestLastName: parsedLast ?? undefined,
+        guestLanguage: undefined,
+        guestGender: null,
+        roomNo: v2Match.room_number as string,
+      };
+    } else {
+      console.log('[verify-guest] v2 oda kaydı var ama isim eşleşmedi', {
+        room: trimmedRoom,
+        normFirst,
+        normLast,
+        v2Rows: v2Rows.map((r) => r.guest_name),
+      });
+      return { matched: false, reason: 'no_match' };
+    }
+  } else {
+    // v2'de bu oda için aktif kayıt yok → eski tabloya düş
+    console.log('[verify-guest] v2 kayıt yok, eski tabloya fallback', { room: trimmedRoom });
+  }
+
+  // ── ADIM 2: inhouse_guests (eski — geri uyumluluk fallback) ──────────────
   const { data, error } = await supa
     .from('inhouse_guests')
     .select('id, full_name, first_name, last_name, room_number, language, gender, check_in_date, check_out_date')
@@ -179,13 +258,15 @@ export async function verifyGuest(
     .maybeSingle();
 
   if (error) {
-    console.error('[verify-guest] Supabase error:', error.message);
+    console.error('[verify-guest] Supabase error (legacy):', error.message);
     return { matched: false, reason: 'no_match' };
   }
 
   if (!data) {
     return { matched: false, reason: 'no_match' };
   }
+
+  console.log('[verify-guest] legacy eşleşme BULUNDU', { room: trimmedRoom, guestId: data.id });
 
   return {
     matched: true,
