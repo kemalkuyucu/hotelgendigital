@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { VERIFICATION_TTL_HOURS } from '@/lib/ai/verification-intents';
+import { normalizeTr } from '@/lib/utils/normalize-tr';
 
 export interface VerifyResult {
   matched: boolean;
@@ -143,21 +144,7 @@ export function parseVerificationInput(text: string): ParsedVerification {
   return result;
 }
 
-/**
- * Türkçe karakter normalize: büyük/küçük + Türkçe özel harf toleransı.
- * Örn: "Kemal" ve "kemal" eşleşir; "Ş" ve "s" eşleşir (tolerant).
- */
-function normalizeTr(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[İI]/g, 'i')
-    .replace(/[Şş]/g, 's')
-    .replace(/[Ğğ]/g, 'g')
-    .replace(/[Üü]/g, 'u')
-    .replace(/[Öö]/g, 'o')
-    .replace(/[Çç]/g, 'c')
-    .replace(/ı/g, 'i');
-}
+// normalizeTr → @/lib/utils/normalize-tr (ortak util — iki yerde farklı normalize YASAK)
 
 /**
  * Modül 10.2 v2: inhouse_guests_v2 önce sorgulanır (v2 şeması: room_number TEXT,

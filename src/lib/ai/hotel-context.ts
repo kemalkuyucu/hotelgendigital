@@ -4,6 +4,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCentralSupabase } from '../supabase-client';
+import { normalizeTr } from '@/lib/utils/normalize-tr';
 
 export type HotelContextOptions = {
   /** Hangi kategoride çevre bilgisi gerekli? null = hiçbiri (genel sohbet) */
@@ -279,7 +280,10 @@ async function fetchNearbyPlaces(
     .limit(1)
     .maybeSingle();
 
-  if (!data?.results) return '';
+  if (!data?.results) {
+    console.warn(`[perplexity] no data interest_tag=${interestHint} — veri eksikliği (panel’den Perplexity sorgular)`);
+    return '';
+  }
 
   const places = Array.isArray(data.results) ? data.results : [];
   if (places.length === 0) return '';
@@ -302,26 +306,31 @@ async function fetchNearbyPlaces(
 
 /**
  * Mesajdan Perplexity kategorisi tespit eder. Basit keyword matching.
- * AI'ın da yapabileceği iş ama bu daha hızlı + ucuz.
+ * AI'in de yapabileceği iş ama bu daha hızlı + ucuz.
+ *
+ * FIX 2a: Hem gelen mesaj hem keyword listesi normalizeTr() ile normalize edilir.
+ * Böylece "İlaç", "ilaç", "ILAC" hepsi "ilac" keyword'ü ile eşleşir.
+ * normalizeTr: @/lib/utils/normalize-tr — verify-guest.ts ile AYNI fonksiyon.
  */
 export function detectInterestTag(message: string): string | null {
-  const text = message.toLowerCase();
+  const text = normalizeTr(message); // FIX 2a: sadece .toLowerCase() değil, normalizeTr
 
   const map: Record<string, string[]> = {
     restaurant: ['restoran', 'yemek', 'lokanta', 'kebap', 'kahvalti', 'yiyecek'],
-    pharmacy: ['eczane', 'ilac', 'nobetci'],
-    museum: ['muze', 'tarihi', 'antik', 'kale', 'cami'],
-    transport: ['ulasim', 'otobus', 'dolmus', 'metro', 'tramvay', 'taksi', 'havalimani'],
-    atm: ['atm', 'banka', 'para cek', 'doviz'],
-    shopping: ['alisveris', 'avm', 'market', 'magaza', 'pazar', 'carsi'],
-    hospital: ['hastane', 'doktor', 'klinik', 'acil'],
-    beach: ['plaj', 'sahil', 'deniz'],
+    pharmacy:   ['eczane', 'ilac', 'nobetci'],
+    museum:     ['muze', 'tarihi', 'antik', 'kale', 'cami'],
+    transport:  ['ulasim', 'otobus', 'dolmus', 'metro', 'tramvay', 'taksi', 'havalimani'],
+    atm:        ['atm', 'banka', 'para cek', 'doviz'],
+    shopping:   ['alisveris', 'avm', 'market', 'magaza', 'pazar', 'carsi'],
+    hospital:   ['hastane', 'doktor', 'klinik', 'acil'],
+    beach:      ['plaj', 'sahil', 'deniz'],
     attraction: ['gezi', 'tur', 'aktivite', 'park', 'aquapark', 'akvaryum'],
-    nightlife: ['bar', 'gece', 'kulup', 'eglence'],
+    nightlife:  ['bar', 'gece', 'kulup', 'eglence'],
   };
 
   for (const [tag, keywords] of Object.entries(map)) {
-    if (keywords.some((kw) => text.includes(kw))) return tag;
+    // FIX 2a: keyword de normalize edilir (normalizedKw), karşılaştırma normalize↔normalize
+    if (keywords.some((kw) => text.includes(normalizeTr(kw)))) return tag;
   }
   return null;
 }
