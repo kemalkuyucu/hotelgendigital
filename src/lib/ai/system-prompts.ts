@@ -411,7 +411,7 @@ answered_from_knowledge KURALI:
 
 intents[] department KURALI:
 - answered_from_knowledge=true ise yine de doğru departmanı tahmin et (raporlama için, forward edilmeyecek)
-- answered_from_knowledge=false ve kişisel işlem değilse → department="front_office"
+- answered_from_knowledge=false ve kişisel işlem değilse → department="knowledge_query"
 - Kişisel işlem talebi (allergy/room_service/complaint/billing/lost_and_found) → department'ı olduğu gibi yaz (front_office YAZMA)
 
 TEKRAR: SADECE JSON DÖNDÜR.

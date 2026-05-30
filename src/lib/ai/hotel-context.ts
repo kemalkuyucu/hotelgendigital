@@ -315,18 +315,148 @@ async function fetchNearbyPlaces(
 export function detectInterestTag(message: string): string | null {
   const text = normalizeTr(message); // FIX 2a: sadece .toLowerCase() değil, normalizeTr
 
+  // FIX 3: TÜM kategoriler çok dilli (EN/DE/FR/AR/RU) — yabancı misafirler de eşleşir
   const map: Record<string, string[]> = {
-    restaurant: ['restoran', 'yemek', 'yemegi', 'yemeği', 'lokanta', 'kebap', 'kahvalti', 'yiyecek', 'ogle', 'aksam yemek', 'aksam yemegi'],
-    pharmacy:   ['eczane', 'ilac', 'ilaci', 'ilacim', 'nobetci', 'nobetci eczane'],
-
-    museum:     ['muze', 'tarihi', 'antik', 'kale', 'cami'],
-    transport:  ['ulasim', 'otobus', 'dolmus', 'metro', 'tramvay', 'taksi', 'havalimani'],
-    atm:        ['atm', 'banka', 'para cek', 'doviz'],
-    shopping:   ['alisveris', 'avm', 'market', 'magaza', 'pazar', 'carsi'],
-    hospital:   ['hastane', 'doktor', 'klinik', 'acil'],
-    beach:      ['plaj', 'sahil', 'deniz'],
-    attraction: ['gezi', 'tur', 'aktivite', 'park', 'aquapark', 'akvaryum'],
-    nightlife:  ['bar', 'gece', 'kulup', 'eglence'],
+    restaurant: [
+      // TR
+      'restoran', 'yemek', 'yemegi', 'yemeği', 'lokanta', 'kebap', 'kahvalti', 'yiyecek', 'ogle', 'aksam yemek', 'aksam yemegi',
+      // EN
+      'restaurant', 'food', 'lunch', 'dinner', 'breakfast', 'cuisine', 'eat', 'dining',
+      // DE
+      'restaurant', 'essen', 'speisen', 'abendessen', 'mittagessen', 'fruhstuck',
+      // FR
+      'restaurant', 'manger', 'cuisine', 'repas', 'diner', 'dejeuner',
+      // AR
+      'مطعم', 'طعام', 'اكل', 'وجبة', 'غداء', 'عشاء',
+      // RU
+      'ресторан', 'еда', 'обед', 'ужин', 'завтрак', 'кафе',
+    ],
+    pharmacy: [
+      // TR
+      'eczane', 'ilac', 'ilaci', 'ilacim', 'nobetci', 'nobetci eczane',
+      // EN
+      'pharmacy', 'chemist', 'drugstore', 'medicine', 'drug',
+      // DE
+      'apotheke', 'medikament', 'arznei',
+      // FR
+      'pharmacie', 'medicament', 'medicaments',
+      // AR
+      'صيدلية', 'دواء', 'ادوية', 'صيدلي',
+      // RU
+      'аптека', 'лекарство', 'лекарства', 'таблетки',
+    ],
+    museum: [
+      // TR
+      'muze', 'tarihi', 'antik', 'kale', 'cami',
+      // EN
+      'museum', 'historical', 'history', 'castle', 'mosque', 'heritage', 'monument',
+      // DE
+      'museum', 'historisch', 'burg', 'moschee', 'denkmal',
+      // FR
+      'musee', 'historique', 'chateau', 'mosquee', 'monument',
+      // AR
+      'متحف', 'تاريخي', 'قلعة', 'مسجد', 'اثار',
+      // RU
+      'музей', 'исторический', 'замок', 'мечеть', 'памятник',
+    ],
+    transport: [
+      // TR
+      'ulasim', 'otobus', 'dolmus', 'metro', 'tramvay', 'taksi', 'havalimani',
+      // EN
+      'transport', 'bus', 'metro', 'tram', 'taxi', 'airport', 'shuttle', 'transit',
+      // DE
+      'transport', 'bus', 'metro', 'strassenbahn', 'taxi', 'flughafen', 'verkehr',
+      // FR
+      'transport', 'bus', 'metro', 'tramway', 'taxi', 'aeroport', 'navette',
+      // AR
+      'مواصلات', 'حافلة', 'مترو', 'تاكسي', 'مطار', 'ترام',
+      // RU
+      'транспорт', 'автобус', 'метро', 'трамвай', 'такси', 'аэропорт',
+    ],
+    atm: [
+      // TR
+      'atm', 'banka', 'para cek', 'doviz',
+      // EN
+      'atm', 'bank', 'cash', 'exchange', 'currency',
+      // DE
+      'geldautomat', 'bank', 'wechselstube', 'bargeld', 'wahrung',
+      // FR
+      'distributeur', 'banque', 'especes', 'change',
+      // AR
+      'صراف', 'بنك', 'نقود', 'صرافة', 'atm',
+      // RU
+      'банкомат', 'банк', 'наличные', 'обмен',
+    ],
+    shopping: [
+      // TR
+      'alisveris', 'avm', 'market', 'magaza', 'pazar', 'carsi',
+      // EN
+      'shopping', 'mall', 'market', 'store', 'shop', 'bazaar', 'souvenir',
+      // DE
+      'einkaufen', 'einkaufszentrum', 'markt', 'laden', 'geschaft',
+      // FR
+      'shopping', 'centre commercial', 'marche', 'magasin', 'boutique',
+      // AR
+      'تسوق', 'مول', 'سوق', 'متجر', 'بازار', 'هدايا',
+      // RU
+      'шопинг', 'торговый центр', 'рынок', 'магазин', 'базар',
+    ],
+    hospital: [
+      // TR
+      'hastane', 'doktor', 'klinik', 'acil',
+      // EN
+      'hospital', 'doctor', 'clinic', 'emergency', 'medical',
+      // DE
+      'krankenhaus', 'arzt', 'klinik', 'notaufnahme', 'medizinisch',
+      // FR
+      'hopital', 'medecin', 'clinique', 'urgences',
+      // AR
+      'مستشفى', 'طبيب', 'عيادة', 'طوارئ', 'طبي',
+      // RU
+      'больница', 'врач', 'клиника', 'скорая', 'медицинский',
+    ],
+    beach: [
+      // TR
+      'plaj', 'sahil', 'deniz',
+      // EN
+      'beach', 'sea', 'coast', 'shore', 'seaside', 'swimming',
+      // DE
+      'strand', 'meer', 'kuste', 'see', 'schwimmen',
+      // FR
+      'plage', 'mer', 'cote', 'bord de mer',
+      // AR
+      'شاطئ', 'بحر', 'ساحل', 'بحيرة',
+      // RU
+      'пляж', 'море', 'берег', 'побережье', 'купаться',
+    ],
+    attraction: [
+      // TR
+      'gezi', 'tur', 'aktivite', 'park', 'aquapark', 'akvaryum',
+      // EN
+      'attraction', 'tour', 'activity', 'theme park', 'aquarium', 'sightseeing', 'excursion',
+      // DE
+      'sehenswurdigkeit', 'tour', 'aktivitat', 'freizeitpark', 'aquarium', 'ausflug',
+      // FR
+      'attraction', 'tour', 'activite', 'parc', 'aquarium', 'excursion',
+      // AR
+      'معلم', 'جولة', 'نشاط', 'حديقة', 'ترفيه', 'رحلة',
+      // RU
+      'достопримечательность', 'экскурсия', 'аквариум', 'аттракцион', 'парк',
+    ],
+    nightlife: [
+      // TR
+      'bar', 'gece', 'kulup', 'eglence',
+      // EN
+      'bar', 'nightlife', 'club', 'nightclub', 'lounge', 'entertainment', 'disco',
+      // DE
+      'bar', 'nachtleben', 'club', 'diskothek', 'lounge', 'unterhaltung',
+      // FR
+      'bar', 'vie nocturne', 'club', 'discoteque', 'soiree',
+      // AR
+      'بار', 'ليلي', 'نادي', 'ترفيه ليلي', 'ملهى',
+      // RU
+      'бар', 'ночная жизнь', 'клуб', 'дискотека', 'развлечения',
+    ],
   };
 
   for (const [tag, keywords] of Object.entries(map)) {

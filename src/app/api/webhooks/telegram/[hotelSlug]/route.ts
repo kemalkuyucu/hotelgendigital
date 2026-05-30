@@ -1763,8 +1763,9 @@ async function handleMessage(args: {
   // ── Modül 10: Doğrulama Gate ────────────────────────────────────
   let finalResponseText = aiReplyText;
   let finalIntent = aiRawIntent;
-  // Modül 10.6/10.7: shouldForward=false (sosyal) VEYA KB cevabı → forward yok
-  let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
+  // Mod\u00fcl 10.6/10.7: shouldForward=false (sosyal) VEYA KB cevab\u0131 \u2192 forward yok
+  // FIX 2a: isInfoOnlyQuery=true ise de skip \u2014 bilgi sorusu ASLA departmana forward edilmez
+  let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false) || isInfoOnlyQuery(text);
   // Modül 3: Bu turda oda no (doğrulama) sorusu sorulduysa true — alerji sorusu ASLA aynı turda çıkmasın
   let verificationAskedThisRound = false;
 

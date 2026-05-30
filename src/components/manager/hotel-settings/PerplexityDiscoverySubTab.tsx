@@ -15,7 +15,7 @@ type DiscoveryRow = {
   tokens_used: number | null;
   is_pinned: boolean;
   created_at: string;
-  expires_at: string;
+  expires_at: string | null;  // FIX 1c: NULL = süresiz, asla "süresi doldu" sayma
 };
 
 export default function PerplexityDiscoverySubTab() {
@@ -127,7 +127,9 @@ export default function PerplexityDiscoverySubTab() {
     return `${diffDays} gün önce`;
   }
 
-  function isExpired(iso: string): boolean {
+  // FIX 1c: NULL ise expired SAYMA — eski kayıtlar expires_at=NULL ile yazıldı
+  function isExpired(iso: string | null): boolean {
+    if (!iso) return false;  // NULL = süresiz
     return new Date(iso).getTime() < Date.now();
   }
 

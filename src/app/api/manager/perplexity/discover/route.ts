@@ -119,6 +119,9 @@ export async function POST(request: Request) {
   // 4. Sonucu DB'ye yaz
   const queryText = category.prompt_template.replace('{address}', hotelSettings.address);
 
+  // FIX 1a: expires_at her zaman set edilmeli — NULL kayıtlar UI'da "süresi doldu" gösteriyor
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
   const { data: inserted, error: insertError } = await supabase
     .from('perplexity_discoveries')
     .insert({
@@ -129,6 +132,7 @@ export async function POST(request: Request) {
       sources: result.sources,
       model_used: result.model_used,
       tokens_used: result.tokens_used,
+      expires_at: expiresAt,
     })
     .select()
     .single();
