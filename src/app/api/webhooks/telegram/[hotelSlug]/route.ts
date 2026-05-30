@@ -981,8 +981,11 @@ async function handleMessage(args: {
         // Fall through: Module 17.c block sona erer, normal AI akışı başlar.
       } else {
       // Treat message as a room number attempt
-      const roomAttempt = text.trim().replace(/[^0-9a-zA-Z]/g, '');
-      const looksLikeRoom = /^\d{1,4}[a-zA-Z]?$/.test(roomAttempt) && roomAttempt.length > 0;
+      // FIX(verify): Türkçe karakter döngü fix — sadece rakamlardan oluşan giriş oda no kabul edilir.
+      // "102 Özgür Özen" gibi isimli giriş bu gate'e TAKILMAMALI; "/\D/g" sonrası "102" üretse de
+      // orijinal metin rakam-dışı karakter içeriyorsa looksLikeRoom=false yapılır.
+      const roomAttempt = text.trim().replace(/\D/g, '');
+      const looksLikeRoom = /^\d{1,4}$/.test(roomAttempt) && roomAttempt.length > 0 && /^\d+$/.test(text.trim());
 
       if (looksLikeRoom) {
         console.log(`[17c] Room matching attempt: userId=${userId} room="${roomAttempt}"`);
