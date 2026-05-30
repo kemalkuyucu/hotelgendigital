@@ -1805,41 +1805,77 @@ async function handleMessage(args: {
   if (conversation.verified_inhouse_guest_id) {
     const today = getTurkeyToday(); // Modül 18: Europe/Istanbul timezone
 
-    const { data: linkedGuest } = await supa
-      .from('inhouse_guests')
-      .select('id, first_name, last_name, room_number, language, gender, check_out_date, is_active')
+    // ── FIX (persistent-verify): Önce inhouse_guests_v2'de ara ──────────────
+    // verified_inhouse_guest_id, verifyGuest() tarafından v2'den dönüyor.
+    // Aktiflik koşulu verifyGuest() v2 sorgusuyla AYNI: status='active' AND check_out_date >= bugün
+    const { data: v2LinkedGuest, error: v2LinkedErr } = await supa
+      .from('inhouse_guests_v2')
+      .select('id, guest_name, room_number, status, check_out_date')
       .eq('id', conversation.verified_inhouse_guest_id)
+      .eq('status', 'active')
+      .gte('check_out_date', today)
       .maybeSingle();
 
-    if (
-      linkedGuest &&
-      linkedGuest.is_active === true &&
-      (linkedGuest.check_out_date as string) >= today
-    ) {
-      // ✅ Misafir hâlâ aktif, doğrulama atla
-      persistentVerifiedGuest = linkedGuest as unknown as typeof persistentVerifiedGuest;
-      console.log(`[persistent-verify] Misafir hâlâ aktif, doğrulama atlaniyor. guest_id=${conversation.verified_inhouse_guest_id}`);
+    if (v2LinkedErr) {
+      console.error('[persistent-verify] inhouse_guests_v2 sorgu hatası:', v2LinkedErr.message);
+    }
+
+    if (v2LinkedGuest) {
+      // ✅ v2'de aktif misafir bulundu — guest_name'i parçala
+      const guestNameRaw = (v2LinkedGuest.guest_name as string ?? '').trim();
+      const nameParts = guestNameRaw.split(/\s+/);
+      const pvFirstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : guestNameRaw;
+      const pvLastName  = nameParts.length > 1 ? nameParts[nameParts.length - 1] : null;
+
+      persistentVerifiedGuest = {
+        id:            v2LinkedGuest.id as string,
+        first_name:    pvFirstName || null,
+        last_name:     pvLastName  || null,
+        room_number:   v2LinkedGuest.room_number as string,
+        language:      null,   // v2 şemasında yok
+        gender:        null,   // v2 şemasında yok
+        check_out_date: v2LinkedGuest.check_out_date as string,
+        is_active:     true,
+      };
+      console.log(`[persistent-verify] v2 aktif misafir bulundu, doğrulama atlanıyor. guest_id=${conversation.verified_inhouse_guest_id}`);
     } else {
-      // ❌ Çıkış yapmış veya pasif → re-verify gerekiyor
-      needsReVerification = true;
-      console.log(`[persistent-verify] Misafir artık aktif değil, re-verify gerekiyor. guest_id=${conversation.verified_inhouse_guest_id}`);
+      // ── FALLBACK: eski inhouse_guests tablosu (Demo Hotel / geri uyumluluk) ──
+      const { data: linkedGuest } = await supa
+        .from('inhouse_guests')
+        .select('id, first_name, last_name, room_number, language, gender, check_out_date, is_active')
+        .eq('id', conversation.verified_inhouse_guest_id)
+        .maybeSingle();
 
-      // Conversation'u temizle
-      await supa
-        .from('conversations')
-        .update({
-          verified_inhouse_guest_id: null,
-          verified_at: null,
-          verification_pending_intent: null,
-          verification_attempts: 0,
-        })
-        .eq('id', conversationId);
+      if (
+        linkedGuest &&
+        linkedGuest.is_active === true &&
+        (linkedGuest.check_out_date as string) >= today
+      ) {
+        // ✅ Eski tabloda aktif misafir bulundu, doğrulama atla
+        persistentVerifiedGuest = linkedGuest as unknown as typeof persistentVerifiedGuest;
+        console.log(`[persistent-verify] legacy aktif misafir bulundu, doğrulama atlanıyor. guest_id=${conversation.verified_inhouse_guest_id}`);
+      } else {
+        // ❌ İkisinde de bulunamadı / aktif değil → re-verify gerekiyor
+        needsReVerification = true;
+        console.log(`[persistent-verify] Misafir artık aktif değil (v2+legacy), re-verify gerekiyor. guest_id=${conversation.verified_inhouse_guest_id}`);
 
-      // conversation state'i de güncelle (handleVerificationFlow'a doğru state gitsin)
-      conversation.verified_inhouse_guest_id = null;
-      conversation.verified_at = null;
-      conversation.verification_pending_intent = null;
-      conversation.verification_attempts = 0;
+        // Conversation'u temizle
+        await supa
+          .from('conversations')
+          .update({
+            verified_inhouse_guest_id: null,
+            verified_at: null,
+            verification_pending_intent: null,
+            verification_attempts: 0,
+          })
+          .eq('id', conversationId);
+
+        // conversation state'i de güncelle (handleVerificationFlow'a doğru state gitsin)
+        conversation.verified_inhouse_guest_id = null;
+        conversation.verified_at = null;
+        conversation.verification_pending_intent = null;
+        conversation.verification_attempts = 0;
+      }
     }
   }
 
