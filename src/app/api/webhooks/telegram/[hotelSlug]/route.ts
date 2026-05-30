@@ -2235,6 +2235,104 @@ async function handleMessage(args: {
           const targetChatId = fwdItem.chatId;
           const deptChatIdForSla = String(targetChatId);
 
+          // ── ALLERGY BİLDİRİM AKIŞI: SLA butonu yok, sla_events yok ──────────
+          // intent=allergy → ön büro grubuna düz bildirim mesajı; SLA talep kartı değil.
+          if (fwdItem.rawDepartment === 'allergy') {
+            console.log(`[allergy-notify] Alerji bildirimi akışı — butonsuz, sla_events YOK [chatId=${deptChatIdForSla}]`);
+
+            // (1) guest_allergens tablosuna kaydet (allergen_pending akışındaki mantıkla)
+            const allergyPlatformUserId = String(userId);
+            const { data: existingAllergyRow } = await supa
+              .from('guest_allergens')
+              .select('id')
+              .eq('platform', 'telegram')
+              .eq('platform_user_id', allergyPlatformUserId)
+              .eq('is_active', true)
+              .maybeSingle();
+
+            const allergyGuestFullName = persistentVerifiedGuest
+              ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim()
+              : guestName;
+
+            if (existingAllergyRow) {
+              await supa
+                .from('guest_allergens')
+                .update({
+                  status: 'notified' as string,
+                  allergen_text: fwdItem.requestText || text,
+                  guest_full_name: allergyGuestFullName || null,
+                  room_number: persistentVerifiedGuest?.room_number ?? null,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', existingAllergyRow.id);
+              console.log(`[allergy-notify] guest_allergens UPDATED → id=${existingAllergyRow.id}`);
+            } else {
+              await supa.from('guest_allergens').insert({
+                platform: 'telegram',
+                platform_user_id: allergyPlatformUserId,
+                guest_full_name: allergyGuestFullName || null,
+                room_number: persistentVerifiedGuest?.room_number ?? null,
+                allergen_text: fwdItem.requestText || text,
+                status: 'notified',
+                asked_at: new Date().toISOString(),
+              });
+              console.log(`[allergy-notify] guest_allergens INSERT OK`);
+            }
+
+            // (2) Grup mesajı formatla (başlık: ℹ️ Misafir Bildirimi (Alerji))
+            const allergyTrDateStr = (() => {
+              const now = new Date();
+              return new Intl.DateTimeFormat('tr-TR', {
+                timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit',
+                day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+              }).format(now) + ' (TR)';
+            })();
+
+            const allergyEsc = (s: string) =>
+              s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+            const allergyRoomLine = persistentVerifiedGuest?.room_number
+              ? `🚪 <b>Oda:</b> ${allergyEsc(persistentVerifiedGuest.room_number)}\n`
+              : '';
+            const allergyGuestLine = `👤 <b>Misafir:</b> ${allergyEsc(allergyGuestFullName || guestName)}\n`;
+            const allergyMsgHtml =
+              `ℹ️ <b>Misafir Bildirimi (Alerji)</b>\n\n` +
+              allergyRoomLine +
+              allergyGuestLine +
+              `🤧 <b>Alerji:</b> "${allergyEsc(fwdItem.requestText || text)}"\n` +
+              `🕐 <b>Saat:</b> ${allergyEsc(allergyTrDateStr)}`;
+
+            // (3) Front office grubuna BUTONSUZ düz mesaj gönder (sendMessage, SLA yok)
+            const FRONT_OFFICE_ALLERGY_CHAT_ID = -5015613103;
+            await tg.sendMessage({
+              chat_id: FRONT_OFFICE_ALLERGY_CHAT_ID,
+              text: allergyMsgHtml,
+              parse_mode: 'HTML',
+            });
+            console.log(`[allergy-notify] Bildirim gönderildi → chatId=${FRONT_OFFICE_ALLERGY_CHAT_ID}`);
+
+            // (4) Misafire özel cevap
+            finalResponseText =
+              language === 'en'
+                ? 'We have noted your allergy and informed the relevant team. Enjoy your meal!'
+                : language === 'de'
+                  ? 'Wir haben Ihre Allergie notiert und das zuständige Team informiert. Guten Appetit!'
+                  : 'Not aldık, ilgili ekibe ilettik. Afiyet olsun.';
+
+            // (5) Conversation güncelle
+            await supa
+              .from('conversations')
+              .update({
+                last_intent: targetDept,
+                last_forwarded_at: new Date().toISOString(),
+              })
+              .eq('id', conversationId);
+
+            console.log(`[allergy-notify] TAMAMLANDI — sla_events OLUŞTURULMADI (tasarım gereği)`);
+            continue; // Bu item için SLA + normal forward akışını atla
+          }
+          // ── ALLERGY BİLDİRİM AKIŞI SONU ──────────────────────────────────────
+
           // ── Modül 11: Departman DB'den sla_minutes çek ──
           const { data: deptSla } = await supa
             .from('departments')

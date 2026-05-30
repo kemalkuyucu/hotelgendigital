@@ -6,7 +6,7 @@
  */
 export const VERIFICATION_REQUIRED_INTENTS = [
   // Kişisel işlemler
-  'allergy',
+  // 'allergy' — allergy artık doğrulama gerektirmiyor; bildirim akışına doğrudan gider
   'billing',
   'lost_and_found',
   // Şikayet
