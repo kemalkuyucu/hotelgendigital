@@ -972,15 +972,14 @@ async function handleMessage(args: {
     const multiMatchNotified = (convMatch?.multi_match_notified as boolean) ?? false;
 
     if (!isLinkedToInhouse) {
-      // ── Modül 17.c: Bilgi sorusu bypass ──────────────────────────────────────
-      // Misafir oda no vermeden sadece bilgi sorusu soruyorsa (salon, wifi, adres vb.)
-      // oda no bağlantısı zorunlu DEĞİL — AI'a ilet, doğrulama gate'ine düşürme.
-      // Sadece kişisel talep/şikayet/servis için oda no bağlantısı gerekli.
-      if (isInfoOnlyQuery(text)) {
-        console.log(`[17c] Bilgi sorusu tespit edildi — oda no gate atlanıyor. text="${text.slice(0, 80)}"`);
-        // Fall through: Module 17.c block sona erer, normal AI akışı başlar.
-      } else {
-      // Treat message as a room number attempt
+      // ── Modül 17.c (sadeleştirildi — refactor/17c) ───────────────────────────
+      // Kural: Yalnızca iki durum burada işlenir:
+      //   1. looksLikeRoom=true → oda eşleştir / bağla
+      //   2. multiMatchPendingRoom set → çoklu eşleşme isim denemesi (17.7-B)
+      // Hiçbiri değilse → fall through; AI + Modül 10 (isInfoOnlyQuery orada) karar verir.
+      // isInfoOnlyQuery bu bloktan KALDIRILDI — doğru yer: Modül 10 satır 2011.
+      // Fallback "oda no iste + return" KALDIRILDI — talep/bilgi kararını AI veriyor.
+
       // FIX(verify): Türkçe karakter döngü fix — sadece rakamlardan oluşan giriş oda no kabul edilir.
       // "102 Özgür Özen" gibi isimli giriş bu gate'e TAKILMAMALI; "/\D/g" sonrası "102" üretse de
       // orijinal metin rakam-dışı karakter içeriyorsa looksLikeRoom=false yapılır.
@@ -1205,24 +1204,11 @@ async function handleMessage(args: {
         return;
       }
       // ── Modül 17.7-B SONU (multi_match_pending_room yoksa) ────────────────
-
-      // Not a room number and not linked → ask for room number
-      // Dinamik otel adı: hotel_settings.hotel_name > hotels.name
-      const { data: hsRowFallback } = await supa
-        .from('hotel_settings')
-        .select('hotel_name')
-        .limit(1)
-        .maybeSingle();
-      const displayHotelNameFallback = (hsRowFallback?.hotel_name as string | null | undefined) || hotelName;
-      await tg.sendMessage({
-        chat_id: chatId,
-        text: `Merhaba! ${displayHotelNameFallback}'e hos geldiniz. Size daha iyi hizmet verebilmemiz icin lutfen oda numaranizi yaziniz.`,
-      });
-      return;
-    } // if (!isInfoOnlyQuery) end
+      // Not a room number, not multi-match pending → fall through to AI + Modül 10.
     } // if (!isLinkedToInhouse) end
   }
   // MODULE 17.c SONU
+
 
   // ============================================================
   // MODÜL 3 — ALLERGEN GATE (tüm akışlardan ÖNCE)
