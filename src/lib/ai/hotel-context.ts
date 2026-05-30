@@ -316,8 +316,9 @@ export function detectInterestTag(message: string): string | null {
   const text = normalizeTr(message); // FIX 2a: sadece .toLowerCase() değil, normalizeTr
 
   const map: Record<string, string[]> = {
-    restaurant: ['restoran', 'yemek', 'lokanta', 'kebap', 'kahvalti', 'yiyecek'],
-    pharmacy:   ['eczane', 'ilac', 'nobetci'],
+    restaurant: ['restoran', 'yemek', 'yemegi', 'yemeği', 'lokanta', 'kebap', 'kahvalti', 'yiyecek', 'ogle', 'aksam yemek', 'aksam yemegi'],
+    pharmacy:   ['eczane', 'ilac', 'ilaci', 'ilacim', 'nobetci', 'nobetci eczane'],
+
     museum:     ['muze', 'tarihi', 'antik', 'kale', 'cami'],
     transport:  ['ulasim', 'otobus', 'dolmus', 'metro', 'tramvay', 'taksi', 'havalimani'],
     atm:        ['atm', 'banka', 'para cek', 'doviz'],
