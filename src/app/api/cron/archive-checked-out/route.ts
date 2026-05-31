@@ -64,20 +64,34 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // check_out_date < bugün AND is_active=true → is_active=false yap
-      const { data: archived, error } = await hotelSupabase
+      // LEGACY inhouse_guests: check_out_date < bugün AND is_active=true → is_active=false
+      const { data: archivedLegacy, error: legacyErr } = await hotelSupabase
         .from('inhouse_guests')
         .update({ is_active: false })
         .lt('check_out_date', today)
         .eq('is_active', true)
         .select('id');
 
-      if (error) {
-        results.push({ hotel: hotel.slug, archived: 0, error: error.message });
+      if (legacyErr) {
+        results.push({ hotel: hotel.slug, archived: 0, error: legacyErr.message });
         continue;
       }
 
-      const archivedCount = archived?.length || 0;
+      // AUDIT D4: inhouse_guests_v2 (status string) — check_out_date < bugün AND status='active'
+      //          → status='archived' + archived_at. Persistent-verify çıkış yapanı 'aktif' sanmasın.
+      const { data: archivedV2, error: v2Err } = await hotelSupabase
+        .from('inhouse_guests_v2')
+        .update({ status: 'archived', archived_at: new Date().toISOString() })
+        .lt('check_out_date', today)
+        .eq('status', 'active')
+        .select('id');
+
+      if (v2Err) {
+        results.push({ hotel: hotel.slug, archived: 0, error: v2Err.message });
+        continue;
+      }
+
+      const archivedCount = (archivedLegacy?.length || 0) + (archivedV2?.length || 0);
       results.push({ hotel: hotel.slug, archived: archivedCount });
 
       // Audit log (sadece kayıt varsa) — AUDIT D3: tablo 'hotel_audit_log' (audit_log yok)
@@ -86,7 +100,12 @@ export async function GET(req: NextRequest) {
         const { error: auditErr } = await hotelSupabase.from('hotel_audit_log').insert({
           actor_type: 'system',
           action: 'auto_archive_checked_out',
-          details: { archived_count: archivedCount, run_date: today },
+          details: {
+            archived_count: archivedCount,
+            archived_legacy: archivedLegacy?.length || 0,
+            archived_v2: archivedV2?.length || 0,
+            run_date: today,
+          },
         });
         if (auditErr) {
           console.error(`[archive-cron] ${hotel.slug} audit log hatası:`, auditErr.message);
