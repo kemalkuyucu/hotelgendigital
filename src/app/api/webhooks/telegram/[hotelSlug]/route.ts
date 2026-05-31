@@ -512,10 +512,11 @@ async function notifyFrontDeskUnverified(params: {
   originalMessage: string;
   language: string;
 }): Promise<void> {
-  // 1) Demo_OnBuro chat_id'sini çek
+  // 1) Demo_OnBuro chat_id'sini çek (AUDIT D2: 'name' kolonu yok, şemada 'display_name';
+  //    burada sadece telegram_chat_id kullanılıyor → select daraltıldı)
   const { data: dept } = await params.hotelSupabase
     .from('departments')
-    .select('telegram_chat_id, name')
+    .select('telegram_chat_id')
     .eq('code', 'front_office')
     .maybeSingle();
 
@@ -558,18 +559,22 @@ async function notifyFrontDeskUnverified(params: {
     return;
   }
 
-  // 4) forwarded_messages tablosuna log
-  await params.hotelSupabase.from('forwarded_messages').insert({
-    conversation_id: params.conversationId,
-    department_code: 'front_office',
-    target_type: 'unverified_alert',
-    target_chat_id: frontOfficeChatId,
-    message_html: html,
-    sent_at: new Date().toISOString(),
-    source_department: params.pendingIntent,
-    target_department: 'front_office',
-    status: 'sent',
-  });
+  // 4) forwarded_messages tablosuna log (AUDIT D1: şema kolonlarına hizalandı —
+  //    conversation_id/department_code/message_html/sent_at tabloda YOK)
+  try {
+    const { error: fwdErr } = await params.hotelSupabase.from('forwarded_messages').insert({
+      target_department: 'front_office',
+      target_chat_id: frontOfficeChatId,
+      target_type: 'unverified_alert',
+      source_department: params.pendingIntent,
+      status: 'sent',
+    });
+    if (fwdErr) {
+      console.error('[unverified-notify] forwarded_messages insert hatası:', fwdErr.message);
+    }
+  } catch (err) {
+    console.error('[unverified-notify] forwarded_messages insert exception:', err instanceof Error ? err.message : err);
+  }
 }
 
 function escapeHtml(s: string): string {
@@ -700,24 +705,21 @@ async function handleVerificationFlow(args: {
     conversation.verification_pending_intent = null;
     conversation.verified_at = verifiedAt;
 
-    // Doğrulanmış misafirin tam kaydını çek (forward + CC için)
+    // Doğrulanmış misafirin tam kaydı (forward + CC için) — AUDIT D5:
+    // verifyGuest() v2 id döndürüyor; eski kod bu id'yi LEGACY inhouse_guests'ta
+    // sorguluyordu → eşleşme yok → room_number kayboluyordu (forward'da "Oda: —").
+    // verifyGuest() room/isim/dil/cinsiyeti zaten result'ta döndürdüğü için doğrudan
+    // onu kullan (hem v2 hem legacy match için doğru; tablo karışması imkânsız).
     let verifiedGuestRecord: VerificationFlowResult['verifiedGuestRecord'] = null;
     if (result.guestId) {
-      const { data: gRec } = await supa
-        .from('inhouse_guests')
-        .select('id, first_name, last_name, room_number, language, gender')
-        .eq('id', result.guestId)
-        .maybeSingle();
-      if (gRec) {
-        verifiedGuestRecord = {
-          id: gRec.id as string,
-          first_name: gRec.first_name as string | null,
-          last_name: gRec.last_name as string | null,
-          room_number: gRec.room_number as string,
-          language: gRec.language as string | null,
-          gender: gRec.gender as string | null,
-        };
-      }
+      verifiedGuestRecord = {
+        id: result.guestId,
+        first_name: result.guestFirstName ?? null,
+        last_name: result.guestLastName ?? null,
+        room_number: result.roomNo ?? '',
+        language: result.guestLanguage ?? null,
+        gender: result.guestGender ?? null,
+      };
     }
 
     // Salutation helper ile hitap üret
