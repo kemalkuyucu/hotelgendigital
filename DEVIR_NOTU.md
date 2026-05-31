@@ -7,7 +7,7 @@
 
 ## Phase A — STABILIZE (AUDIT remediation)
 
-### ✅ Tamamlanan (13 modül)
+### ✅ Tamamlanan (14 modül)
 
 | ID | Konu (AUDIT) | Tag |
 |----|--------------|-----|
@@ -20,6 +20,7 @@
 | A7 | H1 — webhook dış try/catch → her durumda 200 | `v1.0-A7-A8-A9-webhook-resilience` (`7e685b5`) |
 | A8 | H3 — `verification_attempts` insert `await` + error check | `v1.0-A7-A8-A9-webhook-resilience` (`7e685b5`) |
 | A9 | H4 — in-house link update'lerine error-check (sonsuz "oda no sor" döngüsü önlendi) | `v1.0-A7-A8-A9-webhook-resilience` (`7e685b5`) |
+| A10 | H2 + #1 — per-hotel token + atomik claim ile çift-eskalasyon önleme | `v1.0-A10-sla-atomic-claim` (`f33c6b9`) |
 | A11 | D5 — v2 id ile `inhouse_guests_v2` sorgusu ("Oda: —" kök neden) | `v1.0-A11-d5-room-fix` (`e27d89d`) |
 | A12 | D4 — archive cron `inhouse_guests_v2` genişletildi | `v1.0-A12-archive-v2-extend` (`7e9fca4`) |
 | A13 | D6 — SLA callback fantom `conversations.language` + `.maybeSingle()` | `v1.0-A13-callback-language-fix` |
@@ -27,18 +28,13 @@
 
 A7/A8/A9 hepsi **real-bot prod-verify 2026-05-31** (3 senaryo geçti: 9999 no-match bildirimi, 102 doğrulama + döngü yok, yanlış soyad attempt-log + limit→resepsiyon).
 
-### 🔶 Bekleyen (2 modül — yeni kod yazımı YOK, doğrulama/karar)
+### ✅ A10 — TAMAMLANDI (prod-verify 2026-06-01)
 
-**A10 — H2 + çift-eskalasyon önleme (AUDIT H2 + real-bot #1)**
-- Durum: **Kod + push HAZIR** (commit `f33c6b9`, deploy'da). SADECE prod testi + tag bekliyor.
+**A10 — H2 + çift-eskalasyon önleme (AUDIT H2 + real-bot #1)** — `v1.0-A10-sla-atomic-claim` (`f33c6b9`)
 - İçerik: `getBotTokenForHotel` per-hotel token (demo→env / else `getDecryptedBridge`); çift-eskalasyon için **atomik claim** (`update(escalated_at) WHERE escalated_at IS NULL .select()` → claim edilmezse mesaj atma). Harici dup cron (cron-job.org) Kemal tarafından kaldırıldı.
-- **PROD TEST ADIMLARI (Kemal):**
-  1. Bir departmana SLA'lı talep yolla (buton + sla_event oluşsun).
-  2. SLA süresi dolsun → eskalasyon front office'e **TEK kez** düşmeli.
-  3. Aynı anda iki cron/çağrı tetiklense bile (yarış) → **tek eskalasyon mesajı** (atomik claim sayesinde).
-  4. Reception deadline de dolarsa → otomatik `no_response` kapanışı.
-  - Beklenen: hiçbir senaryoda çift eskalasyon mesajı yok.
-- Test geçince tag öner: `v1.0-A10-sla-atomic-claim` → `f33c6b9`.
+- **PROD-VERIFY ✅ 2026-06-01:** doğrulanmış misafir (102) talep gönderdi, butona basılmadı, SLA aşımında Demo_OnBuro'ya eskalasyon **TAM 1 KEZ** düştü (önceden 2 kez), "Oda: 102" dolu.
+
+### 🔶 Bekleyen (1 modül — yeni kod yazımı YOK, doğrulama/karar)
 
 **A15 — D7 ikili şema birleştirme**
 - Durum: **BAŞLANMADI.** Kemal onayı gerekiyor.
