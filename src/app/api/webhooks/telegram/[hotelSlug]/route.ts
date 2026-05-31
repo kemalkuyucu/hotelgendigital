@@ -165,135 +165,146 @@ export async function POST(
     return NextResponse.json({ ok: false, error: 'invalid secret' }, { status: 401 });
   }
 
-  const hotel = await getHotelBySlug(hotelSlug);
-  if (!hotel) {
-    return NextResponse.json({ ok: false, error: 'hotel not found' }, { status: 404 });
-  }
-  if (hotel.status === 'suspended' || hotel.status === 'cancelled') {
-    return NextResponse.json({ ok: true, info: 'hotel inactive' });
-  }
-
-  const botToken = await getBotTokenForHotel(hotelSlug, hotel.id);
-  if (!botToken) {
-    console.error(`[telegram] bot token yok — slug=${hotelSlug} hotelId=${hotel.id}. Bridge credentials'da telegram_bot_token_encrypted eksik.`);
-    return NextResponse.json({ ok: true, info: 'no token' });
-  }
-  const tg = new TelegramClient(botToken);
-
-  const supa = await getSupaClientForSlug(hotelSlug, hotel.id);
-  if (!supa) {
-    console.error(`[telegram] hotel client alınamadı: ${hotelSlug} / ${hotel.id}`);
-    return NextResponse.json({ ok: true, info: 'no db client' });
-  }
-
-  let update: TelegramUpdate;
+  // ── AUDIT H1 (A7): Dış güvenlik ağı — secret(401)/json(400)/hotel-not-found(404)
+  // dışındaki HER hata (token/db/iç) yutulur ve 200 döner. Telegram non-200 görürse
+  // aynı update'i tekrar tekrar gönderir (retry fırtınası). Bu blok onu engeller.
   try {
-    update = (await req.json()) as TelegramUpdate;
-  } catch {
-    return NextResponse.json({ ok: false, error: 'invalid json' }, { status: 400 });
-  }
-
-  // ============================================================
-  // MODÜL 11: callback_query dispatch (inline button basımları)
-  // ============================================================
-  if (update.callback_query) {
-    const cq = update.callback_query;
-
-    if (cq.data?.startsWith('sla:respond:')) {
-      await handleSlaCallback({
-        hotelSupabase: supa,
-        botToken,
-        callbackQueryId: cq.id,
-        callbackData: cq.data,
-        fromTelegramId: String(cq.from.id),
-        fromUsername: cq.from.username,
-        fromFirstName: cq.from.first_name,
-      });
-      return NextResponse.json({ ok: true });
+    const hotel = await getHotelBySlug(hotelSlug);
+    if (!hotel) {
+      return NextResponse.json({ ok: false, error: 'hotel not found' }, { status: 404 });
+    }
+    if (hotel.status === 'suspended' || hotel.status === 'cancelled') {
+      return NextResponse.json({ ok: true, info: 'hotel inactive' });
     }
 
-    // SLA noop (kaldırılmış butona basıldı)
-    if (cq.data === 'sla:noop') {
-      await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu talep zaten işlendi' }),
-      });
-      return NextResponse.json({ ok: true });
+    const botToken = await getBotTokenForHotel(hotelSlug, hotel.id);
+    if (!botToken) {
+      console.error(`[telegram] bot token yok — slug=${hotelSlug} hotelId=${hotel.id}. Bridge credentials'da telegram_bot_token_encrypted eksik.`);
+      return NextResponse.json({ ok: true, info: 'no token' });
+    }
+    const tg = new TelegramClient(botToken);
+
+    const supa = await getSupaClientForSlug(hotelSlug, hotel.id);
+    if (!supa) {
+      console.error(`[telegram] hotel client alınamadı: ${hotelSlug} / ${hotel.id}`);
+      return NextResponse.json({ ok: true, info: 'no db client' });
     }
 
-    // Diğer callback'ler — şimdilik yoksay
-    return NextResponse.json({ ok: true });
-  }
-
-  const msg = update.message ?? update.edited_message;
-  if (!msg) {
-    return NextResponse.json({ ok: true, info: 'no message' });
-  }
-
-  // ============================================================
-  // MODÜL 11: Resepsiyon grup reply → SLA escalation reply handler
-  // Grup mesajı + reply_to varsa, SLA escalation mesajına reply mi kontrol et
-  // ============================================================
-  if (
-    msg.reply_to_message?.message_id &&
-    msg.chat?.type !== 'private' &&
-    msg.text
-  ) {
+    let update: TelegramUpdate;
     try {
-      const result = await handleReceptionReply({
-        hotelSupabase: supa,
-        botToken,
-        chatId: String(msg.chat.id),
-        replyToMessageId: msg.reply_to_message.message_id,
-        replyText: msg.text,
-        responderTelegramId: String(msg.from?.id ?? 0),
-      });
-      if (result.handled) {
+      update = (await req.json()) as TelegramUpdate;
+    } catch {
+      return NextResponse.json({ ok: false, error: 'invalid json' }, { status: 400 });
+    }
+
+    // ============================================================
+    // MODÜL 11: callback_query dispatch (inline button basımları)
+    // ============================================================
+    if (update.callback_query) {
+      const cq = update.callback_query;
+
+      if (cq.data?.startsWith('sla:respond:')) {
+        await handleSlaCallback({
+          hotelSupabase: supa,
+          botToken,
+          callbackQueryId: cq.id,
+          callbackData: cq.data,
+          fromTelegramId: String(cq.from.id),
+          fromUsername: cq.from.username,
+          fromFirstName: cq.from.first_name,
+        });
         return NextResponse.json({ ok: true });
       }
-    } catch (replyErr) {
-      console.error('[telegram] handleReceptionReply error:', replyErr);
-    }
-  }
 
-  try {
-    await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, hotelSlug, msg, tg, botToken });
-  } catch (err) {
-    console.error('[telegram] handleMessage error:', err);
-
-    // ── Modül 17.7-C: Bot kritik hata bildirimi ─────────────────────────────
-    // Önbüro grubuna bildirim gönder — sessizce yut, webhook 200 dön.
-    try {
-      const { data: foDept } = await supa
-        .from('departments')
-        .select('telegram_chat_id')
-        .eq('code', 'front_office')
-        .maybeSingle();
-
-      if (foDept?.telegram_chat_id) {
-        const foChatId = Number(foDept.telegram_chat_id);
-        const errorMessage = err instanceof Error ? err.message : 'Bilinmeyen hata';
-        const alertText =
-          `🔴 BOT HATASI\n\n` +
-          `Misafir mesaj attı, bot cevap veremedi.\n\n` +
-          `Chat ID: ${update.message?.chat.id ?? '—'}\n` +
-          `Otel: ${hotelSlug}\n` +
-          `Hata: ${errorMessage}\n` +
-          `Zaman: ${new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`;
-
-        await tg.sendMessage({ chat_id: foChatId, text: alertText });
-        console.log(`[17.7-C] Bot kritik hata bildirimi gönderildi → chatId=${foChatId}`);
-      } else {
-        console.warn('[17.7-C] front_office telegram_chat_id bulunamadı, bildirim atlandı');
+      // SLA noop (kaldırılmış butona basıldı)
+      if (cq.data === 'sla:noop') {
+        await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu talep zaten işlendi' }),
+        });
+        return NextResponse.json({ ok: true });
       }
-    } catch (notifyErr) {
-      console.error('[17.7-C] Bot kritik hata bildirimi gönderilemedi:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
-    }
-    // ── Modül 17.7-C SONU ────────────────────────────────────────────────────
-  }
 
-  return NextResponse.json({ ok: true });
+      // Diğer callback'ler — şimdilik yoksay
+      return NextResponse.json({ ok: true });
+    }
+
+    const msg = update.message ?? update.edited_message;
+    if (!msg) {
+      return NextResponse.json({ ok: true, info: 'no message' });
+    }
+
+    // ============================================================
+    // MODÜL 11: Resepsiyon grup reply → SLA escalation reply handler
+    // Grup mesajı + reply_to varsa, SLA escalation mesajına reply mi kontrol et
+    // ============================================================
+    if (
+      msg.reply_to_message?.message_id &&
+      msg.chat?.type !== 'private' &&
+      msg.text
+    ) {
+      try {
+        const result = await handleReceptionReply({
+          hotelSupabase: supa,
+          botToken,
+          chatId: String(msg.chat.id),
+          replyToMessageId: msg.reply_to_message.message_id,
+          replyText: msg.text,
+          responderTelegramId: String(msg.from?.id ?? 0),
+        });
+        if (result.handled) {
+          return NextResponse.json({ ok: true });
+        }
+      } catch (replyErr) {
+        console.error('[telegram] handleReceptionReply error:', replyErr);
+      }
+    }
+
+    try {
+      await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, hotelSlug, msg, tg, botToken });
+    } catch (err) {
+      console.error('[telegram] handleMessage error:', err);
+
+      // ── Modül 17.7-C: Bot kritik hata bildirimi ─────────────────────────────
+      // Önbüro grubuna bildirim gönder — sessizce yut, webhook 200 dön.
+      try {
+        const { data: foDept } = await supa
+          .from('departments')
+          .select('telegram_chat_id')
+          .eq('code', 'front_office')
+          .maybeSingle();
+
+        if (foDept?.telegram_chat_id) {
+          const foChatId = Number(foDept.telegram_chat_id);
+          const errorMessage = err instanceof Error ? err.message : 'Bilinmeyen hata';
+          const alertText =
+            `🔴 BOT HATASI\n\n` +
+            `Misafir mesaj attı, bot cevap veremedi.\n\n` +
+            `Chat ID: ${update.message?.chat.id ?? '—'}\n` +
+            `Otel: ${hotelSlug}\n` +
+            `Hata: ${errorMessage}\n` +
+            `Zaman: ${new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`;
+
+          await tg.sendMessage({ chat_id: foChatId, text: alertText });
+          console.log(`[17.7-C] Bot kritik hata bildirimi gönderildi → chatId=${foChatId}`);
+        } else {
+          console.warn('[17.7-C] front_office telegram_chat_id bulunamadı, bildirim atlandı');
+        }
+      } catch (notifyErr) {
+        console.error('[17.7-C] Bot kritik hata bildirimi gönderilemedi:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
+      }
+      // ── Modül 17.7-C SONU ────────────────────────────────────────────────────
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (fatalErr) {
+    // AUDIT H1 (A7): iç/token/db kaynaklı beklenmeyen throw — Telegram'a 200 dön,
+    // retry fırtınasını engelle. (front-office bildirimi yukarıdaki handleMessage
+    // catch'inde zaten yapılıyor; buraya düşen hatalar daha erken aşamadan gelir.)
+    console.error('[telegram] webhook fatal (200 ile yutuldu):', fatalErr instanceof Error ? fatalErr.message : fatalErr);
+    return NextResponse.json({ ok: true, info: 'handled-error' }, { status: 200 });
+  }
 }
 
 // ── Verification mesaj şablonları ─────────────────────────────────────────────
@@ -672,7 +683,9 @@ async function handleVerificationFlow(args: {
   console.log(`[verification] Deneniyor: room=${roomNumber} firstName=${firstName} lastName=${lastName} hasEmbeddedRequest=${hasEmbeddedRequest}`);
   const result = await verifyGuest(supa, roomNumber!, firstName!, lastName!);
 
-  void supa.from('verification_attempts').insert({
+  // AUDIT H3 (A8): await + error check — void fire-and-forget Vercel Hobby'de response
+  // sonrası kill edildiğinden güvenlik logu kayboluyordu. Hata akışı kesmesin, sadece logla.
+  const { error: vaErr } = await supa.from('verification_attempts').insert({
     conversation_id: conversationId,
     attempted_room_no: roomNumber,
     attempted_last_name: lastName,
@@ -680,6 +693,7 @@ async function handleVerificationFlow(args: {
     matched_guest_id: result.matched ? result.guestId : null,
     intent_at_attempt: conversation.verification_pending_intent ?? aiIntent,
   });
+  if (vaErr) console.error('[verification] attempt log yazılamadı:', vaErr.message);
 
   if (result.matched) {
     // ✅ Doğrulama başarılı
@@ -1058,17 +1072,20 @@ async function handleMessage(args: {
 
         if (roomMatches.length === 1) {
           const matched = roomMatches[0];
-          // Link telegram_id in inhouse_guests_v2
-          await supa
+          // AUDIT H4 (A9): Link telegram_id in inhouse_guests_v2 — error logla (yan etki: panel görünürlüğü)
+          const { error: linkTgErr } = await supa
             .from('inhouse_guests_v2')
             .update({ telegram_id: userId })
             .eq('id', matched.id);
+          if (linkTgErr) console.error('[17c] inhouse_guests_v2 telegram_id link hatası:', linkTgErr.message);
 
-          // Link conversation
-          await supa
+          // AUDIT H4 (A9) LOOP-KRİTİK: bu update sessizce başarısız olursa inhouse_match_guest_id
+          // boş kalır → her mesajda misafir tekrar oda no'ya yönlendirilir (sonsuz döngü).
+          const { error: linkConvErr } = await supa
             .from('conversations')
             .update({ inhouse_match_guest_id: matched.id })
             .eq('id', conversationId);
+          if (linkConvErr) console.error('[17c] LOOP-KRİTİK conversations.inhouse_match_guest_id link hatası:', linkConvErr.message);
 
           console.log(`[17c] Linked telegram_id=${userId} → inhouse_guest_id=${matched.id} room=${matched.room_number}`);
 
@@ -1080,10 +1097,12 @@ async function handleMessage(args: {
         }
 
         // Multiple matches → save pending room + ask for name
-        await supa
+        // AUDIT H4 (A9): error logla — yazılamazsa isim denemesi state'i kaybolur
+        const { error: pendingRoomErr } = await supa
           .from('conversations')
           .update({ multi_match_pending_room: roomAttempt, multi_match_attempts: 0 })
           .eq('id', conversationId);
+        if (pendingRoomErr) console.error('[17c] multi_match_pending_room yazılamadı:', pendingRoomErr.message);
 
         await tg.sendMessage({
           chat_id: chatId,
@@ -1112,12 +1131,16 @@ async function handleMessage(args: {
 
         if (matched) {
           // ✅ Name matched — link and welcome
-          await supa
+          // AUDIT H4 (A9): telegram_id link — error logla (yan etki: panel görünürlüğü)
+          const { error: linkTgErr } = await supa
             .from('inhouse_guests_v2')
             .update({ telegram_id: userId })
             .eq('id', matched.id);
+          if (linkTgErr) console.error('[17.7-B] inhouse_guests_v2 telegram_id link hatası:', linkTgErr.message);
 
-          await supa
+          // AUDIT H4 (A9) LOOP-KRİTİK: inhouse_match_guest_id yazılamazsa misafir doğru ismi
+          // girse bile her mesajda tekrar oda/isim sorulur (sonsuz döngü).
+          const { error: linkConvErr } = await supa
             .from('conversations')
             .update({
               inhouse_match_guest_id: matched.id,
@@ -1125,6 +1148,7 @@ async function handleMessage(args: {
               multi_match_attempts: 0,
             })
             .eq('id', conversationId);
+          if (linkConvErr) console.error('[17.7-B] LOOP-KRİTİK conversations.inhouse_match_guest_id link hatası:', linkConvErr.message);
 
           console.log(`[17.7-B] İsim eşleşti → inhouse_guest_id=${matched.id} room=${matched.room_number}`);
 
@@ -1136,11 +1160,13 @@ async function handleMessage(args: {
         }
 
         // ❌ No match — increment attempts
+        // AUDIT H4 (A9): error logla — yazılamazsa attempt sayacı artmaz, MAX'a ulaşılamaz
         const newAttempts = multiMatchAttempts + 1;
-        await supa
+        const { error: attemptsErr } = await supa
           .from('conversations')
           .update({ multi_match_attempts: newAttempts })
           .eq('id', conversationId);
+        if (attemptsErr) console.error('[17.7-B] multi_match_attempts yazılamadı:', attemptsErr.message);
 
         const MAX_MULTI_MATCH_ATTEMPTS = 3;
 
