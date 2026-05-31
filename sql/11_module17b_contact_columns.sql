@@ -1,3 +1,11 @@
+-- ############################################################################
+-- ⚠️  DEPRECATED / ARŞİV — 2026-06-01 (A15 / AUDIT D7) — CANLI DB'YE UYGULANMAZ
+-- BU DOSYA TARİHSEL REFERANSTIR (silinmedi). Tenant şemasının tek otoritesi:
+-- migrations/tenant/*.sql. Migration sistemi öncesi elle "SQL Editor" bootstrap
+-- lineage'ından bir dosyadır; içeriği migrations/tenant zinciriyle karşılanmıştır.
+-- 2026-06-01 probe: canlı drift YOK.
+-- ############################################################################
+--
 -- ============================================================================
 -- MODUL 17b — inhouse_guests_v2 iletisim alanlari ekleme
 -- Hotel Supabase'inde calistir (Demo Hotel SQL Editor)

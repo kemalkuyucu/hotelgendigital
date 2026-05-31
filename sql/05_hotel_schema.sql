@@ -1,3 +1,24 @@
+-- ############################################################################
+-- ⚠️  DEPRECATED / ARŞİV — 2026-06-01 (A15 / AUDIT D7) — CANLI DB'YE UYGULANMAZ
+-- ----------------------------------------------------------------------------
+-- BU DOSYA TARİHSEL REFERANSTIR. Silinmedi, arşivlendi. ÇALIŞTIRMAYIN.
+--
+-- Tenant (hotel) şemasının TEK OTORİTESİ:  migrations/tenant/*.sql
+--   (runtime'da exec_sql RPC ile per-hotel uygulanır; schema_migrations izler.)
+--
+-- Bu dosya, migration sistemi yokken Modül-1'de elle "Supabase SQL Editor"a
+-- yapıştırılan İLK template'tir. Canlı tenant'lar (demo-hotel, green-park-test)
+-- bununla DEĞİL, migrations/tenant/001_initial_schema.sql + sonrasıyla kuruldu.
+--
+-- 2026-06-01 salt-okunur probe (her iki canlı tenant): departments /
+-- department_staff / document_chunks / conversation_summary tabloları 001-zinciri
+-- şeklinde; BU DOSYANIN (05) şekli HİÇBİR canlı DB'de YOK → DRIFT YOK.
+--
+-- Buradaki tanımlarla migrations/tenant arasındaki farklar (messages↔bot_messages,
+-- admin_users↔hotel_admin_users, channel-anahtarlı conversation_summary,
+-- vector↔text document_chunks) TARİHSEL ARTIKTIR. migrations/tenant otoritedir.
+-- ############################################################################
+--
 -- ============================================================================
 -- HOTELGEN — HOTEL SUPABASE TEMPLATE SCHEMA
 -- ============================================================================

@@ -1,3 +1,12 @@
+-- ############################################################################
+-- ⚠️  DEPRECATED / ARŞİV — 2026-06-01 (A15 / AUDIT D7) — CANLI DB'YE UYGULANMAZ
+-- BU DOSYA TARİHSEL REFERANSTIR (silinmedi). Tenant şemasının tek otoritesi:
+-- migrations/tenant/*.sql. Migration sistemi öncesi elle "SQL Editor" bootstrap
+-- lineage'ından bir dosyadır. NOT: storage bucket kurulumu migrations/tenant
+-- KAPSAMINDA DEĞİLDİR → bu dosya storage bucket'ları için tarihsel referanstır;
+-- canlı tenant'larda bucket'lar zaten elle kurulmuştur. Körlemesine çalıştırmayın.
+-- ############################################################################
+--
 -- ============================================================================
 -- HOTELGEN — HOTEL SUPABASE: STORAGE BUCKETS
 -- ============================================================================

@@ -7,7 +7,7 @@
 
 ## Phase A — STABILIZE (AUDIT remediation)
 
-### ✅ Tamamlanan (14 modül)
+### ✅ Tamamlanan (15 modül — Phase A %100)
 
 | ID | Konu (AUDIT) | Tag |
 |----|--------------|-----|
@@ -25,6 +25,7 @@
 | A12 | D4 — archive cron `inhouse_guests_v2` genişletildi | `v1.0-A12-archive-v2-extend` (`7e9fca4`) |
 | A13 | D6 — SLA callback fantom `conversations.language` + `.maybeSingle()` | `v1.0-A13-callback-language-fix` |
 | A14 | L1 — `lint` script ESLint CLI'ye yönlendirildi | `v1.0-A14-lint-eslint-cli` |
+| A15 | D7 — şema ikiliği: canlı probe → drift YOK; `sql/0x` arşiv, tek otorite `migrations/tenant/*` | `v1.0-A15-schema-reconcile-docs` |
 
 A7/A8/A9 hepsi **real-bot prod-verify 2026-05-31** (3 senaryo geçti: 9999 no-match bildirimi, 102 doğrulama + döngü yok, yanlış soyad attempt-log + limit→resepsiyon).
 
@@ -34,12 +35,14 @@ A7/A8/A9 hepsi **real-bot prod-verify 2026-05-31** (3 senaryo geçti: 9999 no-ma
 - İçerik: `getBotTokenForHotel` per-hotel token (demo→env / else `getDecryptedBridge`); çift-eskalasyon için **atomik claim** (`update(escalated_at) WHERE escalated_at IS NULL .select()` → claim edilmezse mesaj atma). Harici dup cron (cron-job.org) Kemal tarafından kaldırıldı.
 - **PROD-VERIFY ✅ 2026-06-01:** doğrulanmış misafir (102) talep gönderdi, butona basılmadı, SLA aşımında Demo_OnBuro'ya eskalasyon **TAM 1 KEZ** düştü (önceden 2 kez), "Oda: 102" dolu.
 
-### 🔶 Bekleyen (1 modül — yeni kod yazımı YOK, doğrulama/karar)
+### ✅ A15 — TAMAMLANDI (2026-06-01) — Phase A artık %100 (15/15)
 
-**A15 — D7 ikili şema birleştirme**
-- Durum: **BAŞLANMADI.** Kemal onayı gerekiyor.
-- İçerik: `sql/05_*` vs `migrations/tenant/001` iki kaynak şema drift'i. Hangi tablo setinin canlı (demo-hotel) olduğunu doğrulayıp birini kaynak seç, diğerini hizala/arşivle.
-- Önce **canlı DB şema teyidi** (hangi kolonlar gerçekte var) → sonra karar.
+**A15 — D7 ikili şema birleştirme** — `v1.0-A15-schema-reconcile-docs`
+- **Sonuç: DB'de DRIFT YOK — A15 bir runtime migration değil, dosya temizliği çıktı.**
+- Salt-okunur probe (schema_migrations + PostgREST OpenAPI introspection, **sadece SELECT**) iki canlı tenant'a koşuldu:
+  - **demo-hotel** ve **green-park-test**: `departments` (telegram_chat_id/reception_sla_minutes/holidays ✓), `department_staff` (department_key ✓, allergen flags ✓), `document_chunks`, `conversation_summary` (conversation_id-keyed ✓) — **hepsi 001-zinciri şekli**. `sql/05` şekli hiçbir canlıda YOK. İkisi de `migrations/tenant/001→017` (007 skip).
+- **Aksiyon:** tek otorite = `migrations/tenant/*`. Eski `sql/0x` hotel-tarafı dosyalar (05,06,07,09,09b,10,11,12) DB'ye **dokunmadan** başlarına DEPRECATED/ARŞİV başlığı eklenerek arşivlendi (silinmedi). CLAUDE.md + SKILL.md + AUDIT D7 güncellendi. **Runtime migration GEREKMEDİ.**
+- **Tek canlı fark (D7 dışı, TAKİP):** `match_documents()` RPC **demo-hotel'de var, green-park-test'te YOK** → RAG kullanılacaksa green-park'a pgvector fonksiyonunu eklemek gerekir. **Phase C / RAG takip maddesi** (şema sorunu değil, A15 kapsamı dışı).
 
 ---
 
@@ -61,10 +64,13 @@ A7/A8/A9 hepsi **real-bot prod-verify 2026-05-31** (3 senaryo geçti: 9999 no-ma
 ## Sonraki fazlar (sıra)
 
 - **Phase B — Beyin re-mimarisi:** tek-beyin orchestrator → hibrit per-department model. Constitution dosyaları (`00-master.md` + `01-front-office`…`07-animation`), 4 mesaj tipi (SOHBET/BİLGİ/TALEP/BİLDİRİM), allergen path doğrulama (button-free, kitchen+GR).
-- **Phase C — Bilgi havuzu / Perplexity:** Green Park çevre keşfi ön-doldurma, havaalanı/merkez km'leri `hotel_settings.location_info`'ya, "bilgi sistemde yok" fallback doğrulama.
+- **Phase C — Bilgi havuzu / Perplexity:** Green Park çevre keşfi ön-doldurma, havaalanı/merkez km'leri `hotel_settings.location_info`'ya, "bilgi sistemde yok" fallback doğrulama. **+ RAG takip (A15'ten):** `match_documents()` RPC green-park-test'te YOK (demo'da var) — RAG/document_chunks semantik arama green-park'ta kullanılacaksa fonksiyon + (gerekiyorsa) `embedding` vektör tipini o tenant'a eklemek gerekir.
 - **Phase D — Özellikler:** Reservation Links (~810 lokal satır commit), manager raporlama detayı + PDF/Excel (D-REP), Module 18 timezone drift (21:00 TR sonrası), pending-match testi, eksik tag'ler (`v1.0-module17b`, `v1.0-module17cd`), Telegram dept-group prerequisites (Kemal task).
 
 ---
+
+## Güvenlik
+- ⚠️ **green-park-test `service_role` key paylaşıldı (2026-06-01):** A15 canlı probe'u için green-park-test'in Supabase `service_role` key'i sohbete yapıştırıldı (probe salt-okunur, key çıktıya yazılmadı, geçici dosya silindi). Tam yetkili gizli anahtardır → **gerekirse Supabase dashboard'dan rotate et** (Project Settings → API Keys → service_role → rotate). Probe bitti, key'e artık ihtiyaç yok.
 
 ## Notlar
 - **Validasyon gate:** `npm run type-check` + `npm run build` (lint A14'te runner'a bağlandı ama legacy baseline'da red — henüz hard gate değil).

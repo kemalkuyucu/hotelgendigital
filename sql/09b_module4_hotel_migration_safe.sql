@@ -1,3 +1,11 @@
+-- ############################################################################
+-- ⚠️  DEPRECATED / ARŞİV — 2026-06-01 (A15 / AUDIT D7) — CANLI DB'YE UYGULANMAZ
+-- BU DOSYA TARİHSEL REFERANSTIR (silinmedi). Tenant şemasının tek otoritesi:
+-- migrations/tenant/*.sql. Migration sistemi öncesi elle "SQL Editor" bootstrap
+-- lineage'ından bir dosyadır (09'un güvenli/idempotent varyantı); içeriği
+-- migrations/tenant/001 ile karşılanmıştır. 2026-06-01 probe: canlı drift YOK.
+-- ############################################################################
+--
 -- ============================================================================
 -- HOTELGEN — MODULE 4: DEMO HOTEL MIGRATION (SAFE / IDEMPOTENT)
 -- ============================================================================

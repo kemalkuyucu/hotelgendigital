@@ -1,3 +1,11 @@
+-- ############################################################################
+-- ⚠️  DEPRECATED / ARŞİV — 2026-06-01 (A15 / AUDIT D7) — CANLI DB'YE UYGULANMAZ
+-- BU DOSYA TARİHSEL REFERANSTIR (silinmedi). Tenant şemasının tek otoritesi:
+-- migrations/tenant/*.sql. Migration sistemi öncesi elle "SQL Editor" bootstrap
+-- lineage'ından (05'in ardından çalıştırılırdı). NOT: artık var olmayan `messages`
+-- gibi 05-tablolarına RLS uygular → eskimiş. 2026-06-01 probe: canlı drift YOK.
+-- ############################################################################
+--
 -- ============================================================================
 -- HOTELGEN — HOTEL SUPABASE: ROW LEVEL SECURITY
 -- ============================================================================
