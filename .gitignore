@@ -15,12 +15,11 @@ node_modules/
 /build
 
 # Environment variables — NEVER commit
+# Tüm .env varyantlarını engelle; yalnızca .example şablonları izlensin.
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.*.local
+.env.*
+!.env.example
+!**/.env.example
 
 # Vercel
 .vercel
@@ -57,7 +56,6 @@ logs/
 *.log
 
 .vercel
-.env*.local
 
 # Local development helper scripts
 scripts/
