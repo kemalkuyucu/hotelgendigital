@@ -23,6 +23,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { jwtVerify } from 'jose'
+import { getJwtSecretBytes } from '@/lib/auth/jwt-secret'
 
 // ---------------------------------------------------------------------------
 // JWT helpers (edge runtime uyumlu)
@@ -32,11 +33,7 @@ const HOTEL_COOKIE_NAME = 'hg_hotel_session'
 const GROUP_COOKIE_NAME = 'group_session'
 
 function getJwtSecret(): Uint8Array {
-  const secret =
-    process.env.HOTEL_ADMIN_JWT_SECRET ??
-    process.env.NEXTAUTH_SECRET ??
-    'hotel-admin-dev-secret-change-in-production'
-  return new TextEncoder().encode(secret)
+  return getJwtSecretBytes()
 }
 
 interface HotelAdminJwtPayload {

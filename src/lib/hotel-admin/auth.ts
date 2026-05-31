@@ -6,14 +6,14 @@ import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
 import { resolveTenantBySlug } from './tenant';
 import type { HotelAdminUser, HotelAdminJwtPayload, HotelAdminRole } from './types';
+import { getJwtSecretBytes } from '@/lib/auth/jwt-secret';
 
 const COOKIE_NAME = 'hg_hotel_session';
 const SESSION_HOURS = 8;
 const JWT_ALG = 'HS256';
 
 function getJwtSecret(): Uint8Array {
-  const secret = process.env.HOTEL_ADMIN_JWT_SECRET ?? process.env.NEXTAUTH_SECRET ?? 'hotel-admin-dev-secret-change-in-production';
-  return new TextEncoder().encode(secret);
+  return getJwtSecretBytes();
 }
 
 // ---------------------------------------------------------------------------
