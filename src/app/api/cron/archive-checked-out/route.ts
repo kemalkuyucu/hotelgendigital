@@ -80,14 +80,17 @@ export async function GET(req: NextRequest) {
       const archivedCount = archived?.length || 0;
       results.push({ hotel: hotel.slug, archived: archivedCount });
 
-      // Audit log (sadece kayıt varsa)
+      // Audit log (sadece kayıt varsa) — AUDIT D3: tablo 'hotel_audit_log' (audit_log yok)
       if (archivedCount > 0) {
         console.log(`[archive-cron] ${hotel.slug}: ${archivedCount} misafir arşivlendi`);
-        await hotelSupabase.from('audit_log').insert({
+        const { error: auditErr } = await hotelSupabase.from('hotel_audit_log').insert({
           actor_type: 'system',
           action: 'auto_archive_checked_out',
           details: { archived_count: archivedCount, run_date: today },
         });
+        if (auditErr) {
+          console.error(`[archive-cron] ${hotel.slug} audit log hatası:`, auditErr.message);
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'unknown error';
