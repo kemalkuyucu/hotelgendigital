@@ -2,15 +2,15 @@
 // DELETE /api/admin/safety-rules/[id]  → hard delete
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionAdmin } from '@/lib/auth/session';
+import { requireSuperAdmin } from '@/lib/auth/guards';
 import { getCentralSupabase } from '@/lib/supabase-client';
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'Yetkisiz.' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
 
   const { id } = await params;
 
@@ -54,8 +54,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'Yetkisiz.' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
 
   const { id } = await params;
 

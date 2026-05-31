@@ -2,12 +2,12 @@
 // POST /api/admin/safety-rules  → yeni kural ekle
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionAdmin } from '@/lib/auth/session';
+import { requireSuperAdmin } from '@/lib/auth/guards';
 import { getCentralSupabase } from '@/lib/supabase-client';
 
 export async function GET(): Promise<NextResponse> {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'Yetkisiz.' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
 
   const supabase = getCentralSupabase();
   const { data, error } = await supabase
@@ -21,8 +21,8 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'Yetkisiz.' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
 
   try {
     const body: unknown = await req.json();

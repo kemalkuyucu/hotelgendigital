@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionAdmin } from '@/lib/auth/session';
+import { requireSuperAdmin } from '@/lib/auth/guards';
 import { logAudit } from '@/lib/auth/audit';
 import { updateSection, deleteSection } from '@/lib/knowledge/knowledge-client';
 import { invalidateSummary } from '@/lib/knowledge/cache';
@@ -12,8 +12,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; sid: string }> }
 ) {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
+  const admin = guard.admin;
 
   const { id, sid } = await params;
 
@@ -66,8 +67,9 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; sid: string }> }
 ) {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
+  const admin = guard.admin;
 
   const { id, sid } = await params;
 

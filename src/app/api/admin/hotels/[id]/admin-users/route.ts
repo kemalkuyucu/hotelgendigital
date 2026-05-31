@@ -2,7 +2,7 @@
 // POST /api/admin/hotels/[id]/admin-users   → create
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionAdmin } from '@/lib/auth/session';
+import { requireSuperAdmin } from '@/lib/auth/guards';
 import { resolveTenantByHotelId } from '@/lib/hotel-admin/tenant-by-id';
 import bcrypt from 'bcryptjs';
 import { logAudit } from '@/lib/auth/audit';
@@ -11,8 +11,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'Yetkisiz.' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
+  const admin = guard.admin;
 
   const { id: hotelId } = await params;
 
@@ -35,8 +36,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'Yetkisiz.' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
+  const admin = guard.admin;
 
   const { id: hotelId } = await params;
 
@@ -60,7 +62,7 @@ export async function POST(
       );
     }
 
-    const passwordHash = await bcrypt.hash(b.password as string, 10);
+    const passwordHash = await bcrypt.hash(b.password as string, 12);
 
     const { hotelSupabase } = await resolveTenantByHotelId(hotelId);
     const { data, error } = await hotelSupabase

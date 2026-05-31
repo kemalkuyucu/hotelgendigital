@@ -5,15 +5,14 @@
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionAdmin } from '@/lib/auth/session';
+import { requireSuperAdmin } from '@/lib/auth/guards';
 import { runMigrations } from '@/lib/migrations';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  // Yetki kontrolü
-  const admin = await getSessionAdmin();
-  if (!admin) {
-    return NextResponse.json({ error: 'Yetkisiz.' }, { status: 401 });
-  }
+  // Yetki kontrolü — DDL tetikler, super_admin zorunlu (AUDIT S6)
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
+  const admin = guard.admin;
 
   // Body parse
   let body: unknown;

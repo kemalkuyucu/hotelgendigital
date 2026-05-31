@@ -2,7 +2,7 @@
 // DELETE /api/admin/hotels/[id]/admin-users/[uid]  → soft delete
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionAdmin } from '@/lib/auth/session';
+import { requireSuperAdmin } from '@/lib/auth/guards';
 import { resolveTenantByHotelId } from '@/lib/hotel-admin/tenant-by-id';
 import bcrypt from 'bcryptjs';
 import { logAudit } from '@/lib/auth/audit';
@@ -11,8 +11,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; uid: string }> }
 ): Promise<NextResponse> {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'Yetkisiz.' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
+  const admin = guard.admin;
 
   const { id: hotelId, uid } = await params;
 
@@ -31,7 +32,7 @@ export async function PATCH(
 
     // Şifre sıfırlama
     if (typeof b.password === 'string' && b.password.length > 0) {
-      updateData.password_hash = await bcrypt.hash(b.password as string, 10);
+      updateData.password_hash = await bcrypt.hash(b.password as string, 12);
     }
 
     const { hotelSupabase } = await resolveTenantByHotelId(hotelId);
@@ -65,8 +66,9 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; uid: string }> }
 ): Promise<NextResponse> {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'Yetkisiz.' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
+  const admin = guard.admin;
 
   const { id: hotelId, uid } = await params;
 

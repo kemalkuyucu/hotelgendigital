@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionAdmin } from '@/lib/auth/session';
+import { requireSuperAdmin } from '@/lib/auth/guards';
 import { logAudit } from '@/lib/auth/audit';
 import { listFacts, upsertFact } from '@/lib/knowledge/knowledge-client';
 import { invalidateSummary } from '@/lib/knowledge/cache';
@@ -14,8 +14,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
 
   const { id } = await params;
 
@@ -34,8 +34,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const admin = await getSessionAdmin();
-  if (!admin) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
+  const admin = guard.admin;
 
   const { id } = await params;
 
