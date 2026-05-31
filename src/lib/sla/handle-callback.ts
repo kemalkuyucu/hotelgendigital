@@ -84,11 +84,13 @@ export async function handleSlaCallback(params: CallbackParams): Promise<void> {
     .eq('id', slaEventId);
 
   // 3) Misafire cevap gönder (conversation'ın telegram_chat_id'sinden)
+  //    AUDIT D6: conversations'ta 'language' kolonu YOK (o guests'te) → kaldırıldı;
+  //    .single() 0 satırda hata verir → .maybeSingle()
   const { data: conversation } = await params.hotelSupabase
     .from('conversations')
-    .select('telegram_chat_id, language')
+    .select('telegram_chat_id')
     .eq('id', slaEvent.conversation_id as string)
-    .single();
+    .maybeSingle();
 
   if (conversation?.telegram_chat_id) {
     const guestFirstName =
