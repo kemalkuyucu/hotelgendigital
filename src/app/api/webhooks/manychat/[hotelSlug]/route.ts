@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getHotelBySlug } from '@/lib/tenant/get-hotel-by-slug';
+import { timingSafeEqualStr } from '@/lib/telegram/verify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -45,11 +46,18 @@ export async function POST(
 ): Promise<NextResponse> {
   const { hotelSlug } = await params;
 
-  // Verify ManyChat webhook secret if configured
+  // Verify ManyChat webhook secret (AUDIT S4: fail-closed in prod + S8: constant-time)
   const webhookSecret = process.env.MANYCHAT_WEBHOOK_SECRET;
-  if (webhookSecret) {
-    const sig = req.headers.get('x-manychat-signature') ?? '';
-    if (sig !== webhookSecret) {
+  if (!webhookSecret) {
+    // Prod'da secret zorunlu → fail-closed. Dev'de uyar ve devam et.
+    if (process.env.NODE_ENV === 'production') {
+      console.error(`[manychat] MANYCHAT_WEBHOOK_SECRET tanımlı değil — fail-closed 401 (slug: ${hotelSlug})`);
+      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    console.warn(`[manychat] MANYCHAT_WEBHOOK_SECRET yok — dev modunda auth atlanıyor (slug: ${hotelSlug})`);
+  } else {
+    const sig = req.headers.get('x-manychat-signature');
+    if (!timingSafeEqualStr(sig, webhookSecret)) {
       console.warn(`[manychat] Invalid webhook secret for slug: ${hotelSlug}`);
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
     }

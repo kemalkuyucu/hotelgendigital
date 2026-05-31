@@ -6,6 +6,7 @@ import { handleRapor } from '@/lib/telegram/commands/handle-rapor';
 import { handleDurum } from '@/lib/telegram/commands/handle-durum';
 import { handleAktifKonusmalar } from '@/lib/telegram/commands/handle-aktif-konusmalar';
 import { handleSonMesajlar } from '@/lib/telegram/commands/handle-son-mesajlar';
+import { verifyTelegramSecret } from '@/lib/telegram/verify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,9 +41,9 @@ export async function POST(
   // Next.js 16 — params is async
   const { hotelSlug } = await context.params;
 
-  // 1) Signature secret doğrula
+  // 1) Signature secret doğrula (constant-time — AUDIT S8)
   const secretHeader = req.headers.get('x-telegram-bot-api-secret-token');
-  if (secretHeader !== process.env.TELEGRAM_WEBHOOK_SECRET) {
+  if (!verifyTelegramSecret(secretHeader, process.env.TELEGRAM_WEBHOOK_SECRET ?? '')) {
     return NextResponse.json({ ok: false, error: 'invalid secret' }, { status: 401 });
   }
 
