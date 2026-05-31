@@ -8,6 +8,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { getDecryptedBridge } from '@/lib/tenant/decrypt-credentials';
 
 interface HotelEntry {
   id: string;
@@ -21,9 +22,17 @@ interface SlaRunResult {
   action: 'escalated' | 'no_response_auto';
 }
 
-/** Demo için env'den token al. Production'da bridge_credentials'tan decrypt edilecek. */
-function getBotTokenForHotel(_hotelId: string): string {
-  return process.env.TELEGRAM_BOT_TOKEN_DEMO ?? '';
+/**
+ * Otel-başına bot token (AUDIT H2). demo-hotel env'den; diğerleri
+ * bridge_credentials'tan decrypt (webhook'taki mantıkla). Önceden tüm
+ * oteller için demo token dönüyordu → escalation yanlış gruba/hiç gitmiyordu.
+ */
+async function getBotTokenForHotel(hotel: HotelEntry): Promise<string> {
+  if (hotel.slug === 'demo-hotel') {
+    return process.env.TELEGRAM_BOT_TOKEN_DEMO ?? '';
+  }
+  const bridge = await getDecryptedBridge(hotel.id);
+  return bridge?.telegramBotToken ?? '';
 }
 
 function formatIstanbulTime(d: Date): string {
@@ -61,7 +70,7 @@ export async function runSlaCheck(
       continue;
     }
 
-    const botToken = getBotTokenForHotel(hotel.id);
+    const botToken = await getBotTokenForHotel(hotel);
     if (!botToken) {
       console.warn(`[sla-check] bot token yok: ${hotel.slug}`);
       continue;
@@ -96,6 +105,30 @@ export async function runSlaCheck(
         continue;
       }
 
+      const receptionSlaMinutes = (frontOffice as { reception_sla_minutes?: number | null } | null)?.reception_sla_minutes ?? 5;
+      const receptionDeadline = new Date(
+        now.getTime() + receptionSlaMinutes * 60 * 1000
+      );
+
+      // AUDIT bulgu #1: ATOMİK CLAIM — yalnızca escalated_at hâlâ null ise sahiplen.
+      // Eşzamanlı/tekrarlı çağrılarda (cron + admin/run-sla-check, ya da iki tick)
+      // çift eskalasyonu önler. Sahiplenemezsek mesaj gönderme.
+      const { data: claimed } = await hotelSupabase
+        .from('sla_events')
+        .update({
+          escalated_at: now.toISOString(),
+          reception_sla_deadline: receptionDeadline.toISOString(),
+          updated_at: now.toISOString(),
+        })
+        .eq('id', ev.id as string)
+        .is('escalated_at', null)
+        .select('id');
+
+      if (!claimed || claimed.length === 0) {
+        console.log('[sla-check] escalation zaten sahiplenilmiş, atlandı:', ev.id);
+        continue;
+      }
+
       const elapsedMin = Math.round(
         (now.getTime() - new Date(ev.forwarded_at as string).getTime()) / 60000
       );
@@ -125,20 +158,17 @@ export async function runSlaCheck(
 
       const sendData = (await sendRes.json()) as { ok: boolean; result?: { message_id: number } };
 
-      const receptionSlaMinutes = (frontOffice as { reception_sla_minutes?: number | null } | null)?.reception_sla_minutes ?? 5;
-      const receptionDeadline = new Date(
-        now.getTime() + receptionSlaMinutes * 60 * 1000
-      );
-
-      await hotelSupabase
-        .from('sla_events')
-        .update({
-          escalated_at: now.toISOString(),
-          escalation_message_id: sendData?.result?.message_id ?? null,
-          reception_sla_deadline: receptionDeadline.toISOString(),
-          updated_at: now.toISOString(),
-        })
-        .eq('id', ev.id as string);
+      if (!sendData?.ok) {
+        console.error('[sla-check] escalation mesajı gönderilemedi:', ev.id, sendData);
+      } else if (sendData.result?.message_id) {
+        await hotelSupabase
+          .from('sla_events')
+          .update({
+            escalation_message_id: sendData.result.message_id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', ev.id as string);
+      }
 
       results.push({ hotelSlug: hotel.slug, eventId: ev.id as string, action: 'escalated' });
       console.log('[sla-check] escalated:', { hotelSlug: hotel.slug, eventId: ev.id, dept: ev.department_code });
