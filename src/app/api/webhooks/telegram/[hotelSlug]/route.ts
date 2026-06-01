@@ -85,6 +85,10 @@ interface ForwardableItem {
   chatId: number;
   requestText: string;
   rawDepartment: string;
+  // B2.3 — mesaj tipi imzası. STRICTLY boolean: build-site daima boolean atar,
+  // bu alanlar ASLA undefined olamaz (Risk 1 — derleme zamanı garanti).
+  withButtons: boolean;
+  createsSlaEvent: boolean;
 }
 
 function buildForwardableItems(
@@ -103,6 +107,9 @@ function buildForwardableItems(
             requestText: fallbackRequestText,
             shouldForward: true,
             rawDepartment: fallbackIntent ?? 'unknown',
+            // Legacy fallback (AI-null) → TALEP varsayılanı (buton+SLA), bugünkü davranış.
+            withButtons: true,
+            createsSlaEvent: true,
           },
         ];
 
@@ -116,6 +123,12 @@ function buildForwardableItems(
       chatId: resolved.targetChatId,
       requestText: item.requestText || fallbackRequestText,
       rawDepartment: item.rawDepartment ?? item.department,
+      // ── RISK 1 SAVUNMASI ──────────────────────────────────────────────────
+      // YALNIZ açıkça `false` → BİLDİRİM (butonsuz/SLA-yok). undefined/null/eksik/
+      // true → TALEP varsayılanı (buton+SLA). Böylece "undefined → allergy dalı →
+      // sessiz SLA kaybı" İMKANSIZ; sonuç daima boolean (alan tipi de boolean).
+      withButtons: item.withButtons !== false,
+      createsSlaEvent: item.createsSlaEvent !== false,
     });
   }
   return items;
@@ -2263,9 +2276,13 @@ async function handleMessage(args: {
           const targetChatId = fwdItem.chatId;
           const deptChatIdForSla = String(targetChatId);
 
-          // ── ALLERGY BİLDİRİM AKIŞI: SLA butonu yok, sla_events yok ──────────
+          // ── BİLDİRİM AKIŞI (allergy): SLA butonu yok, sla_events yok ──────────
           // intent=allergy → ön büro grubuna düz bildirim mesajı; SLA talep kartı değil.
-          if (fwdItem.rawDepartment === 'allergy') {
+          // B2.3 — Dispatch artık string yerine FLAG tabanlı. createsSlaEvent=false
+          // SADECE gerçek BİLDİRİM için olur (bugün tek erişilebilir BİLDİRİM = allergy;
+          // late_checkout orchestrator enum'unda YOK → erişilemez). Flag build-site'ta
+          // strictly boolean → undefined ASLA bu dala düşemez (Risk 1). Davranış bugünküyle birebir.
+          if (!fwdItem.createsSlaEvent) {
             console.log(`[allergy-notify] Alerji bildirimi akışı — butonsuz, sla_events YOK [chatId=${deptChatIdForSla}]`);
 
             // (1) guest_allergens tablosuna kaydet (allergen_pending akışındaki mantıkla)
