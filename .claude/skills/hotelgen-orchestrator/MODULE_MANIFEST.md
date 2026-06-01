@@ -35,15 +35,26 @@ M1 foundation `v1.0-module1` · M2 auth/admin `v1.0-module2` · M3 bridge+email 
 | A14 | **L1** repoint `lint` script to ESLint CLI so the quality gate actually runs | ✅ `v1.0-A14-lint-eslint-cli` 2026-05-31 — `lint`→`eslint .` (ESLint 9 flat config); throwaway files (`__*`/`scratch_*`/`test_*`/`code-templates/`) ignored. Gate now RUNS but red on legacy baseline (32 err/26 warn in src+scripts) — rules NOT disabled; cleanup is a separate effort (Phase D candidate), so lint is not yet a hard gate |
 | A15 | **D7** unify dual hotel schema (`sql/05_*` vs `migrations/tenant/001`) | ✅ `v1.0-A15-schema-reconcile-docs` 2026-06-01 — **DB drift YOK, dosya-temizliğiyle kapatıldı.** Salt-okunur probe (schema_migrations + OpenAPI introspection) iki canlı tenant'ta: **demo-hotel** + **green-park-test** → `departments`/`department_staff`/`document_chunks`/`conversation_summary` hepsi **001-zinciri şekli** (telegram_chat_id, reception_sla_minutes, holidays, department_key, conversation_id-keyed summary mevcut); `sql/05` şekli hiçbir canlıda YOK. İkisi de `migrations/tenant/001→017` (007 skip). **Aksiyon:** tek otorite = `migrations/tenant/*`; eski `sql/0x` hotel-tarafı (05,06,07,09,09b,10,11,12) DB'ye dokunmadan DEPRECATED/ARŞİV başlığıyla işaretlendi (silinmedi); CLAUDE.md + SKILL.md + AUDIT D7 güncellendi. Runtime migration GEREKMEDİ. **Tek canlı fark (D7 dışı):** `match_documents()` RPC demo'da var, green-park'ta yok → Phase C/RAG takip (DEVIR_NOTU) |
 
-## Phase B — BRAIN RE-ARCHITECTURE (master spec Bölüm A + B)
-> Turn the single-brain orchestrator into the hybrid per-department model. Render the Turkish master spec into English prompt files per the language policy.
+## Phase B — BRAIN RE-ARCHITECTURE — 🚧 PLAN ONAYLI (2026-06-01), kod başlamadı
+
+> **Phase A %100 bitti (15/15).** Phase B = tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit model.
+>
+> **Onaylanan bağımlılık zinciri:** `B2.1 → B2.2 → B2.3 → (B2.4/B3) → B1.1 → B1.2 → B1.3 → B4`
+> Track 1 (B2) ÖNCE — düşük risk, allergen bug + buton/SLA sözleşmesi. Track 2 (B1) SONRA — B1.3 yüksek risk (geniş bot testi). Track 3 (B4) gate.
+>
+> **ONAYLANAN Intent→Mesaj-tipi haritası** (spec'te yoktu): SOHBET=greeting/acknowledgment/chitchat/farewell/affirmation/negation · BİLGİ=knowledge_query · TALEP=technical/housekeeping/fb/spa/animation/room_service/billing/lost_and_found/complaint · BİLDİRİM=allergy + aksiyon-beklemeyen bildirimler (ör. late_checkout). Çoklu-intent: her `intents[]` öğesi kendi tipini taşır (MODUL_11.2).
+> **Tip→davranış:** SOHBET/BİLGİ forward yok · TALEP=forward+2 buton+sla_events · BİLDİRİM=forward+buton YOK+sla_events YOK.
 
 | ID | Scope | Status |
 |----|-------|--------|
-| B1 | Create constitution files `00-master.md` + `01-front-office`…`07-animation` from master spec Bölüm A/B; wire into `system-prompts.ts` + orchestrator with lazy-load by department | 🔧 |
-| B2 | **4 message types** (SOHBET/BİLGİ/TALEP/BİLDİRİM): add the `notification` path to `routeIntentToDepartment`; map intents per master spec A.2; guarantee BİLDİRİM = no button + no `sla_events`; TALEP = 2 buttons + SLA | 🔧 |
-| B3 | Verify allergen path = `ALERJEN_MODUL4_KURALLAR.md` + master spec A.7 (kitchen+GR, button-free). Real-bot: `mantar alerjim var` → confirm handoff-note failure is resolved; fix only if still broken | 🔶 |
-| B4 | Regression: persistent verify still green after B1/B2 (already ✅+tagged) | 🔶 |
+| **B2.1** | Saf taksonomi modülü `src/lib/ai/message-types.ts`: `MessageType` + `INTENT_MESSAGE_TYPE` + `NOTIFICATION_INTENTS` + `getMessageType()` + `messageTypeTraits()`. Davranış-nötr (import eden yok), type-check+build, **bot testi yok**. `allergy`→BİLDİRİM resmîleşir. | ▶️ NEXT (OKU+GÖSTER yapıldı, yazım onayı bekliyor) |
+| B2.2 | `routeIntentToDepartment` → `messageType`+`withButtons`/`createsSlaEvent` flag'leri döndür; B2.1 haritasını tüket (çoğullamayı gider). Davranış-nötr. type-check+build | 🔧 |
+| B2.3 | Flag'leri forward yoluna bağla (`forward-to-department`/`send-forward-with-buttons`) — yalnız TALEP buton+SLA. **Bot testi** (operasyonel talep hâlâ 2 buton+SLA) | 🔧 |
+| B2.4 / B3 | Allergen BİLDİRİM sözleşmesini doğrula (`ALERJEN_MODUL4_KURALLAR.md`: kitchen+GR, button-free, sla yok). **Bot testi** `mantar alerjim var`. Verify-first | 🔶 |
+| B1.1 | Constitution dosyaları `00-master` + `01-front-office`…`07-animation` (saf içerik, wire yok) | 🔧 |
+| B1.2 | Lazy-load loader (departmana göre constitution → prompt kompozisyonu), **flag arkasında no-op** (davranış değişmez). type-check+build | 🔧 |
+| B1.3 | Orchestrator swap: `system-prompts.ts` monolit → 00-master + ilgili dept constitution. **GENİŞ bot testi** — YÜKSEK RİSK | 🔧 |
+| B4 | Regresyon: persistent verify + forward B1.3 sonrası hâlâ yeşil (gate) | 🔶 |
 
 ## Phase C — KNOWLEDGE / PERPLEXITY (master spec Bölüm C)
 | ID | Scope | Status |

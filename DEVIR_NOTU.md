@@ -1,13 +1,13 @@
 # DEVİR NOTU — HotelGen v2
 
-> Son güncelleme: 2026-05-31 · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
-> Bu not = oturumlar arası hızlı devir. Detay her zaman MODULE_MANIFEST.md + AUDIT.md'de.
+> Son güncelleme: 2026-06-01 · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
+> Bu not = oturumlar arası tam devir. Detay her zaman MODULE_MANIFEST.md + AUDIT.md + ALERJEN_MODUL4_KURALLAR.md'de.
 
 ---
 
-## Phase A — STABILIZE (AUDIT remediation)
+## PHASE A — ✅ %100 BİTTİ (15/15)
 
-### ✅ Tamamlanan (15 modül — Phase A %100)
+A1–A15'in tamamı tag'li ve (uygulanabilir olanlar) prod-doğrulanmış. **Phase A kapandı.**
 
 | ID | Konu (AUDIT) | Tag |
 |----|--------------|-----|
@@ -15,7 +15,7 @@
 | A2 | S3+S6 — `super_admin` guard + bcrypt cost 12 | `v1.0-A2-superadmin-guard` |
 | A3 | S4+S8 — ManyChat fail-closed + `timingSafeEqual` | `v1.0-A3-webhook-auth` |
 | A4 | D1 — `forwarded_messages` insert şemaya hizalandı + try/catch | `v1.0-A4-A5-unregistered-guest-forward` (`e27d89d`) |
-| A5 | D2 — `departments.name`→`display_name` (kayıt-dışı notify artık çalışıyor) | `v1.0-A4-A5-unregistered-guest-forward` (`e27d89d`) |
+| A5 | D2 — `departments.name`→`display_name` (kayıt-dışı notify çalışıyor) | `v1.0-A4-A5-unregistered-guest-forward` (`e27d89d`) |
 | A6 | D3 — `audit_log`→`hotel_audit_log` (archive cron) | `v1.0-A6-audit-table-fix` |
 | A7 | H1 — webhook dış try/catch → her durumda 200 | `v1.0-A7-A8-A9-webhook-resilience` (`7e685b5`) |
 | A8 | H3 — `verification_attempts` insert `await` + error check | `v1.0-A7-A8-A9-webhook-resilience` (`7e685b5`) |
@@ -25,54 +25,72 @@
 | A12 | D4 — archive cron `inhouse_guests_v2` genişletildi | `v1.0-A12-archive-v2-extend` (`7e9fca4`) |
 | A13 | D6 — SLA callback fantom `conversations.language` + `.maybeSingle()` | `v1.0-A13-callback-language-fix` |
 | A14 | L1 — `lint` script ESLint CLI'ye yönlendirildi | `v1.0-A14-lint-eslint-cli` |
-| A15 | D7 — şema ikiliği: canlı probe → drift YOK; `sql/0x` arşiv, tek otorite `migrations/tenant/*` | `v1.0-A15-schema-reconcile-docs` |
+| A15 | D7 — şema ikiliği: **canlı probe → DRIFT YOK**; `sql/0x` arşivlendi, tek otorite `migrations/tenant/*` | `v1.0-A15-schema-reconcile-docs` (`5ad5256`) |
 
-A7/A8/A9 hepsi **real-bot prod-verify 2026-05-31** (3 senaryo geçti: 9999 no-match bildirimi, 102 doğrulama + döngü yok, yanlış soyad attempt-log + limit→resepsiyon).
-
-### ✅ A10 — TAMAMLANDI (prod-verify 2026-06-01)
-
-**A10 — H2 + çift-eskalasyon önleme (AUDIT H2 + real-bot #1)** — `v1.0-A10-sla-atomic-claim` (`f33c6b9`)
-- İçerik: `getBotTokenForHotel` per-hotel token (demo→env / else `getDecryptedBridge`); çift-eskalasyon için **atomik claim** (`update(escalated_at) WHERE escalated_at IS NULL .select()` → claim edilmezse mesaj atma). Harici dup cron (cron-job.org) Kemal tarafından kaldırıldı.
-- **PROD-VERIFY ✅ 2026-06-01:** doğrulanmış misafir (102) talep gönderdi, butona basılmadı, SLA aşımında Demo_OnBuro'ya eskalasyon **TAM 1 KEZ** düştü (önceden 2 kez), "Oda: 102" dolu.
-
-### ✅ A15 — TAMAMLANDI (2026-06-01) — Phase A artık %100 (15/15)
-
-**A15 — D7 ikili şema birleştirme** — `v1.0-A15-schema-reconcile-docs`
-- **Sonuç: DB'de DRIFT YOK — A15 bir runtime migration değil, dosya temizliği çıktı.**
-- Salt-okunur probe (schema_migrations + PostgREST OpenAPI introspection, **sadece SELECT**) iki canlı tenant'a koşuldu:
-  - **demo-hotel** ve **green-park-test**: `departments` (telegram_chat_id/reception_sla_minutes/holidays ✓), `department_staff` (department_key ✓, allergen flags ✓), `document_chunks`, `conversation_summary` (conversation_id-keyed ✓) — **hepsi 001-zinciri şekli**. `sql/05` şekli hiçbir canlıda YOK. İkisi de `migrations/tenant/001→017` (007 skip).
-- **Aksiyon:** tek otorite = `migrations/tenant/*`. Eski `sql/0x` hotel-tarafı dosyalar (05,06,07,09,09b,10,11,12) DB'ye **dokunmadan** başlarına DEPRECATED/ARŞİV başlığı eklenerek arşivlendi (silinmedi). CLAUDE.md + SKILL.md + AUDIT D7 güncellendi. **Runtime migration GEREKMEDİ.**
-- **Tek canlı fark (D7 dışı, TAKİP):** `match_documents()` RPC **demo-hotel'de var, green-park-test'te YOK** → RAG kullanılacaksa green-park'a pgvector fonksiyonunu eklemek gerekir. **Phase C / RAG takip maddesi** (şema sorunu değil, A15 kapsamı dışı).
+**Prod-verify özetleri:**
+- A7/A8/A9: real-bot 2026-05-31 (3 senaryo: 9999 no-match bildirimi, 102 doğrulama + döngü yok, yanlış soyad attempt-log + limit→resepsiyon).
+- A10: real-bot 2026-06-01 — doğrulanmış misafir (102) talep, butona basılmadı, SLA aşımında Demo_OnBuro'ya eskalasyon **TAM 1 KEZ** (önceden 2), "Oda: 102" dolu.
+- A11: real-bot 2026-05-31 — 19:11 talebinde Demo_HK'da "Oda: 102".
+- A15: salt-okunur probe (schema_migrations + OpenAPI introspection) **demo-hotel + green-park-test** → `departments`/`department_staff`/`document_chunks`/`conversation_summary` hepsi 001-zinciri şekli; `sql/05` şekli hiçbir canlıda yok. Runtime migration GEREKMEDİ.
 
 ---
 
-## UX Backlog (sonraki faz — ŞİMDİ DOKUNMA)
+## PHASE B — 🚧 BAŞLIYORUZ (plan ONAYLI, kod henüz YOK)
 
-- **Deneme sayısı 3→2:** `MAX_VERIFICATION_ATTEMPTS = 3` (`verification-intents.ts:34`). Kemal 2 istiyor. Master spec'te (HOTELGEN_MASTER_SPEC.md repo'da YOK) bir sayı belirtilmiyor → bu bir **config kararı**, reconcile edilecek spec yok.
-- **Kayıt-dışı bildirim hızlandırma (UX-1/UX-2):** Bildirim 3 başarısız deneme + gecikme sonrası geç düşüyor. Aday: deneme sayısını düşür + gönderim anını hızlandır.
-- **SLA eskalasyon FORM → rapor (D-REP):** Reception şu an eskalasyonda buton/mesaj alıyor; olması gereken **FORM** — reception ilgili departmanla iletişime geçer, gecikme açıklaması yazar, bu açıklama manager raporunda (detaylı) görünür. "Escalation reason form" → rapor bağlantısı D-REP'te tasarlanacak.
+Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit model.
+
+### Onaylanan bağımlılık zinciri
+**B2.1 → B2.2 → B2.3 → (B2.4/B3) → B1.1 → B1.2 → B1.3 → B4**
+
+| Track | Adımlar | Risk | Guest-facing? |
+|---|---|---|---|
+| **Track 1 (ÖNCE)** B2 — allergen bug + buton/SLA sözleşmesi | **B2.1** taksonomi modülü (saf) · **B2.2** router'a `messageType`+flag (davranış-nötr) · **B2.3** flag'leri forward yoluna bağla · **B2.4** allergen BİLDİRİM doğrula | Düşük | B2.1/B2.2 ❌ · B2.3/B2.4 ✅ bot testi |
+| **Track 2 (SONRA)** B1 — beyin re-mimarisi | **B1.1** constitution dosyaları (`00-master` + 7 dept) · **B1.2** lazy-load loader (no-op, flag arkasında) · **B1.3** orchestrator swap | B1.3 **YÜKSEK** | B1.1/B1.2 ❌ · B1.3 ✅ **GENİŞ** bot testi |
+| **Track 3 (EN SON, gate)** | **B4** persistent-verify + forward regresyonu | Gate | ✅ bot testi |
+
+### ONAYLANAN Intent → Mesaj-tipi haritası (spec'te yoktu, eklendi)
+- **SOHBET:** greeting, acknowledgment, chitchat, farewell, affirmation, negation
+- **BİLGİ:** knowledge_query
+- **TALEP:** technical, housekeeping, fb, spa, animation, room_service, billing, lost_and_found, complaint
+- **BİLDİRİM:** allergy + misafirin aksiyon beklemediği bildirimler (örn. "yarın geç çıkış")
+- **Çoklu-intent:** bir mesaj aynı anda TALEP+BİLDİRİM taşıyabilir; her `intents[]` öğesi kendi tipini taşır (MODUL_11.2 mantığı).
+
+### Tip → davranış sözleşmesi (B2'nin kuracağı)
+- SOHBET / BİLGİ → forward YOK.
+- **TALEP → forward + 2 buton + `sla_events`.**
+- **BİLDİRİM → forward + buton YOK + `sla_events` YOK.** (Allergen'in zaten yaptığı; B2 bunu first-class sınıf yapar — eski bug'ın kök nedeni BİLDİRİM'in router dışında özel-kılıf olmasıydı.)
+
+### Mevcut durum (Phase B öncesi kod gerçeği)
+- Beyin: **tek monolit** `system-prompts.ts::buildOrchestratorSystemPrompt` (~430 satır). Constitution/lazy-load YOK.
+- Sınıflama: `classify-and-respond.ts` (strict-JSON: reply_text/intents[]/confidence/answered_from_knowledge) + safety pre-classifier (Haiku).
+- Routing: `routeIntentToDepartment` — NON_FORWARDING / OPERATIONAL / PERSONAL / complaint / fallback. **`notification` dalı YOK.**
+- TALEP: `forward-to-department` + `send-forward-with-buttons` + sla_events. BİLDİRİM: yalnız `allergen-notify.ts` (router'ı baypas, button-free, Senaryo A/B/C).
+
+### ▶ SIRADAKİ İLK ADIM: B2.1 (OKU+GÖSTER yapıldı, yazım onayı bekliyor)
+- **Ne:** tek yeni saf dosya `src/lib/ai/message-types.ts` — `MessageType` tipi + `INTENT_MESSAGE_TYPE` haritası + `NOTIFICATION_INTENTS` + `getMessageType()` + `messageTypeTraits()`. Davranış-nötr (kimse import etmez), bot testi YOK, sadece type-check+build.
+- **Kritik:** `allergy` resmî olarak **BİLDİRİM** olur. Mevcut `OPERATIONAL/PERSONAL/...` set'leri B2.1'de silinmez; B2.2'de router bu haritayı tüketir, çoğullama o adımda biter (drift 1 adım sürer).
+- Onay gelince yazılacak.
 
 ---
 
-## Bilinen artıklar (bug DEĞİL)
-
-- **18:37'lik "Oda: —" SLA mesajları:** A11 fix'inden ÖNCE oluşmuş eski kayıtlar. Kod artık doğru ("Oda: 102" düşüyor); eski mesajlar geçmiş veri, bug değil.
-- Repo kökündeki `__*.js/.mjs`, `scratch_*.mjs`, `__run_*.ps1`, `__test_scenario_*.json` → throwaway diagnostic, commit edilmedi, referans/kaynak kod DEĞİL.
-
----
-
-## Sonraki fazlar (sıra)
-
-- **Phase B — Beyin re-mimarisi:** tek-beyin orchestrator → hibrit per-department model. Constitution dosyaları (`00-master.md` + `01-front-office`…`07-animation`), 4 mesaj tipi (SOHBET/BİLGİ/TALEP/BİLDİRİM), allergen path doğrulama (button-free, kitchen+GR).
-- **Phase C — Bilgi havuzu / Perplexity:** Green Park çevre keşfi ön-doldurma, havaalanı/merkez km'leri `hotel_settings.location_info`'ya, "bilgi sistemde yok" fallback doğrulama. **+ RAG takip (A15'ten):** `match_documents()` RPC green-park-test'te YOK (demo'da var) — RAG/document_chunks semantik arama green-park'ta kullanılacaksa fonksiyon + (gerekiyorsa) `embedding` vektör tipini o tenant'a eklemek gerekir.
-- **Phase D — Özellikler:** Reservation Links (~810 lokal satır commit), manager raporlama detayı + PDF/Excel (D-REP), Module 18 timezone drift (21:00 TR sonrası), pending-match testi, eksik tag'ler (`v1.0-module17b`, `v1.0-module17cd`), Telegram dept-group prerequisites (Kemal task).
-
----
-
-## Güvenlik
-- ⚠️ **green-park-test `service_role` key paylaşıldı (2026-06-01):** A15 canlı probe'u için green-park-test'in Supabase `service_role` key'i sohbete yapıştırıldı (probe salt-okunur, key çıktıya yazılmadı, geçici dosya silindi). Tam yetkili gizli anahtardır → **gerekirse Supabase dashboard'dan rotate et** (Project Settings → API Keys → service_role → rotate). Probe bitti, key'e artık ihtiyaç yok.
-
-## Notlar
-- **Validasyon gate:** `npm run type-check` + `npm run build` (lint A14'te runner'a bağlandı ama legacy baseline'da red — henüz hard gate değil).
-- **SLA değerleri** test için düşük (1/5 dk) olabilir → go-live öncesi gerçek 30/60'a çek (D altında).
+## AÇIK TAKİP (Phase B dışı, unutma)
+- **match_documents RPC green-park-test'te YOK** (demo-hotel'de var) → RAG/document_chunks semantik arama green-park'ta kullanılacaksa fonksiyon + (gerekiyorsa) `embedding` vektör tipi eklenecek. **Phase C / RAG.**
+- **SLA değerleri** test için düşük (1/5 dk) olabilir → go-live öncesi gerçek 30/60'a çek (Phase D).
 - **Summary threshold:** master mimari 50 msg der; canlı ~20 msg / 8000 token. Canlı değer korunuyor, Kemal teyit edecek.
+
+## UX BACKLOG (sonraki faz — ŞİMDİ DOKUNMA)
+- **Deneme sayısı 3→2:** `MAX_VERIFICATION_ATTEMPTS = 3` (`verification-intents.ts:34`). Kemal 2 istiyor. Spec'te sayı yok → config kararı.
+- **Kayıt-dışı bildirim hızlandırma (UX-1/UX-2):** bildirim 3 başarısız deneme + gecikme sonrası geç düşüyor → deneme sayısını düşür + gönderim anını hızlandır.
+- **SLA eskalasyon FORM → rapor (D-REP):** reception eskalasyonda şu an buton/mesaj alıyor; olması gereken FORM — gecikme açıklaması yazılır, manager raporunda (detaylı) görünür.
+
+## GÜVENLİK
+- ⚠️ **green-park-test `service_role` key paylaşıldı (2026-06-01):** A15 canlı probe'u için sohbete yapıştırıldı (probe salt-okunur, key çıktıya yazılmadı, geçici dosya silindi). Tam yetkili gizli anahtar → **gerekirse Supabase dashboard'dan rotate et** (Project Settings → API Keys → service_role). Probe bitti, key'e ihtiyaç yok.
+
+## BİLİNEN ARTIKLAR (bug DEĞİL)
+- Repo kökündeki `__*.js/.mjs`, `scratch_*.mjs`, `__run_*.ps1`, `__test_scenario_*.json` → throwaway diagnostic, commit edilmedi, kaynak/referans kod DEĞİL.
+- A11 öncesi oluşmuş "Oda: —" eski SLA mesajları → geçmiş veri, kod artık doğru.
+
+## NOTLAR
+- **Validasyon gate:** `npm run type-check` + `npm run build`. (lint A14'te runner'a bağlandı ama legacy baseline'da red — henüz hard gate değil; otomatik test yok.)
+- **Tenant şema otoritesi:** `migrations/tenant/*` (eski `sql/0x` DEPRECATED/arşiv). Kolon kullanmadan önce migration'a bak.
+- **Spec dosyası:** `HOTELGEN_MASTER_SPEC.md` repo'da YOK — hedef mimari MODULE_MANIFEST Phase B + ALERJEN_MODUL4 + onaylı kararlardan türetiliyor.
