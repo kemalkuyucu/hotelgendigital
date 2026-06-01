@@ -10,6 +10,15 @@ import {
 } from './hotel-context';
 // Mikro Adım 5 — Safety pre-classifier
 import { classifySafety } from './safety-classifier';
+// Phase B / B2.2 — Mesaj tipi taksonomisi (B2.1). Forward kararı değil; sadece
+// her intent'e messageType + withButtons + createsSlaEvent imzası ekler.
+import {
+  getMessageType,
+  messageTypeTraits,
+  CHAT_INTENTS,
+  INFO_INTENTS,
+  type MessageType,
+} from './message-types';
 
 export interface ConversationContextMessage {
   direction: 'inbound' | 'outbound';
@@ -30,6 +39,10 @@ export interface ClassifiedIntentItem {
   requestText: string;
   shouldForward: boolean;
   rawDepartment: string;
+  // B2.2 — per-intent mesaj tipi imzası (B2.3'e dek TÜKETİLMEZ; davranış-nötr taşıyıcı)
+  messageType: MessageType;
+  withButtons: boolean;
+  createsSlaEvent: boolean;
 }
 
 export interface ClassifyAndRespondOutput {
@@ -214,6 +227,10 @@ export async function classifyAndRespond(
       requestText: item.request_text || responseToGuest,
       shouldForward: routing.shouldForward,
       rawDepartment: item.department,
+      // B2.2 — her intent kendi mesaj tipini taşır (çoklu-intent: TALEP+BİLDİRİM ayrışır)
+      messageType: routing.messageType,
+      withButtons: routing.withButtons,
+      createsSlaEvent: routing.createsSlaEvent,
     };
   });
 
@@ -280,25 +297,41 @@ const COMPLAINT_INTENTS = new Set(['complaint']);
  * Modül 10.6 — Sosyal / non-actionable intent'ler.
  * Bu intent'lerde SADECE bot cevap verilir, hiçbir departmana forward EDİLMEZ.
  * Doğrulama akışı da tetiklenmez.
+ *
+ * B2.2 — Tek doğruluk kaynağı artık `message-types.ts`. Bu set, oradaki
+ * SOHBET (`CHAT_INTENTS`) + BİLGİ (`INFO_INTENTS`) kümelerinin birleşimidir
+ * (aynı 7 üye: greeting/acknowledgment/chitchat/farewell/affirmation/negation/
+ * knowledge_query). Elle tutulan kopya liste kaldırıldı; export korundu.
  */
-export const NON_FORWARDING_INTENTS = new Set([
-  'greeting',         // merhaba, selam, hello, hi
-  'acknowledgment',   // teşekkürler, sağol, thanks
-  'chitchat',         // nasılsın, hava nasıl
-  'farewell',         // görüşürüz, iyi geceler, bye
-  'affirmation',      // evet, tamam, olur, yes
-  'negation',         // hayır, gerek yok, no
-  'knowledge_query',  // KB sorusu (cevap KB'den, forward yok)
+export const NON_FORWARDING_INTENTS = new Set<string>([
+  ...CHAT_INTENTS,
+  ...INFO_INTENTS,
 ]);
 
 export interface RoutingDecision {
   department: string | null;
   shouldForward: boolean;
   routingReason: string;
+  // B2.2 — mesaj tipi imzası (B2.1 haritasından türetilir; forward kararını DEĞİŞTİRMEZ)
+  messageType: MessageType;
+  withButtons: boolean;
+  createsSlaEvent: boolean;
 }
 
 export function routeIntentToDepartment(intent: string): RoutingDecision {
   const normalized = (intent || '').toLowerCase().trim();
+
+  // B2.2 — mesaj tipi imzası (B2.1 haritası). Departman + forward branch'leri
+  // AYNEN korunur; bu yalnızca her karara messageType/withButtons/createsSlaEvent
+  // alanlarını EKLER. messageTypeTraits.forwards, aşağıdaki shouldForward ile
+  // birebir aynı sonucu verir (her intent için doğrulandı) — davranış değişmez.
+  const messageType = getMessageType(normalized);
+  const traits = messageTypeTraits(messageType);
+  const typeSignature = {
+    messageType,
+    withButtons: traits.withButtons,
+    createsSlaEvent: traits.createsSlaEvent,
+  };
 
   // 1) Sosyal / non-actionable → forward yok
   if (NON_FORWARDING_INTENTS.has(normalized)) {
@@ -306,27 +339,28 @@ export function routeIntentToDepartment(intent: string): RoutingDecision {
       department: null,
       shouldForward: false,
       routingReason: `no_forward_${normalized}`,
+      ...typeSignature,
     };
   }
 
   // 2) Operasyonel → kendi departmanı
   if (OPERATIONAL_INTENTS.has(normalized)) {
     if (normalized === 'room_service') {
-      return { department: 'fb', shouldForward: true, routingReason: 'operational_room_service' };
+      return { department: 'fb', shouldForward: true, routingReason: 'operational_room_service', ...typeSignature };
     }
-    return { department: normalized, shouldForward: true, routingReason: 'operational_direct' };
+    return { department: normalized, shouldForward: true, routingReason: 'operational_direct', ...typeSignature };
   }
 
   // 3) Kişisel → ön büro
   if (PERSONAL_INTENTS.has(normalized)) {
-    return { department: 'front_office', shouldForward: true, routingReason: 'personal_to_front_office' };
+    return { department: 'front_office', shouldForward: true, routingReason: 'personal_to_front_office', ...typeSignature };
   }
 
   // 4) Salt complaint → GR
   if (COMPLAINT_INTENTS.has(normalized)) {
-    return { department: 'guest_relation', shouldForward: true, routingReason: 'complaint_to_gr' };
+    return { department: 'guest_relation', shouldForward: true, routingReason: 'complaint_to_gr', ...typeSignature };
   }
 
   // 5) Fallback — emin değilsek ön büroya
-  return { department: 'front_office', shouldForward: true, routingReason: 'fallback' };
+  return { department: 'front_office', shouldForward: true, routingReason: 'fallback', ...typeSignature };
 }
