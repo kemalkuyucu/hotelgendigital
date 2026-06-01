@@ -1,6 +1,6 @@
 # DEVİR NOTU — HotelGen v2
 
-> Son güncelleme: 2026-06-01 (B2.1 bitti) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
+> Son güncelleme: 2026-06-01 (B2.1+B2.2 bitti) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
 > Bu not = oturumlar arası tam devir. Detay her zaman MODULE_MANIFEST.md + AUDIT.md + ALERJEN_MODUL4_KURALLAR.md'de.
 
 ---
@@ -35,16 +35,16 @@ A1–A15'in tamamı tag'li ve (uygulanabilir olanlar) prod-doğrulanmış. **Pha
 
 ---
 
-## PHASE B — 🚧 BAŞLADI · B2.1 ✅ BİTTİ · SIRADAKİ B2.2
+## PHASE B — 🚧 BAŞLADI · B2.1+B2.2 ✅ BİTTİ · SIRADAKİ B2.3
 
 Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit model.
 
 ### Onaylanan bağımlılık zinciri
-**B2.1 ✅ → B2.2 ◀ SIRADAKİ → B2.3 → (B2.4/B3) → B1.1 → B1.2 → B1.3 → B4**
+**B2.1 ✅ → B2.2 ✅ → B2.3 ◀ SIRADAKİ → (B2.4/B3) → B1.1 → B1.2 → B1.3 → B4**
 
 | Track | Adımlar | Risk | Guest-facing? |
 |---|---|---|---|
-| **Track 1 (ÖNCE)** B2 — allergen bug + buton/SLA sözleşmesi | **B2.1 ✅** taksonomi modülü (saf) · **B2.2 ◀** router'a `messageType`+flag (davranış-nötr) · **B2.3** flag'leri forward yoluna bağla · **B2.4** allergen BİLDİRİM doğrula | Düşük | B2.1/B2.2 ❌ · B2.3/B2.4 ✅ bot testi |
+| **Track 1 (ÖNCE)** B2 — allergen bug + buton/SLA sözleşmesi | **B2.1 ✅** taksonomi modülü (saf) · **B2.2 ✅** router'a `messageType`+flag (davranış-nötr) · **B2.3 ◀** flag'leri forward yoluna bağla · **B2.4** allergen BİLDİRİM doğrula | Düşük | B2.1/B2.2 ❌ · B2.3/B2.4 ✅ bot testi |
 | **Track 2 (SONRA)** B1 — beyin re-mimarisi | **B1.1** constitution dosyaları (`00-master` + 7 dept) · **B1.2** lazy-load loader (no-op, flag arkasında) · **B1.3** orchestrator swap | B1.3 **YÜKSEK** | B1.1/B1.2 ❌ · B1.3 ✅ **GENİŞ** bot testi |
 | **Track 3 (EN SON, gate)** | **B4** persistent-verify + forward regresyonu | Gate | ✅ bot testi |
 
@@ -61,22 +61,29 @@ Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit mod
 - **TALEP → `forwards:true, withButtons:true, createsSlaEvent:true`** (forward + 2 buton + `sla_events`).
 - **BİLDİRİM → `forwards:true, withButtons:false, createsSlaEvent:false`** (forward + buton YOK + sla YOK). Allergen'in zaten yaptığı; B2 bunu first-class sınıf yapar — eski bug'ın kök nedeni BİLDİRİM'in router dışında özel-kılıf olmasıydı.
 
-### B2.1 — ✅ NE YAPILDI (commit `ae32b48`, tag `v1.0-B2.1-message-types`)
-- Tek yeni **saf** dosya `src/lib/ai/message-types.ts`. İçerik: `MessageType` tipi · `MessageTypeTraits` + `MESSAGE_TYPE_TRAITS` tablosu · `CHAT/INFO/REQUEST/NOTIFICATION_INTENTS` kümeleri · `INTENT_MESSAGE_TYPE` (4 kümeden türetilir, `Object.freeze`) · `getMessageType()` · `messageTypeTraits()`.
-- **Davranış-nötr DOĞRULANDI:** hiçbir servis import edilmiyor, hiçbir dosya bu modülü import etmiyor. type-check + build YEŞİL. Bot testi gerekmedi (canlı yol değişmedi).
-- `allergy` + `late_checkout` resmî olarak **BİLDİRİM**. Mevcut `OPERATIONAL/PERSONAL/...` set'leri (classify-and-respond.ts) HÂLÂ duruyor — silinmedi; drift kasıtlı, B2.2'de kapanacak.
+### B2.1 — ✅ (commit `ae32b48`, tag `v1.0-B2.1-message-types`)
+- Tek yeni **saf** dosya `src/lib/ai/message-types.ts`: `MessageType` · `MESSAGE_TYPE_TRAITS` · `CHAT/INFO/REQUEST/NOTIFICATION_INTENTS` · `INTENT_MESSAGE_TYPE` (frozen) · `getMessageType()` · `messageTypeTraits()`. Davranış-nötr (kimse import etmiyordu). `allergy`+`late_checkout` → BİLDİRİM.
 
-### ▶ SIRADAKİ ADIM: B2.2 — router haritayı tüketsin + çoklu-intent
-- **Ne:** `routeIntentToDepartment` (`classify-and-respond.ts:300`) artık `message-types.ts`'i tüketsin: dönüş tipine `messageType` + `withButtons` + `createsSlaEvent` flag'leri eklensin. Eski `NON_FORWARDING/OPERATIONAL/PERSONAL/COMPLAINT` set'leri B2.1 haritasıyla DEĞİŞTİRİLİP **çoğullama giderilsin** (tek doğruluk kaynağı = message-types.ts).
-- **Çoklu-intent:** `classifiedIntents[]` her öğeye kendi `messageType`/flag'lerini taşısın (şu an `routeIntentToDepartment` sadece department+shouldForward döndürüyor).
-- **Kısıt:** B2.2 **davranış-nötr** kalmalı — flag'ler eklenir ama forward yolu (B2.3'e dek) onları HENÜZ kullanmaz. Doğrulama: type-check + build. Bot testi B2.3'te.
-- **Dikkat:** mevcut `routeIntentToDepartment` davranışı birebir korunmalı — `room_service→fb`, unknown→front_office, knowledge_query→no-forward. message-types.ts bunlarla zaten uyumlu (kontrol edildi).
+### B2.2 — ✅ NE YAPILDI (commit bu turda, tag `v1.0-B2.2-router-consumes-map`)
+- **TEK dosya** `src/lib/ai/classify-and-respond.ts` (+47/−13). message-types.ts artık TÜKETİLİYOR.
+- `RoutingDecision` + `ClassifiedIntentItem` interface'lerine `messageType` / `withButtons` / `createsSlaEvent` eklendi.
+- `routeIntentToDepartment`: başta `getMessageType`+`messageTypeTraits` ile `typeSignature` hesaplanır, her 5 dönüşe `...typeSignature` spread edilir. **Departman + `shouldForward` branch'leri AYNEN** (additive — forward kararı hâlâ branch'lerden gelir, traits'ten DEĞİL).
+- `classifiedIntents.map`: her intent kendi `messageType`/flag'lerini taşır → çoklu-intent'te TALEP ve BİLDİRİM ayrışır.
+- `NON_FORWARDING_INTENTS`: elle-tutulan 7'li kopya → `new Set([...CHAT_INTENTS, ...INFO_INTENTS])` (aynı 7 üye; export simgesi korundu; çoğullama gitti). route.ts'te bu simgeyi import eden YOK (doğrulandı).
+- **route.ts DOKUNULMADI.** Allergy hâlâ `rawDepartment==='allergy'` ile dallanır; yeni flag'ler taşınır ama **B2.3'e dek OKUNMAZ** → davranış-nötr.
+- **Davranış-nötr DOĞRULANDI** (single + multi-intent çıktısı bugünküyle birebir). type-check + build YEŞİL. Bot testi yok (canlı yol değişmedi).
 
-### Mevcut durum (kod gerçeği — B2.1 sonrası)
+### ▶ SIRADAKİ ADIM: B2.3 — flag'leri forward yoluna BAĞLA (orchestrator entegrasyonu)
+- **Ne:** B2.2'de taşınan `withButtons` / `createsSlaEvent` flag'lerini route.ts forward döngüsünde TÜKET. Hedef: forward yolu artık string `rawDepartment==='allergy'` özel-kılıfına değil, **`item.withButtons`/`item.createsSlaEvent`** flag'lerine göre dallansın → yalnız **TALEP** = 2 buton + `sla_events`; **BİLDİRİM** = butonsuz + sla yok (allergy bunun bir örneği olur, hardcode değil).
+- **Dosyalar:** `src/app/api/webhooks/telegram/[hotelSlug]/route.ts` (forward döngüsü ~L2259+; allergy branch L2268), muhtemelen `forward-to-department.ts` / `send-forward-with-buttons.ts` dokunuşu.
+- **Kritik — DAVRANIŞ DEĞİŞİR (artık nötr DEĞİL):** B2.3 ilk guest-facing adım. `FRONT_OFFICE_ALLERGY_CHAT_ID=-5015613103` hardcode'u + allergy özel-kılıfı flag-tabanlı genel BİLDİRİM yoluna taşınırken **allergen sözleşmesi BOZULMAMALI** (`ALERJEN_MODUL4_KURALLAR.md`: kitchen+GR, butonsuz, sla yok, reception sadece 00:00–08:00). 
+- **Doğrulama:** type-check + build + **BOT TESTİ** — (a) operasyonel talep (ör. "havlu") hâlâ 2 buton + SLA event; (b) "mantar alerjim var" hâlâ butonsuz + sla yok + doğru grup. B2.4 bu allergen doğrulamasıyla örtüşür.
+
+### Mevcut durum (kod gerçeği — B2.2 sonrası)
 - Beyin: **tek monolit** `system-prompts.ts::buildOrchestratorSystemPrompt` (~430 satır). Constitution/lazy-load YOK (Track 2).
-- Sınıflama: `classify-and-respond.ts` (strict-JSON: reply_text/intents[]/confidence/answered_from_knowledge) + safety pre-classifier (Haiku).
-- Routing: `routeIntentToDepartment` — NON_FORWARDING / OPERATIONAL / PERSONAL / complaint / fallback. **`notification` dalı HÂLÂ YOK** (B2.2'de gelecek). Yeni `message-types.ts` mevcut ama henüz tüketilmiyor.
-- TALEP: `forward-to-department` + `send-forward-with-buttons` + sla_events. BİLDİRİM: yalnız `allergen-notify.ts` (router'ı baypas, button-free, Senaryo A/B/C).
+- Sınıflama: `classify-and-respond.ts` (strict-JSON: reply_text/intents[]/confidence/answered_from_knowledge) + safety pre-classifier (Haiku). **Artık `message-types.ts`'i tüketir → her intent `messageType`+flag taşır.**
+- Routing: `routeIntentToDepartment` — NON_FORWARDING(=CHAT∪INFO) / OPERATIONAL / PERSONAL / complaint / fallback + **mesaj-tipi imzası**. Flag'ler taşınıyor ama forward yolunda HENÜZ okunmuyor (B2.3).
+- TALEP: `forward-to-department` + `send-forward-with-buttons` + sla_events. BİLDİRİM: route.ts içinde `rawDepartment==='allergy'` özel-kılıf (button-free), `allergen-notify.ts`. **B2.3 bu özel-kılıfı flag-tabanlı yapacak.**
 
 ---
 
