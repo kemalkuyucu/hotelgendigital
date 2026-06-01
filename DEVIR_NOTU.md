@@ -1,6 +1,6 @@
 # DEVİR NOTU — HotelGen v2
 
-> Son güncelleme: 2026-06-01 · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
+> Son güncelleme: 2026-06-01 (B2.1 bitti) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
 > Bu not = oturumlar arası tam devir. Detay her zaman MODULE_MANIFEST.md + AUDIT.md + ALERJEN_MODUL4_KURALLAR.md'de.
 
 ---
@@ -35,41 +35,48 @@ A1–A15'in tamamı tag'li ve (uygulanabilir olanlar) prod-doğrulanmış. **Pha
 
 ---
 
-## PHASE B — 🚧 BAŞLIYORUZ (plan ONAYLI, kod henüz YOK)
+## PHASE B — 🚧 BAŞLADI · B2.1 ✅ BİTTİ · SIRADAKİ B2.2
 
 Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit model.
 
 ### Onaylanan bağımlılık zinciri
-**B2.1 → B2.2 → B2.3 → (B2.4/B3) → B1.1 → B1.2 → B1.3 → B4**
+**B2.1 ✅ → B2.2 ◀ SIRADAKİ → B2.3 → (B2.4/B3) → B1.1 → B1.2 → B1.3 → B4**
 
 | Track | Adımlar | Risk | Guest-facing? |
 |---|---|---|---|
-| **Track 1 (ÖNCE)** B2 — allergen bug + buton/SLA sözleşmesi | **B2.1** taksonomi modülü (saf) · **B2.2** router'a `messageType`+flag (davranış-nötr) · **B2.3** flag'leri forward yoluna bağla · **B2.4** allergen BİLDİRİM doğrula | Düşük | B2.1/B2.2 ❌ · B2.3/B2.4 ✅ bot testi |
+| **Track 1 (ÖNCE)** B2 — allergen bug + buton/SLA sözleşmesi | **B2.1 ✅** taksonomi modülü (saf) · **B2.2 ◀** router'a `messageType`+flag (davranış-nötr) · **B2.3** flag'leri forward yoluna bağla · **B2.4** allergen BİLDİRİM doğrula | Düşük | B2.1/B2.2 ❌ · B2.3/B2.4 ✅ bot testi |
 | **Track 2 (SONRA)** B1 — beyin re-mimarisi | **B1.1** constitution dosyaları (`00-master` + 7 dept) · **B1.2** lazy-load loader (no-op, flag arkasında) · **B1.3** orchestrator swap | B1.3 **YÜKSEK** | B1.1/B1.2 ❌ · B1.3 ✅ **GENİŞ** bot testi |
 | **Track 3 (EN SON, gate)** | **B4** persistent-verify + forward regresyonu | Gate | ✅ bot testi |
 
-### ONAYLANAN Intent → Mesaj-tipi haritası (spec'te yoktu, eklendi)
-- **SOHBET:** greeting, acknowledgment, chitchat, farewell, affirmation, negation
-- **BİLGİ:** knowledge_query
-- **TALEP:** technical, housekeeping, fb, spa, animation, room_service, billing, lost_and_found, complaint
-- **BİLDİRİM:** allergy + misafirin aksiyon beklemediği bildirimler (örn. "yarın geç çıkış")
-- **Çoklu-intent:** bir mesaj aynı anda TALEP+BİLDİRİM taşıyabilir; her `intents[]` öğesi kendi tipini taşır (MODUL_11.2 mantığı).
+### ONAYLANAN Intent → Mesaj-tipi haritası (B2.1'de KODLANDI → `message-types.ts`)
+- **SOHBET** (`CHAT_INTENTS`): greeting, acknowledgment, chitchat, farewell, affirmation, negation
+- **BİLGİ** (`INFO_INTENTS`): knowledge_query
+- **TALEP** (`REQUEST_INTENTS`): technical, housekeeping, fb, spa, animation, room_service, billing, lost_and_found, complaint
+- **BİLDİRİM** (`NOTIFICATION_INTENTS`): allergy, late_checkout (+ misafirin aksiyon beklemediği bildirimler)
+- **Tanınmayan/boş intent → TALEP** (davranış-nötr fallback; mevcut router da bilinmeyeni forward'lar).
+- **Çoklu-intent:** her `intents[]` öğesi kendi tipini taşır (MODUL_11.2). B2.2'de tüketilecek.
 
-### Tip → davranış sözleşmesi (B2'nin kuracağı)
-- SOHBET / BİLGİ → forward YOK.
-- **TALEP → forward + 2 buton + `sla_events`.**
-- **BİLDİRİM → forward + buton YOK + `sla_events` YOK.** (Allergen'in zaten yaptığı; B2 bunu first-class sınıf yapar — eski bug'ın kök nedeni BİLDİRİM'in router dışında özel-kılıf olmasıydı.)
+### Tip → davranış sözleşmesi (B2.1'de `messageTypeTraits()` olarak kodlandı)
+- SOHBET / BİLGİ → `forwards:false` (forward YOK).
+- **TALEP → `forwards:true, withButtons:true, createsSlaEvent:true`** (forward + 2 buton + `sla_events`).
+- **BİLDİRİM → `forwards:true, withButtons:false, createsSlaEvent:false`** (forward + buton YOK + sla YOK). Allergen'in zaten yaptığı; B2 bunu first-class sınıf yapar — eski bug'ın kök nedeni BİLDİRİM'in router dışında özel-kılıf olmasıydı.
 
-### Mevcut durum (Phase B öncesi kod gerçeği)
-- Beyin: **tek monolit** `system-prompts.ts::buildOrchestratorSystemPrompt` (~430 satır). Constitution/lazy-load YOK.
+### B2.1 — ✅ NE YAPILDI (commit `ae32b48`, tag `v1.0-B2.1-message-types`)
+- Tek yeni **saf** dosya `src/lib/ai/message-types.ts`. İçerik: `MessageType` tipi · `MessageTypeTraits` + `MESSAGE_TYPE_TRAITS` tablosu · `CHAT/INFO/REQUEST/NOTIFICATION_INTENTS` kümeleri · `INTENT_MESSAGE_TYPE` (4 kümeden türetilir, `Object.freeze`) · `getMessageType()` · `messageTypeTraits()`.
+- **Davranış-nötr DOĞRULANDI:** hiçbir servis import edilmiyor, hiçbir dosya bu modülü import etmiyor. type-check + build YEŞİL. Bot testi gerekmedi (canlı yol değişmedi).
+- `allergy` + `late_checkout` resmî olarak **BİLDİRİM**. Mevcut `OPERATIONAL/PERSONAL/...` set'leri (classify-and-respond.ts) HÂLÂ duruyor — silinmedi; drift kasıtlı, B2.2'de kapanacak.
+
+### ▶ SIRADAKİ ADIM: B2.2 — router haritayı tüketsin + çoklu-intent
+- **Ne:** `routeIntentToDepartment` (`classify-and-respond.ts:300`) artık `message-types.ts`'i tüketsin: dönüş tipine `messageType` + `withButtons` + `createsSlaEvent` flag'leri eklensin. Eski `NON_FORWARDING/OPERATIONAL/PERSONAL/COMPLAINT` set'leri B2.1 haritasıyla DEĞİŞTİRİLİP **çoğullama giderilsin** (tek doğruluk kaynağı = message-types.ts).
+- **Çoklu-intent:** `classifiedIntents[]` her öğeye kendi `messageType`/flag'lerini taşısın (şu an `routeIntentToDepartment` sadece department+shouldForward döndürüyor).
+- **Kısıt:** B2.2 **davranış-nötr** kalmalı — flag'ler eklenir ama forward yolu (B2.3'e dek) onları HENÜZ kullanmaz. Doğrulama: type-check + build. Bot testi B2.3'te.
+- **Dikkat:** mevcut `routeIntentToDepartment` davranışı birebir korunmalı — `room_service→fb`, unknown→front_office, knowledge_query→no-forward. message-types.ts bunlarla zaten uyumlu (kontrol edildi).
+
+### Mevcut durum (kod gerçeği — B2.1 sonrası)
+- Beyin: **tek monolit** `system-prompts.ts::buildOrchestratorSystemPrompt` (~430 satır). Constitution/lazy-load YOK (Track 2).
 - Sınıflama: `classify-and-respond.ts` (strict-JSON: reply_text/intents[]/confidence/answered_from_knowledge) + safety pre-classifier (Haiku).
-- Routing: `routeIntentToDepartment` — NON_FORWARDING / OPERATIONAL / PERSONAL / complaint / fallback. **`notification` dalı YOK.**
+- Routing: `routeIntentToDepartment` — NON_FORWARDING / OPERATIONAL / PERSONAL / complaint / fallback. **`notification` dalı HÂLÂ YOK** (B2.2'de gelecek). Yeni `message-types.ts` mevcut ama henüz tüketilmiyor.
 - TALEP: `forward-to-department` + `send-forward-with-buttons` + sla_events. BİLDİRİM: yalnız `allergen-notify.ts` (router'ı baypas, button-free, Senaryo A/B/C).
-
-### ▶ SIRADAKİ İLK ADIM: B2.1 (OKU+GÖSTER yapıldı, yazım onayı bekliyor)
-- **Ne:** tek yeni saf dosya `src/lib/ai/message-types.ts` — `MessageType` tipi + `INTENT_MESSAGE_TYPE` haritası + `NOTIFICATION_INTENTS` + `getMessageType()` + `messageTypeTraits()`. Davranış-nötr (kimse import etmez), bot testi YOK, sadece type-check+build.
-- **Kritik:** `allergy` resmî olarak **BİLDİRİM** olur. Mevcut `OPERATIONAL/PERSONAL/...` set'leri B2.1'de silinmez; B2.2'de router bu haritayı tüketir, çoğullama o adımda biter (drift 1 adım sürer).
-- Onay gelince yazılacak.
 
 ---
 
