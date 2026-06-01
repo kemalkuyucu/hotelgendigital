@@ -2169,8 +2169,18 @@ async function handleMessage(args: {
         console.log(`[verification] Embedded request tespit edildi: "${vResult.embeddedRequest}" — doğrudan forward edilecek`);
       }
 
-      // Normal doğrulama (verification_pending_intent, allergen değil) — forward devam eder
-      skipForward = false;
+      // ── GUARD: salt-doğrulama turunu forward'dan ayır ───────────────────────
+      // verifiedGuestRecord YALNIZCA bu turda taze doğrulama olduğunda dolu gelir
+      // (handleVerificationFlow başarı yolu). Zaten-doğrulanmış passthrough (TTL
+      // korumalı / Part-A edge) bu alanı DÖNDÜRMEZ → freshlyVerified=false → forward
+      // korunur (o turdaki mesaj gerçek bir taleptir).
+      const freshlyVerifiedThisTurn = vResult.verifiedGuestRecord != null;
+      // Gerçek talep var mı? Saklı pending talep VEYA mesaja gömülü talep.
+      const hasRealRequest = !!(vResult.originalRequestText || vResult.embeddedRequest);
+      // Taze doğrulama + talep YOK → salt kimlik kanıtı → forward ETME (ForwardableItem
+      // üretilmez, misafir yine de doğrulama-başarı cevabını alır). Diğer tüm durumlar
+      // (taze+talep, ya da zaten-doğrulanmış passthrough) → forward devam eder.
+      skipForward = freshlyVerifiedThisTurn && !hasRealRequest;
       // vResult'u sakla — aşağıdaki forward çağrısında kullanmak için
     }
   }
