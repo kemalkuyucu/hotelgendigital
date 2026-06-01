@@ -1897,26 +1897,71 @@ async function handleMessage(args: {
         persistentVerifiedGuest = linkedGuest as unknown as typeof persistentVerifiedGuest;
         console.log(`[persistent-verify] legacy aktif misafir bulundu, doğrulama atlanıyor. guest_id=${conversation.verified_inhouse_guest_id}`);
       } else {
-        // ❌ İkisinde de bulunamadı / aktif değil → re-verify gerekiyor
-        needsReVerification = true;
-        console.log(`[persistent-verify] Misafir artık aktif değil (v2+legacy), re-verify gerekiyor. guest_id=${conversation.verified_inhouse_guest_id}`);
+        // ── PART A: Yıkıcı-olmayan temizleme ───────────────────────────────────
+        // v2 AKTİF sorgusu (id+status=active+check_out>=today) ve legacy AKTİF
+        // fallback BOŞ döndü. Bu TEK BAŞINA checkout kanıtı DEĞİLDİR — id-linkage
+        // kopuk olabilir (legacy-id ile doğrulanmış / v2 re-import sonrası yeni UUID /
+        // eski-yanlış id). Doğrulamayı YALNIZCA POZİTİF checkout kanıtı varken sil.
+        // Aksi halde verified state KORUNUR; isVerificationValid (24h TTL) zaman
+        // sınırlı güvenlik koruması olarak devrede kalır (handleVerificationFlow Adım 1).
 
-        // Conversation'u temizle
-        await supa
-          .from('conversations')
-          .update({
-            verified_inhouse_guest_id: null,
-            verified_at: null,
-            verification_pending_intent: null,
-            verification_attempts: 0,
-          })
-          .eq('id', conversationId);
+        // Pozitif checkout kanıtı için satırı status/tarih FİLTRESİ OLMADAN ara.
+        const { data: v2RowAny } = await supa
+          .from('inhouse_guests_v2')
+          .select('id, status, check_out_date')
+          .eq('id', conversation.verified_inhouse_guest_id)
+          .maybeSingle();
 
-        // conversation state'i de güncelle (handleVerificationFlow'a doğru state gitsin)
-        conversation.verified_inhouse_guest_id = null;
-        conversation.verified_at = null;
-        conversation.verification_pending_intent = null;
-        conversation.verification_attempts = 0;
+        const v2CheckedOut =
+          !!v2RowAny &&
+          ((v2RowAny.status as string) !== 'active' ||
+            (v2RowAny.check_out_date as string) < today);
+
+        const legacyCheckedOut =
+          !!linkedGuest &&
+          (linkedGuest.is_active !== true ||
+            (linkedGuest.check_out_date as string) < today);
+
+        if (v2CheckedOut || legacyCheckedOut) {
+          // ✅ POZİTİF checkout kanıtı (satır VAR ama çıkış yapmış / pasif) → temizle
+          needsReVerification = true;
+          console.log(
+            `[persistent-verify] POZİTİF checkout kanıtı — doğrulama temizleniyor. guest_id=${conversation.verified_inhouse_guest_id}`,
+            {
+              v2RowFound: !!v2RowAny,
+              v2Status: v2RowAny?.status ?? null,
+              v2CheckOut: v2RowAny?.check_out_date ?? null,
+              legacyRowFound: !!linkedGuest,
+              today,
+            },
+          );
+
+          // Conversation'u temizle
+          await supa
+            .from('conversations')
+            .update({
+              verified_inhouse_guest_id: null,
+              verified_at: null,
+              verification_pending_intent: null,
+              verification_attempts: 0,
+            })
+            .eq('id', conversationId);
+
+          // conversation state'i de güncelle (handleVerificationFlow'a doğru state gitsin)
+          conversation.verified_inhouse_guest_id = null;
+          conversation.verified_at = null;
+          conversation.verification_pending_intent = null;
+          conversation.verification_attempts = 0;
+        } else {
+          // ❓ Satır id ile HİÇBİR tabloda bulunamadı (AMBİGÜ miss) → SİLME.
+          // verified_inhouse_guest_id / verified_at KORUNUR; TTL geçerliyse misafir
+          // doğrulanmış kalır, tekrar oda no SORULMAZ (sessiz wipe yerine görünür log).
+          // NOT: persistentVerifiedGuest null kalır (kayıt id ile çözülemedi) — bunu
+          // Part B (telegram_id ile stabil bağ) çözecek; Part A sadece wipe'ı durdurur.
+          console.log(
+            `[persistent-verify] Satır id ile bulunamadı — doğrulama KORUNUYOR (ambigü miss, wipe YOK). guest_id=${conversation.verified_inhouse_guest_id} ttlValid=${isVerificationValid(conversation.verified_at)} today=${today}`,
+          );
+        }
       }
     }
   }
