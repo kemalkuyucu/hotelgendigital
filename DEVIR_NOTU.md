@@ -1,6 +1,6 @@
 # DEVİR NOTU — HotelGen v2
 
-> Son güncelleme: 2026-06-01 (B2.1+B2.2 bitti) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
+> Son güncelleme: 2026-06-02 (verify zinciri bug fix · B2.1+B2.2 bitti) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
 > Bu not = oturumlar arası tam devir. Detay her zaman MODULE_MANIFEST.md + AUDIT.md + ALERJEN_MODUL4_KURALLAR.md'de.
 
 ---
@@ -87,7 +87,21 @@ Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit mod
 
 ---
 
+## VERIFY ZİNCİRİ — ✅ DOĞRULAMA RESET BUG FIX (2026-06-02, bot-doğrulandı)
+
+**Belirti:** Misafir doğrulanıyor, sonraki mesajda ("havlu lazım") bot oda no'yu TEKRAR soruyordu; ayrıca salt-doğrulama mesajı ("102 Özgür Özen") sahte "Misafir Talebi" (`Talep: "kimlik doğrulama"` + butonlar) olarak departmana forward ediliyordu.
+
+**3 parçalı düzeltme (4 commit), branch `hotelgen-v2` — hepsi type-check + build YEŞİL, tag YOK:**
+- **Part A** `02a778f` — `fix(verify): non-destructive re-check, only wipe on positive checkout evidence`. Persistent-verify else dalı doğrulamayı YALNIZCA pozitif checkout kanıtı (satır VAR ama check_out<bugün / status pasif) varken siler; "id ile satır bulunamadı" ambigü-miss → wipe YOK, görünür log + 24h TTL koruması devrede. `getTurkeyToday()` tek tarih kaynağı.
+- **skipForward guard** `c104807` — `fix(verify): guard skipForward so verification-only turn does not forward as fake request`. Taze doğrulama + gerçek talep YOK → `skipForward=true`, ForwardableItem üretilmez (misafir yine doğrulama-başarı cevabını alır). Talep VARSA (pending/embedded) ya da zaten-doğrulanmış passthrough → forward devam.
+- **Part B+C** `b50f3ed` + `68cbeb5` — durable `telegram_id` bağlama. **B:** doğrulama başarısında v2 eşleşmesi `inhouse_guests_v2.telegram_id = chat_id` damgalanır (legacy DEĞİŞMEZ). **C:** persistent re-check artık `verified_inhouse_guest_id` null-check'inden BAĞIMSIZ — önce `telegram_id` ile çözer, `persistentVerifiedGuest`'i DOĞRUDAN set eder, kayıp/drift id'yi self-heal eder. telegram_id yoksa eski id-tabanlı zincir (v2-by-id → legacy → Part A) BİREBİR fallback.
+
+**Bot testi (2026-06-02) ✅:** misafir doğrulandı → "havlu lazım" → oda TEKRAR SORULMADI → talep Demo_HK'ya doğru düştü. Veri doğrulaması (Part B): room 102 satırında `telegram_id=758605940` damgalandı.
+
+---
+
 ## AÇIK TAKİP (Phase B dışı, unutma)
+- **Doğrulama sonrası forward'da buton YOK (minor, non-blocking):** verify→pending-request forward yolunda Hemen/Biraz-sonra butonları görünmüyor → revisit. Muhtemelen B2.3 (flag-tabanlı forward) ile örtüşür; SLA/akış bloklamıyor.
 - **match_documents RPC green-park-test'te YOK** (demo-hotel'de var) → RAG/document_chunks semantik arama green-park'ta kullanılacaksa fonksiyon + (gerekiyorsa) `embedding` vektör tipi eklenecek. **Phase C / RAG.**
 - **SLA değerleri** test için düşük (1/5 dk) olabilir → go-live öncesi gerçek 30/60'a çek (Phase D).
 - **Summary threshold:** master mimari 50 msg der; canlı ~20 msg / 8000 token. Canlı değer korunuyor, Kemal teyit edecek.
