@@ -1,6 +1,7 @@
 # DEVİR NOTU — HotelGen v2
 
-> Son güncelleme: 2026-06-02 (verify zinciri bug fix · B2.1+B2.2 bitti) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
+> Son güncelleme: 2026-06-02 (verify reset bug fix · B2.3 kod indi/tag bekliyor · B2.1+B2.2 tag'li) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
+> ▶ **SIRADAKİ GÖREV:** AÇIK #1 — alerji forward bug (read-only teşhis → fix → bot testi). Sonra #2, sonra B2.3 tag. Detay: aşağıda "AÇIK İŞLER".
 > Bu not = oturumlar arası tam devir. Detay her zaman MODULE_MANIFEST.md + AUDIT.md + ALERJEN_MODUL4_KURALLAR.md'de.
 
 ---
@@ -35,16 +36,16 @@ A1–A15'in tamamı tag'li ve (uygulanabilir olanlar) prod-doğrulanmış. **Pha
 
 ---
 
-## PHASE B — 🚧 BAŞLADI · B2.1+B2.2 ✅ BİTTİ · SIRADAKİ B2.3
+## PHASE B — 🚧 BAŞLADI · B2.1+B2.2 ✅ tag'li · B2.3 🔶 KOD İNDİ (dc37477, TAG BEKLİYOR)
 
 Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit model.
 
 ### Onaylanan bağımlılık zinciri
-**B2.1 ✅ → B2.2 ✅ → B2.3 ◀ SIRADAKİ → (B2.4/B3) → B1.1 → B1.2 → B1.3 → B4**
+**B2.1 ✅ → B2.2 ✅ → B2.3 🔶 (kod indi, tag AÇIK #1+#2 sonrası) → (B2.4/B3) → B1.1 → B1.2 → B1.3 → B4**
 
 | Track | Adımlar | Risk | Guest-facing? |
 |---|---|---|---|
-| **Track 1 (ÖNCE)** B2 — allergen bug + buton/SLA sözleşmesi | **B2.1 ✅** taksonomi modülü (saf) · **B2.2 ✅** router'a `messageType`+flag (davranış-nötr) · **B2.3 ◀** flag'leri forward yoluna bağla · **B2.4** allergen BİLDİRİM doğrula | Düşük | B2.1/B2.2 ❌ · B2.3/B2.4 ✅ bot testi |
+| **Track 1 (ÖNCE)** B2 — allergen bug + buton/SLA sözleşmesi | **B2.1 ✅** taksonomi modülü (saf) · **B2.2 ✅** router'a `messageType`+flag (davranış-nötr) · **B2.3 🔶** flag'leri forward yoluna bağla (kod indi `dc37477`, tag bekliyor) · **B2.4** allergen BİLDİRİM doğrula | Düşük | B2.1/B2.2 ❌ · B2.3/B2.4 ✅ bot testi |
 | **Track 2 (SONRA)** B1 — beyin re-mimarisi | **B1.1** constitution dosyaları (`00-master` + 7 dept) · **B1.2** lazy-load loader (no-op, flag arkasında) · **B1.3** orchestrator swap | B1.3 **YÜKSEK** | B1.1/B1.2 ❌ · B1.3 ✅ **GENİŞ** bot testi |
 | **Track 3 (EN SON, gate)** | **B4** persistent-verify + forward regresyonu | Gate | ✅ bot testi |
 
@@ -73,11 +74,9 @@ Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit mod
 - **route.ts DOKUNULMADI.** Allergy hâlâ `rawDepartment==='allergy'` ile dallanır; yeni flag'ler taşınır ama **B2.3'e dek OKUNMAZ** → davranış-nötr.
 - **Davranış-nötr DOĞRULANDI** (single + multi-intent çıktısı bugünküyle birebir). type-check + build YEŞİL. Bot testi yok (canlı yol değişmedi).
 
-### ▶ SIRADAKİ ADIM: B2.3 — flag'leri forward yoluna BAĞLA (orchestrator entegrasyonu)
-- **Ne:** B2.2'de taşınan `withButtons` / `createsSlaEvent` flag'lerini route.ts forward döngüsünde TÜKET. Hedef: forward yolu artık string `rawDepartment==='allergy'` özel-kılıfına değil, **`item.withButtons`/`item.createsSlaEvent`** flag'lerine göre dallansın → yalnız **TALEP** = 2 buton + `sla_events`; **BİLDİRİM** = butonsuz + sla yok (allergy bunun bir örneği olur, hardcode değil).
-- **Dosyalar:** `src/app/api/webhooks/telegram/[hotelSlug]/route.ts` (forward döngüsü ~L2259+; allergy branch L2268), muhtemelen `forward-to-department.ts` / `send-forward-with-buttons.ts` dokunuşu.
-- **Kritik — DAVRANIŞ DEĞİŞİR (artık nötr DEĞİL):** B2.3 ilk guest-facing adım. `FRONT_OFFICE_ALLERGY_CHAT_ID=-5015613103` hardcode'u + allergy özel-kılıfı flag-tabanlı genel BİLDİRİM yoluna taşınırken **allergen sözleşmesi BOZULMAMALI** (`ALERJEN_MODUL4_KURALLAR.md`: kitchen+GR, butonsuz, sla yok, reception sadece 00:00–08:00). 
-- **Doğrulama:** type-check + build + **BOT TESTİ** — (a) operasyonel talep (ör. "havlu") hâlâ 2 buton + SLA event; (b) "mantar alerjim var" hâlâ butonsuz + sla yok + doğru grup. B2.4 bu allergen doğrulamasıyla örtüşür.
+### B2.3 — 🔶 KOD İNDİ (`dc37477`, TAG BEKLİYOR — AÇIK #1+#2 temizlenince `v1.0-B2.3-forward-flags`)
+- **Ne yapıldı:** B2.2'de taşınan `withButtons` / `createsSlaEvent` flag'leri route.ts forward döngüsünde TÜKETİLİYOR — forward yolu artık string alerji-string-check değil, **per-intent flag**'lere göre dallanıyor → yalnız **TALEP** = 2 buton + `sla_events`; **BİLDİRİM** = butonsuz + sla yok (allergy bunun bir örneği, hardcode değil). (`feat(B2.3): forward loop consumes per-intent flags, drops allergy string check`)
+- **Durum:** type-check + build YEŞİL. **TAG YOK** — AÇIK #1 (alerji forward bug) + AÇIK #2 (post-verify buton) temizlenip bot testi geçince tag'lenecek.
 
 ### Mevcut durum (kod gerçeği — B2.2 sonrası)
 - Beyin: **tek monolit** `system-prompts.ts::buildOrchestratorSystemPrompt` (~430 satır). Constitution/lazy-load YOK (Track 2).
@@ -100,8 +99,14 @@ Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit mod
 
 ---
 
+## AÇIK İŞLER (öncelik sırası — B2.3 tag'i #1+#2'ye BAĞLI)
+
+1. **🔴 ALERJİ FORWARD BUG (SIRADAKİ GÖREV) — pre-existing, B2.3 DEĞİL.** "mantar alerjim var" → bot cevap veriyor AMA hiçbir gruba forward ETMİYOR. Kök neden: `front_office` department resolve OLMUYOR → `buildForwardableItems` (`route.ts:122-126`) içinde sessizce DÜŞÜYOR (resolved dept/chatId yoksa `continue`). Alerji bildirimi kitchen+GR'ye HİÇ gitmiyor. **Plan:** önce SALT-OKUNUR teşhis (neden front_office çözülmüyor — `departments` seed mi, off-hours route mu, allergy→front_office eşlemesi mi) → sonra fix → **bot testi** ("mantar alerjim var" → doğru grup, butonsuz, sla yok; `ALERJEN_MODUL4_KURALLAR.md` sözleşmesi). 
+2. **🟡 Post-verify forward'da buton YOK (minor, non-blocking).** verify→pending-request forward yolunda (ör. doğrulama sonrası "havlu") Hemen/Biraz-sonra butonları görünmüyor → revisit. SLA/akış bloklamıyor; muhtemelen B2.3 flag yolu ile örtüşür.
+3. **🏷️ B2.3 TAG** (`v1.0-B2.3-forward-flags`) — YALNIZCA #1 ve #2 temiz + bot testi geçince.
+4. **🗣️ AI cevap tonu çok robotik (B1 fazı).** Yanıtlar fazla mekanik → ton yumuşatma. B1 (constitution/prompt) fazında ele alınacak, şimdi değil.
+
 ## AÇIK TAKİP (Phase B dışı, unutma)
-- **Doğrulama sonrası forward'da buton YOK (minor, non-blocking):** verify→pending-request forward yolunda Hemen/Biraz-sonra butonları görünmüyor → revisit. Muhtemelen B2.3 (flag-tabanlı forward) ile örtüşür; SLA/akış bloklamıyor.
 - **match_documents RPC green-park-test'te YOK** (demo-hotel'de var) → RAG/document_chunks semantik arama green-park'ta kullanılacaksa fonksiyon + (gerekiyorsa) `embedding` vektör tipi eklenecek. **Phase C / RAG.**
 - **SLA değerleri** test için düşük (1/5 dk) olabilir → go-live öncesi gerçek 30/60'a çek (Phase D).
 - **Summary threshold:** master mimari 50 msg der; canlı ~20 msg / 8000 token. Canlı değer korunuyor, Kemal teyit edecek.
