@@ -2427,6 +2427,8 @@ async function handleMessage(args: {
               ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim()
               : guestName;
 
+            let resolvedAllergyId: string | null = existingAllergyRow?.id ?? null;
+
             if (existingAllergyRow) {
               await supa
                 .from('guest_allergens')
@@ -2440,50 +2442,48 @@ async function handleMessage(args: {
                 .eq('id', existingAllergyRow.id);
               console.log(`[allergy-notify] guest_allergens UPDATED → id=${existingAllergyRow.id}`);
             } else {
-              await supa.from('guest_allergens').insert({
-                platform: 'telegram',
-                platform_user_id: allergyPlatformUserId,
-                guest_full_name: allergyGuestFullName || null,
-                room_number: persistentVerifiedGuest?.room_number ?? null,
-                allergen_text: fwdItem.requestText || text,
-                status: 'notified',
-                asked_at: new Date().toISOString(),
-              });
-              console.log(`[allergy-notify] guest_allergens INSERT OK`);
+              const { data: insertedAllergyRow } = await supa
+                .from('guest_allergens')
+                .insert({
+                  platform: 'telegram',
+                  platform_user_id: allergyPlatformUserId,
+                  guest_full_name: allergyGuestFullName || null,
+                  room_number: persistentVerifiedGuest?.room_number ?? null,
+                  allergen_text: fwdItem.requestText || text,
+                  status: 'notified',
+                  asked_at: new Date().toISOString(),
+                })
+                .select('id')
+                .maybeSingle();
+              resolvedAllergyId = (insertedAllergyRow?.id as string | undefined) ?? null;
+              console.log(`[allergy-notify] guest_allergens INSERT OK → id=${resolvedAllergyId}`);
             }
 
-            // (2) Grup mesajı formatla (başlık: ℹ️ Misafir Bildirimi (Alerji))
-            const allergyTrDateStr = (() => {
-              const now = new Date();
-              return new Intl.DateTimeFormat('tr-TR', {
-                timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit',
-                day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
-              }).format(now) + ' (TR)';
-            })();
-
-            const allergyEsc = (s: string) =>
-              s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-            const allergyRoomLine = persistentVerifiedGuest?.room_number
-              ? `🚪 <b>Oda:</b> ${allergyEsc(persistentVerifiedGuest.room_number)}\n`
-              : '';
-            const allergyGuestLine = `👤 <b>Misafir:</b> ${allergyEsc(allergyGuestFullName || guestName)}\n`;
-            const allergyMsgHtml =
-              `ℹ️ <b>Misafir Bildirimi (Alerji)</b>\n\n` +
-              allergyRoomLine +
-              allergyGuestLine +
-              `🤧 <b>Alerji:</b> "${allergyEsc(fwdItem.requestText || text)}"\n` +
-              `🕐 <b>Saat:</b> ${allergyEsc(allergyTrDateStr)}`;
-
-            // (3) Çözülmüş departman grubuna BUTONSUZ düz mesaj gönder (sendMessage, SLA yok).
-            // BUG FIX: önceden hardcode -5015613103'e gidiyordu (DB'de yok → hiçbir gruba düşmüyordu);
-            // artık zaten çözülmüş fwdItem.chatId (allergy → front_office) kullanılır.
-            await tg.sendMessage({
-              chat_id: targetChatId,
-              text: allergyMsgHtml,
-              parse_mode: 'HTML',
-            });
-            console.log(`[allergy-notify] Bildirim gönderildi → chatId=${targetChatId}`);
+            // (2) M4 spec uyumlu ÇOK-KATMANLI bildirim (ALERJEN_MODUL4_KURALLAR.md):
+            // mutfak primary/backup + tüm GR + GR müdürü DM; mesai dışı resepsiyon EK uyarı.
+            // M3 short-circuit (route.ts:~1430 / ~1626) ile BİREBİR aynı çağrı şekli/argümanlar.
+            // Butonsuz + sla_events YOK (BİLDİRİM semantiği korunur). Eski tek front_office
+            // grup mesajı KALDIRILDI → çift gönderim yok; spec fan-out'u tek yetkili yoldur.
+            if (resolvedAllergyId) {
+              try {
+                await sendAllergenNotifications({
+                  hotelSupa: supa,
+                  tg,
+                  guestAllergenId: resolvedAllergyId,
+                  roomNumber: persistentVerifiedGuest?.room_number ?? null,
+                  guestFullName: allergyGuestFullName || guestName,
+                  allergenText: fwdItem.requestText || text,
+                });
+                console.log('[allergy-notify] sendAllergenNotifications OK');
+              } catch (notifyErr) {
+                console.error(
+                  '[allergy-notify] sendAllergenNotifications HATA (akış devam ediyor):',
+                  notifyErr instanceof Error ? notifyErr.message : notifyErr,
+                );
+              }
+            } else {
+              console.error('[allergy-notify] KRİTİK: resolvedAllergyId null — bildirim atlandı');
+            }
 
             // (4) Misafire özel cevap
             finalResponseText =
