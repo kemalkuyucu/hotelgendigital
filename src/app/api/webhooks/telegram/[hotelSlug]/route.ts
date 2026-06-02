@@ -2475,14 +2475,15 @@ async function handleMessage(args: {
               `🤧 <b>Alerji:</b> "${allergyEsc(fwdItem.requestText || text)}"\n` +
               `🕐 <b>Saat:</b> ${allergyEsc(allergyTrDateStr)}`;
 
-            // (3) Front office grubuna BUTONSUZ düz mesaj gönder (sendMessage, SLA yok)
-            const FRONT_OFFICE_ALLERGY_CHAT_ID = -5015613103;
+            // (3) Çözülmüş departman grubuna BUTONSUZ düz mesaj gönder (sendMessage, SLA yok).
+            // BUG FIX: önceden hardcode -5015613103'e gidiyordu (DB'de yok → hiçbir gruba düşmüyordu);
+            // artık zaten çözülmüş fwdItem.chatId (allergy → front_office) kullanılır.
             await tg.sendMessage({
-              chat_id: FRONT_OFFICE_ALLERGY_CHAT_ID,
+              chat_id: targetChatId,
               text: allergyMsgHtml,
               parse_mode: 'HTML',
             });
-            console.log(`[allergy-notify] Bildirim gönderildi → chatId=${FRONT_OFFICE_ALLERGY_CHAT_ID}`);
+            console.log(`[allergy-notify] Bildirim gönderildi → chatId=${targetChatId}`);
 
             // (4) Misafire özel cevap
             finalResponseText =
