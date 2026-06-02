@@ -1033,6 +1033,60 @@ async function handleMessage(args: {
       // isInfoOnlyQuery bu bloktan KALDIRILDI — doğru yer: Modül 10 satır 2011.
       // Fallback "oda no iste + return" KALDIRILDI — talep/bilgi kararını AI veriyor.
 
+      // ── Modül 17.c-R+N: "oda + ad soyad" tek mesajda (örn. "102 Özgür Özen") ──
+      // FIX-2: pure-digit looksLikeRoom bunu KAÇIRIR (metin rakam-dışı içerir) →
+      // inhouse_guests_v2.telegram_id hiç damgalanmaz → Part-C bağlayamaz → alerji
+      // Senaryo C'ye düşer. Burada SAF doğrulama mesajını (talep YOK) yakalayıp v2
+      // satırına telegram_id damgalarız — pure-digit 1-match bloğuyla AYNI yazım.
+      // Belirsiz/eşleşmesiz/talep-içeren durumlar fall-through → mevcut pure-digit /
+      // verification / AI yolu AYNEN korunur (davranış değişmez).
+      const rnParsed = parseVerificationInput(text);
+      if (
+        rnParsed.roomNumber !== null &&
+        rnParsed.firstName !== null &&
+        rnParsed.lastName !== null &&
+        !rnParsed.hasEmbeddedRequest
+      ) {
+        const { data: rnCandidates } = await supa
+          .from('inhouse_guests_v2')
+          .select('id, guest_name, room_number')
+          .eq('room_number', rnParsed.roomNumber)
+          .eq('status', 'active');
+
+        const rnFullName = normalizeTr(`${rnParsed.firstName} ${rnParsed.lastName}`);
+        const rnLastName = normalizeTr(rnParsed.lastName);
+        const rnMatches = (rnCandidates ?? []).filter((c) => {
+          const gn = normalizeTr(c.guest_name as string);
+          return gn.includes(rnFullName) || gn.includes(rnLastName);
+        });
+
+        if (rnMatches.length === 1) {
+          const matched = rnMatches[0];
+          // Mevcut pure-digit 1-match yazım bloğuyla AYNI (route.ts:1113-1124):
+          const { error: linkTgErr } = await supa
+            .from('inhouse_guests_v2')
+            .update({ telegram_id: userId })
+            .eq('id', matched.id);
+          if (linkTgErr) console.error('[17c-rn] inhouse_guests_v2 telegram_id link hatası:', linkTgErr.message);
+
+          const { error: linkConvErr } = await supa
+            .from('conversations')
+            .update({ inhouse_match_guest_id: matched.id })
+            .eq('id', conversationId);
+          if (linkConvErr) console.error('[17c-rn] LOOP-KRİTİK conversations.inhouse_match_guest_id link hatası:', linkConvErr.message);
+
+          console.log(`[17c-rn] Oda+isim eşleşti → telegram_id=${userId} inhouse_guest_id=${matched.id} room=${matched.room_number}`);
+
+          await tg.sendMessage({
+            chat_id: chatId,
+            text: `Tesekkurler ${matched.guest_name}, sizin icin hazirim. Nasil yardimci olabilirim?`,
+          });
+          return;
+        }
+        // 0 veya >1 (belirsiz) eşleşme → short-circuit YOK; aşağıdaki pure-digit /
+        // verification / AI yolu karar versin (mevcut davranış korunur).
+      }
+
       // FIX(verify): Türkçe karakter döngü fix — sadece rakamlardan oluşan giriş oda no kabul edilir.
       // "102 Özgür Özen" gibi isimli giriş bu gate'e TAKILMAMALI; "/\D/g" sonrası "102" üretse de
       // orijinal metin rakam-dışı karakter içeriyorsa looksLikeRoom=false yapılır.
