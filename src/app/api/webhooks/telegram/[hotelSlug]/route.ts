@@ -117,12 +117,18 @@ function buildForwardableItems(
   const items: ForwardableItem[] = [];
   for (const item of intents) {
     if (!item.shouldForward) continue;
+    // BUG FIX: boş request_text → ortada gerçek bir talep YOK (selamlama/doğrulama turu).
+    // Asistan cevabını VEYA ham mesajı request_text yerine koyup forward ETME; boşsa item'i
+    // tamamen atla → forward yok, SLA yok. (Legacy AI-null fallback item'ı zaten guest
+    // mesajını taşır → reqText dolu → etkilenmez.)
+    const reqText = (item.requestText ?? '').trim();
+    if (!reqText) continue;
     const resolved = resolveTargetDepartment(item.department, departments);
     if (!resolved || !resolved.targetChatId) continue;
     items.push({
       dept: resolved.targetDept ?? item.department,
       chatId: resolved.targetChatId,
-      requestText: item.requestText || fallbackRequestText,
+      requestText: reqText,
       rawDepartment: item.rawDepartment ?? item.department,
       // ── RISK 1 SAVUNMASI ──────────────────────────────────────────────────
       // YALNIZ açıkça `false` → BİLDİRİM (butonsuz/SLA-yok). undefined/null/eksik/

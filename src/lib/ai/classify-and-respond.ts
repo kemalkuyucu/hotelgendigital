@@ -219,14 +219,21 @@ export async function classifyAndRespond(
       ? parsed.intents
       : [{
           department: parsed.intent ?? parsed.department ?? 'unknown',
-          request_text: parsed.reply_text ?? parsed.response_to_guest ?? '',
+          // BUG FIX: request_text ASLA asistan cevabından (reply_text/response_to_guest)
+          // türetilmez — bot'un kendi selamlaması sahte "talep" olarak forward ediliyordu.
+          // Legacy tek-intent formatında LLM-sağlanan talep metni yoktur → boş bırak;
+          // boş request_text forward edilmez (buildForwardableItems atlar).
+          request_text: '',
         }];
 
   const classifiedIntents: ClassifiedIntentItem[] = rawIntents.map((item: { department: string; request_text: string }) => {
     const routing = routeIntentToDepartment(item.department);
     return {
       department: routing.department ?? 'front_office',
-      requestText: item.request_text || responseToGuest,
+      // BUG FIX: yalnız LLM'in verdiği per-intent request_text kullanılır; boşsa BOŞ kalır
+      // (asistan cevabı `responseToGuest` ASLA request_text'e kopyalanmaz). Boş request_text
+      // forward edilmez (buildForwardableItems atlar) → selamlama/doğrulama turu forward olmaz.
+      requestText: item.request_text ?? '',
       shouldForward: routing.shouldForward,
       rawDepartment: item.department,
       // B2.2 — her intent kendi mesaj tipini taşır (çoklu-intent: TALEP+BİLDİRİM ayrışır)
