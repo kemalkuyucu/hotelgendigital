@@ -12,6 +12,8 @@ export interface VerifyResult {
   guestGender?: 'male' | 'female' | null;
   roomNo?: string;
   reason?: 'no_match' | 'format_error' | 'multiple_match';
+  // Part B: eşleşme kaynağı. telegram_id stamp YALNIZCA 'v2' için yapılır; legacy değişmez.
+  source?: 'v2' | 'legacy';
 }
 
 /**
@@ -218,6 +220,7 @@ export async function verifyGuest(
         guestLanguage: undefined,
         guestGender: null,
         roomNo: v2Match.room_number as string,
+        source: 'v2',
       };
     } else {
       console.log('[verify-guest] v2 oda kaydı var ama isim eşleşmedi', {
@@ -264,6 +267,7 @@ export async function verifyGuest(
     guestLanguage: (data.language as string | null) ?? undefined,
     guestGender: (data.gender as 'male' | 'female' | null) ?? null,
     roomNo: data.room_number as string,
+    source: 'legacy',
   };
 }
 

@@ -732,6 +732,23 @@ async function handleVerificationFlow(args: {
     conversation.verification_pending_intent = null;
     conversation.verified_at = verifiedAt;
 
+    // ── PART B: telegram_id damgası (YALNIZCA v2 eşleşmesi) ─────────────────
+    // Doğrulanan Telegram hesabını v2 misafir satırına bağla. Böylece sonraki
+    // mesajlar conversation.verified_inhouse_guest_id'e (id-drift'e açık) değil,
+    // telegram_id'ye göre çözülür (Part C re-check PRIMARY). Legacy eşleşmeler
+    // DOKUNULMAZ (source !== 'v2'). Hata akışı kesmesin — webhook 200 dönmeli.
+    if (result.source === 'v2' && result.guestId && args.guestTelegramId) {
+      const { error: tgStampErr } = await supa
+        .from('inhouse_guests_v2')
+        .update({ telegram_id: args.guestTelegramId, updated_at: new Date().toISOString() })
+        .eq('id', result.guestId);
+      if (tgStampErr) {
+        console.error('[verify][part-b] telegram_id stamp hatası:', tgStampErr.message);
+      } else {
+        console.log(`[verify][part-b] telegram_id damgalandı → guest_id=${result.guestId} tg=${args.guestTelegramId}`);
+      }
+    }
+
     // Doğrulanmış misafirin tam kaydı (forward + CC için) — AUDIT D5:
     // verifyGuest() v2 id döndürüyor; eski kod bu id'yi LEGACY inhouse_guests'ta
     // sorguluyordu → eşleşme yok → room_number kayboluyordu (forward'da "Oda: —").
@@ -1846,6 +1863,41 @@ async function handleMessage(args: {
 
   if (conversation.verified_inhouse_guest_id) {
     const today = getTurkeyToday(); // Modül 18: Europe/Istanbul timezone
+
+    // ── PART C: telegram_id PRIMARY çözümleme ──────────────────────────────
+    // Doğrulanan Telegram hesabını (userId) v2 AKTİF misafire telegram_id ile bağla.
+    // Bulunursa conversation.verified_inhouse_guest_id'i o satırın id'sine HİZALA
+    // (self-heal: re-import sonrası id-drift'i onarır). Ardından AŞAĞIDAKİ mevcut
+    // id-tabanlı zincir (v2-by-id → legacy → Part A) DEĞİŞMEDEN çalışır ve artık
+    // doğru satırı bulur. telegram_id boşsa (eski/damgasız konuşma) → hizalama YOK
+    // → zincir bugünküyle BİREBİR aynı davranır (FALLBACK). Hata akışı kesmesin.
+    if (userId != null) {
+      const { data: tgRows, error: tgErr } = await supa
+        .from('inhouse_guests_v2')
+        .select('id')
+        .eq('telegram_id', String(userId))
+        .eq('status', 'active')
+        .gte('check_out_date', today)
+        .order('check_out_date', { ascending: false })
+        .limit(1);
+
+      if (tgErr) {
+        console.error('[persistent-verify][part-c] telegram_id sorgu hatası:', tgErr.message);
+      } else if (tgRows && tgRows.length > 0) {
+        const tgResolvedId = tgRows[0].id as string;
+        if (tgResolvedId !== conversation.verified_inhouse_guest_id) {
+          // id-drift tespit edildi → DB + in-memory hizala (sonraki sorgu doğru id'yi görsün)
+          console.log(`[persistent-verify][part-c] id-drift onarıldı: ${conversation.verified_inhouse_guest_id} → ${tgResolvedId} (telegram_id=${userId})`);
+          await supa
+            .from('conversations')
+            .update({ verified_inhouse_guest_id: tgResolvedId })
+            .eq('id', conversationId);
+          conversation.verified_inhouse_guest_id = tgResolvedId;
+        } else {
+          console.log(`[persistent-verify][part-c] telegram_id eşleşti, id zaten güncel (${tgResolvedId})`);
+        }
+      }
+    }
 
     // ── FIX (persistent-verify): Önce inhouse_guests_v2'de ara ──────────────
     // verified_inhouse_guest_id, verifyGuest() tarafından v2'den dönüyor.
