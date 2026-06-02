@@ -1861,43 +1861,64 @@ async function handleMessage(args: {
 
   let needsReVerification = false;
 
-  if (conversation.verified_inhouse_guest_id) {
-    const today = getTurkeyToday(); // Modül 18: Europe/Istanbul timezone
+  // ── PART C: telegram_id PRIMARY çözümleme (verified_inhouse_guest_id'DEN BAĞIMSIZ) ──
+  // Doğrulanan Telegram hesabını (userId) v2 AKTİF misafire telegram_id ile bağla.
+  // Bu blok verified_inhouse_guest_id null/kayıp olsa BİLE çalışır → kaybolmuş id'yi
+  // telegram_id ile KURTARIR. Bulunursa persistentVerifiedGuest DOĞRUDAN bu satırdan
+  // set edilir (downstream id-sorgusuna DEVREDİLMEZ); verified_inhouse_guest_id de
+  // self-heal edilir. telegram_id bulunamazsa AŞAĞIDAKİ id-tabanlı zincir (v2-by-id →
+  // legacy → Part A) DEĞİŞMEDEN fallback olarak çalışır. Hata akışı kesmesin (200 dön).
+  if (userId != null) {
+    const todayPc = getTurkeyToday(); // Modül 18: Europe/Istanbul timezone
+    const { data: tgRows, error: tgErr } = await supa
+      .from('inhouse_guests_v2')
+      .select('id, guest_name, room_number, status, check_out_date')
+      .eq('telegram_id', String(userId))
+      .eq('status', 'active')
+      .gte('check_out_date', todayPc)
+      .order('check_out_date', { ascending: false })
+      .limit(1);
 
-    // ── PART C: telegram_id PRIMARY çözümleme ──────────────────────────────
-    // Doğrulanan Telegram hesabını (userId) v2 AKTİF misafire telegram_id ile bağla.
-    // Bulunursa conversation.verified_inhouse_guest_id'i o satırın id'sine HİZALA
-    // (self-heal: re-import sonrası id-drift'i onarır). Ardından AŞAĞIDAKİ mevcut
-    // id-tabanlı zincir (v2-by-id → legacy → Part A) DEĞİŞMEDEN çalışır ve artık
-    // doğru satırı bulur. telegram_id boşsa (eski/damgasız konuşma) → hizalama YOK
-    // → zincir bugünküyle BİREBİR aynı davranır (FALLBACK). Hata akışı kesmesin.
-    if (userId != null) {
-      const { data: tgRows, error: tgErr } = await supa
-        .from('inhouse_guests_v2')
-        .select('id')
-        .eq('telegram_id', String(userId))
-        .eq('status', 'active')
-        .gte('check_out_date', today)
-        .order('check_out_date', { ascending: false })
-        .limit(1);
+    if (tgErr) {
+      console.error('[persistent-verify][part-c] telegram_id sorgu hatası:', tgErr.message);
+    } else if (tgRows && tgRows.length > 0) {
+      const tgRow = tgRows[0];
+      // guest_name tek alan (v2) — son kelime = soyad, kalanı ad
+      const guestNameRaw = (tgRow.guest_name as string ?? '').trim();
+      const nameParts = guestNameRaw.split(/\s+/);
+      const pvFirstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : guestNameRaw;
+      const pvLastName  = nameParts.length > 1 ? nameParts[nameParts.length - 1] : null;
 
-      if (tgErr) {
-        console.error('[persistent-verify][part-c] telegram_id sorgu hatası:', tgErr.message);
-      } else if (tgRows && tgRows.length > 0) {
-        const tgResolvedId = tgRows[0].id as string;
-        if (tgResolvedId !== conversation.verified_inhouse_guest_id) {
-          // id-drift tespit edildi → DB + in-memory hizala (sonraki sorgu doğru id'yi görsün)
-          console.log(`[persistent-verify][part-c] id-drift onarıldı: ${conversation.verified_inhouse_guest_id} → ${tgResolvedId} (telegram_id=${userId})`);
-          await supa
-            .from('conversations')
-            .update({ verified_inhouse_guest_id: tgResolvedId })
-            .eq('id', conversationId);
-          conversation.verified_inhouse_guest_id = tgResolvedId;
-        } else {
-          console.log(`[persistent-verify][part-c] telegram_id eşleşti, id zaten güncel (${tgResolvedId})`);
-        }
+      // persistentVerifiedGuest'i DOĞRUDAN telegram_id satırından set et (downstream'e DEVRETME)
+      persistentVerifiedGuest = {
+        id:            tgRow.id as string,
+        first_name:    pvFirstName || null,
+        last_name:     pvLastName  || null,
+        room_number:   tgRow.room_number as string,
+        language:      null,   // v2 şemasında yok
+        gender:        null,   // v2 şemasında yok
+        check_out_date: tgRow.check_out_date as string,
+        is_active:     true,
+      };
+
+      // self-heal: verified_inhouse_guest_id'i kurtarılan/güncel id ile hizala (DB + in-memory)
+      if ((tgRow.id as string) !== conversation.verified_inhouse_guest_id) {
+        console.log(`[persistent-verify][part-c] id telegram_id ile kurtarıldı/hizalandı: ${conversation.verified_inhouse_guest_id} → ${tgRow.id} (telegram_id=${userId})`);
+        await supa
+          .from('conversations')
+          .update({ verified_inhouse_guest_id: tgRow.id })
+          .eq('id', conversationId);
+        conversation.verified_inhouse_guest_id = tgRow.id as string;
       }
+      console.log(`[persistent-verify][part-c] persistentVerifiedGuest telegram_id'den set edildi, doğrulama atlanıyor. guest_id=${tgRow.id}`);
     }
+  }
+
+  // ── FALLBACK: telegram_id ÇÖZMEDİYSE mevcut verified_inhouse_guest_id zinciri ──
+  // (Part C bir satır set ettiyse buraya GİRİLMEZ.) Aşağısı BİREBİR eski davranış:
+  // v2-by-id → legacy-by-id → Part A (yıkıcı-olmayan temizleme).
+  if (!persistentVerifiedGuest && conversation.verified_inhouse_guest_id) {
+    const today = getTurkeyToday(); // Modül 18: Europe/Istanbul timezone
 
     // ── FIX (persistent-verify): Önce inhouse_guests_v2'de ara ──────────────
     // verified_inhouse_guest_id, verifyGuest() tarafından v2'den dönüyor.
