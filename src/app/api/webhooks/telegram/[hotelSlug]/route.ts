@@ -12,6 +12,7 @@ import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
 import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/verification/verify-guest';
+import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { formatGuestAddress } from '@/lib/utils/salutation';
 import { downloadTelegramAudio } from '@/lib/voice/download-telegram-audio';
 import { whisperTranscribe } from '@/lib/voice/whisper-transcribe';
@@ -2147,6 +2148,39 @@ async function handleMessage(args: {
         await tg.sendMessage({ chat_id: chatId, text: noMatchMsg });
         return;
       }
+    } else if (
+      // ── SALT-DOĞRULAMA RE-SEND GUARD ──────────────────────────────────────
+      // Zaten kalıcı doğrulanmış misafir KENDİ kimlik bilgisini (oda+ad+soyad) AYNEN
+      // tekrar yazdı: oda + soyad mevcut kayıtla eşleşiyor, mesajda gömülü talep YOK,
+      // alerji kelimesi YOK. Sınıflayıcı bunu (bağlamdan taşan eski intent ile) yanlış
+      // sınıflayıp forward/BİLDİRİM (örn. sahte alerji bildirimi + "Afiyet olsun")
+      // tetikleyebiliyordu. Mirror: ilk doğrulamadaki "salt-kimlik turu forward etme"
+      // guard'ının kalıcı-doğrulanmış karşılığı. İlk doğrulama yolu DEĞİŞMEZ.
+      reParsed.roomNumber !== null &&
+      reParsed.firstName !== null &&
+      reParsed.lastName !== null &&
+      reParsed.roomNumber === currentVerifiedGuest.room_number &&
+      normalizeTr(reParsed.lastName) === normalizeTr(currentVerifiedGuest.last_name ?? '') &&
+      !reParsed.hasEmbeddedRequest &&
+      !['alerj', 'allerg', 'intoleran'].some((kw) => normalizeTr(text).includes(kw))
+    ) {
+      // Forward ETME, BİLDİRİM dalına GİRME — basit "zaten doğrulandı" cevabı dön.
+      skipForward = true;
+      const alreadyVerifiedMsg =
+        language === 'en'
+          ? `You're already verified, ${currentVerifiedGuest.first_name ?? ''}. Just send your request whenever you need something.`
+          : language === 'de'
+            ? `Sie sind bereits verifiziert, ${currentVerifiedGuest.first_name ?? ''}. Schreiben Sie einfach Ihre Anfrage, wann immer Sie etwas brauchen.`
+            : `Bilgileriniz zaten doğrulanmış, ${currentVerifiedGuest.first_name ?? ''} Bey. Bir talebiniz olduğunda yazmanız yeterli.`;
+      await supa.from('bot_messages').insert({
+        conversation_id: conversationId,
+        direction: 'outbound',
+        text: alreadyVerifiedMsg,
+        message_type: 'text',
+      });
+      await tg.sendMessage({ chat_id: chatId, text: alreadyVerifiedMsg });
+      console.log('[persistent-verify] Salt-doğrulama re-send tespit edildi — forward YOK, "zaten doğrulandı" cevabı gönderildi');
+      return;
     }
   }
 
