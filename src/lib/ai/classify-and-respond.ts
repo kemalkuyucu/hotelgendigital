@@ -85,7 +85,19 @@ export async function classifyAndRespond(
     hotelContext?.safetyRules ?? [],
   );
 
-  if (safetyResult.matched) {
+  // ── ALERJİ ÖNCELİĞİ — health_medical short-circuit istisnası (yaşamsal) ─────
+  // Alerji bildirimi genel "health_medical" güvenlik kuralına takılıp sessizce
+  // yutulmamalı (sendAllergenNotifications hiç çalışmadan kalıyordu). 835d476'daki
+  // AYNI deterministik tarama: ham metinde alerji anahtar kelimesi varsa VE eşleşen
+  // kategori health_medical ise → short-circuit'i ATLA; mesaj normal classify →
+  // allergy pipeline'ına düşsün. Diğer kategoriler (self_harm vb.) ve alerji-kelimesi
+  // İÇERMEYEN tıbbi mesajlar ("başım ağrıyor") AYNEN short-circuit edilmeye devam eder.
+  const allergyOverridesHealthMedical =
+    safetyResult.matched &&
+    safetyResult.category.toLowerCase() === 'health_medical' &&
+    ['alerj', 'allerg', 'intoleran'].some((kw) => normalizeTr(input.guestMessage).includes(kw));
+
+  if (safetyResult.matched && !allergyOverridesHealthMedical) {
     // Safety kural tetiklendi — hafif, odakli bir AI cagrisi yap
     const safetySystemPrompt =
       `Sen ${input.hotelName} otelinin asistanisin. Asagidaki kurali AYNEN uygula, asla saptirma:\n\n` +
