@@ -1,7 +1,7 @@
 # DEVİR NOTU — HotelGen v2
 
-> Son güncelleme: 2026-06-02 (verify reset bug fix · B2.3 kod indi/tag bekliyor · B2.1+B2.2 tag'li) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
-> ▶ **SIRADAKİ GÖREV:** AÇIK #1 — alerji forward bug (read-only teşhis → fix → bot testi). Sonra #2, sonra B2.3 tag. Detay: aşağıda "AÇIK İŞLER".
+> Son güncelleme: 2026-06-02 (B2.3 ✅ tag'li + alerji-forward bug FIX prod-doğrulandı · verify reset bug fix · B2.1+B2.2 tag'li) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
+> ▶ **SIRADAKİ GÖREV:** B2.4/B3 — allergen BİLDİRİM sözleşmesi doğrulama (`ALERJEN_MODUL4_KURALLAR.md`: kitchen+GR, butonsuz, sla yok), verify-first. Detay: aşağıda "AÇIK İŞLER".
 > Bu not = oturumlar arası tam devir. Detay her zaman MODULE_MANIFEST.md + AUDIT.md + ALERJEN_MODUL4_KURALLAR.md'de.
 
 ---
@@ -74,9 +74,10 @@ Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit mod
 - **route.ts DOKUNULMADI.** Allergy hâlâ `rawDepartment==='allergy'` ile dallanır; yeni flag'ler taşınır ama **B2.3'e dek OKUNMAZ** → davranış-nötr.
 - **Davranış-nötr DOĞRULANDI** (single + multi-intent çıktısı bugünküyle birebir). type-check + build YEŞİL. Bot testi yok (canlı yol değişmedi).
 
-### B2.3 — 🔶 KOD İNDİ (`dc37477`, TAG BEKLİYOR — AÇIK #1+#2 temizlenince `v1.0-B2.3-forward-flags`)
-- **Ne yapıldı:** B2.2'de taşınan `withButtons` / `createsSlaEvent` flag'leri route.ts forward döngüsünde TÜKETİLİYOR — forward yolu artık string alerji-string-check değil, **per-intent flag**'lere göre dallanıyor → yalnız **TALEP** = 2 buton + `sla_events`; **BİLDİRİM** = butonsuz + sla yok (allergy bunun bir örneği, hardcode değil). (`feat(B2.3): forward loop consumes per-intent flags, drops allergy string check`)
-- **Durum:** type-check + build YEŞİL. **TAG YOK** — AÇIK #1 (alerji forward bug) + AÇIK #2 (post-verify buton) temizlenip bot testi geçince tag'lenecek.
+### B2.3 — ✅ TAG'Lİ (`v1.0-B2.3-forward-flags`, commit `9785bd0`) — PROD REAL-BOT VERIFIED 2026-06-02
+- **Ne yapıldı (B2.3 kod, `dc37477`):** B2.2'de taşınan `withButtons` / `createsSlaEvent` flag'leri route.ts forward döngüsünde TÜKETİLİYOR — forward yolu artık string alerji-string-check değil, **per-intent flag**'lere göre dallanıyor → yalnız **TALEP** = 2 buton + `sla_events`; **BİLDİRİM** = butonsuz + sla yok (allergy bunun bir örneği, hardcode değil).
+- **Alerji-forward bug FIX (`9785bd0`):** BİLDİRİM dalı (route.ts:~2479) ölü hardcode chat id `-5015613103`'e gönderiyordu — bu chat DB'de YOK → `tg.sendMessage` patlıyor, hata loop'un `catch (fwdErr)`'inde sessizce yutuluyor → alerji bildirimi **hiçbir gruba düşmüyor** (misafir yine iyi cevap alıyordu, semptom buydu). Çözülmüş `fwdItem.chatId` (-5225595171) yok sayılıyordu. **Fix:** hardcode sabit kaldırıldı, `chat_id: targetChatId` (= çözülmüş `fwdItem.chatId`, allergy→front_office) kullanılıyor. Butonsuz + sla_events YOK korundu; TALEP/SLA dalı + routing/classify DOKUNULMADI (davranış-nötr, yalnız hedef düzeltildi). **NOT:** önceki teşhis hipotezi ("front_office resolve olmuyor → düşüyor") canlı DB ile ÇÜRÜTÜLDÜ — front_office enabled + chat dolu; gerçek kök neden ölü hardcode id'ydi.
+- **Durum:** type-check YEŞİL, push edildi (`9785bd0`). **PROD REAL-BOT VERIFIED ✅ 2026-06-02** — `mantar alerjim var` → Front Office grubuna (`-5225595171`) butonsuz `ℹ️ Misafir Bildirimi (Alerji)` mesajı düştü, SLA kartı/buton yok. Tag `v1.0-B2.3-forward-flags` atıldı.
 
 ### Mevcut durum (kod gerçeği — B2.2 sonrası)
 - Beyin: **tek monolit** `system-prompts.ts::buildOrchestratorSystemPrompt` (~430 satır). Constitution/lazy-load YOK (Track 2).
@@ -99,11 +100,11 @@ Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit mod
 
 ---
 
-## AÇIK İŞLER (öncelik sırası — B2.3 tag'i #1+#2'ye BAĞLI)
+## AÇIK İŞLER (öncelik sırası)
 
-1. **🔴 ALERJİ FORWARD BUG (SIRADAKİ GÖREV) — pre-existing, B2.3 DEĞİL.** "mantar alerjim var" → bot cevap veriyor AMA hiçbir gruba forward ETMİYOR. Kök neden: `front_office` department resolve OLMUYOR → `buildForwardableItems` (`route.ts:122-126`) içinde sessizce DÜŞÜYOR (resolved dept/chatId yoksa `continue`). Alerji bildirimi kitchen+GR'ye HİÇ gitmiyor. **Plan:** önce SALT-OKUNUR teşhis (neden front_office çözülmüyor — `departments` seed mi, off-hours route mu, allergy→front_office eşlemesi mi) → sonra fix → **bot testi** ("mantar alerjim var" → doğru grup, butonsuz, sla yok; `ALERJEN_MODUL4_KURALLAR.md` sözleşmesi). 
+1. **✅ ÇÖZÜLDÜ — ALERJİ FORWARD BUG (`9785bd0`, prod-verified 2026-06-02).** Semptom: "mantar alerjim var" → bot cevap veriyor AMA hiçbir gruba düşmüyordu. Eski hipotez (front_office resolve olmuyor) canlı DB ile ÇÜRÜTÜLDÜ. Gerçek kök neden: BİLDİRİM dalı ölü hardcode chat id `-5015613103`'e gönderiyordu (DB'de yok → send patlar, `catch (fwdErr)` yutar). Fix: çözülmüş `fwdItem.chatId` (front_office `-5225595171`) kullanılıyor. Butonsuz/sla-yok korundu. Detay: B2.3 bölümü.
 2. **🟡 Post-verify forward'da buton YOK (minor, non-blocking).** verify→pending-request forward yolunda (ör. doğrulama sonrası "havlu") Hemen/Biraz-sonra butonları görünmüyor → revisit. SLA/akış bloklamıyor; muhtemelen B2.3 flag yolu ile örtüşür.
-3. **🏷️ B2.3 TAG** (`v1.0-B2.3-forward-flags`) — YALNIZCA #1 ve #2 temiz + bot testi geçince.
+3. **✅ ÇÖZÜLDÜ — B2.3 TAG** (`v1.0-B2.3-forward-flags`, commit `9785bd0`) atıldı + push edildi 2026-06-02.
 4. **🗣️ AI cevap tonu çok robotik (B1 fazı).** Yanıtlar fazla mekanik → ton yumuşatma. B1 (constitution/prompt) fazında ele alınacak, şimdi değil.
 
 ## AÇIK TAKİP (Phase B dışı, unutma)
