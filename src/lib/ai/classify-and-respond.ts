@@ -19,6 +19,8 @@ import {
   INFO_INTENTS,
   type MessageType,
 } from './message-types';
+// Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
+import { normalizeTr } from '@/lib/utils/normalize-tr';
 
 export interface ConversationContextMessage {
   direction: 'inbound' | 'outbound';
@@ -233,6 +235,34 @@ export async function classifyAndRespond(
       createsSlaEvent: routing.createsSlaEvent,
     };
   });
+
+  // ── ALERJİ GÜVENLİK AĞI (deterministik, additive) ──────────────────────────
+  // Alerji yaşamsal güvenliktir; tek başına LLM etiketine bırakılamaz. Ham metinde
+  // (normalizeTr ile TR-toleranslı) alerji anahtar kelimesi varsa VE LLM bu turda
+  // allergy etiketlememişse, mevcut allergy intent şekliyle BİREBİR (routeIntentToDepartment
+  // ile aynı department/messageType/flag) bir allergy intent EKLENİR. LLM yolu zayıflatılmaz
+  // — keyword OR model → allergy. Çoklu-intent korunur (mevcut intent'ler silinmez).
+  const normalizedGuestMsg = normalizeTr(input.guestMessage);
+  const ALLERGY_KEYWORDS = ['alerj', 'allerg', 'intoleran'];
+  const hasAllergyKeyword = ALLERGY_KEYWORDS.some((kw) => normalizedGuestMsg.includes(kw));
+  const llmTaggedAllergy = classifiedIntents.some(
+    (i) => (i.rawDepartment ?? '').toLowerCase().trim() === 'allergy',
+  );
+  if (hasAllergyKeyword && !llmTaggedAllergy) {
+    const allergyRouting = routeIntentToDepartment('allergy');
+    classifiedIntents.push({
+      department: allergyRouting.department ?? 'front_office',
+      requestText: input.guestMessage,
+      shouldForward: allergyRouting.shouldForward,
+      rawDepartment: 'allergy',
+      messageType: allergyRouting.messageType,
+      withButtons: allergyRouting.withButtons,
+      createsSlaEvent: allergyRouting.createsSlaEvent,
+    });
+    console.log(
+      `[allergy-safety-net] Keyword override → allergy intent eklendi (LLM kaçırdı). msg="${input.guestMessage.slice(0, 60)}"`,
+    );
+  }
 
   // Validasyon
   if (typeof responseToGuest !== 'string' || responseToGuest.length === 0) {
