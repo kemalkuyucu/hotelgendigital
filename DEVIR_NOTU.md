@@ -1,7 +1,7 @@
 # DEVİR NOTU — HotelGen v2
 
-> Son güncelleme: 2026-06-02 (B2.3 ✅ tag'li + alerji-forward bug FIX prod-doğrulandı · verify reset bug fix · B2.1+B2.2 tag'li) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
-> ▶ **SIRADAKİ GÖREV:** B2.4/B3 — allergen BİLDİRİM sözleşmesi doğrulama (`ALERJEN_MODUL4_KURALLAR.md`: kitchen+GR, butonsuz, sla yok), verify-first. Detay: aşağıda "AÇIK İŞLER".
+> Son güncelleme: 2026-06-02 (**B2.4/B3 ✅ alerji yaşamsal zinciri UÇTAN UCA KAPANDI + prod-doğrulandı, tag `v1.0-B3-allergy-chain`** · B2.1/B2.2/B2.3 tag'li · verify reset bug fix) · Branch: `hotelgen-v2` · Resume noktası: `.claude/skills/hotelgen-orchestrator/MODULE_MANIFEST.md`
+> ▶ **SIRADAKİ GÖREV:** B1.1 — constitution dosyaları (`00-master` + 7 dept, saf içerik, wire yok). Track 2 (beyin re-mimarisi) başlıyor. Detay: aşağıda "AÇIK İŞLER".
 > Bu not = oturumlar arası tam devir. Detay her zaman MODULE_MANIFEST.md + AUDIT.md + ALERJEN_MODUL4_KURALLAR.md'de.
 
 ---
@@ -79,6 +79,20 @@ Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit mod
 - **Alerji-forward bug FIX (`9785bd0`):** BİLDİRİM dalı (route.ts:~2479) ölü hardcode chat id `-5015613103`'e gönderiyordu — bu chat DB'de YOK → `tg.sendMessage` patlıyor, hata loop'un `catch (fwdErr)`'inde sessizce yutuluyor → alerji bildirimi **hiçbir gruba düşmüyor** (misafir yine iyi cevap alıyordu, semptom buydu). Çözülmüş `fwdItem.chatId` (-5225595171) yok sayılıyordu. **Fix:** hardcode sabit kaldırıldı, `chat_id: targetChatId` (= çözülmüş `fwdItem.chatId`, allergy→front_office) kullanılıyor. Butonsuz + sla_events YOK korundu; TALEP/SLA dalı + routing/classify DOKUNULMADI (davranış-nötr, yalnız hedef düzeltildi). **NOT:** önceki teşhis hipotezi ("front_office resolve olmuyor → düşüyor") canlı DB ile ÇÜRÜTÜLDÜ — front_office enabled + chat dolu; gerçek kök neden ölü hardcode id'ydi.
 - **Durum:** type-check YEŞİL, push edildi (`9785bd0`). **PROD REAL-BOT VERIFIED ✅ 2026-06-02** — `mantar alerjim var` → Front Office grubuna (`-5225595171`) butonsuz `ℹ️ Misafir Bildirimi (Alerji)` mesajı düştü, SLA kartı/buton yok. Tag `v1.0-B2.3-forward-flags` atıldı.
 
+### B2.4 / B3 — ✅ TAG'Lİ (`v1.0-B3-allergy-chain`) — ALERJİ YAŞAMSAL ZİNCİRİ UÇTAN UCA KAPANDI, PROD REAL-BOT VERIFIED 2026-06-02
+- **Sonuç:** "verify-first" beklenenden çok daha derin çıktı; B2.3 sonrası ardışık salt-okunur teşhislerle bir kök-neden ZİNCİRİ bulundu ve **7 fix** ile kapatıldı. Alerji bildirimi artık mutfak+GR'ye GERÇEKTEN ulaşıyor (önceden sessizce yutuluyordu — yaşamsal güvenlik açığı).
+- **Kapanan akış (uçtan uca):** `"102 Özgür Özen"` (oda+isim tek mesaj) → **17.c-R+N** `inhouse_guests_v2.telegram_id` damgalar → **Part-C** odayı çözer (`persistentVerifiedGuest.room_number=102`) → `"fıstık alerjim var"` → **safety `health_medical` short-circuit'ini alerji keyword AŞAR** → allergy intent (keyword safety net garantisi) → BİLDİRİM dalı → `sendAllergenNotifications` → **Senaryo A** (oda eşleşti).
+- **DOĞRULAMA (2026-06-02 17:10):** `allergen_notification_log` **4 satır `status=sent`, scenario A** — GR Mudur, GR Sorumlu, fb_backup (Ali Yılmaz), fb_primary (Özgür ÖZEN). `department_staff` tam seed (fb primary+backup, GR sorumlu+müdür, hepsi tgId SET).
+- **7 commit (hepsi type-check yeşil + prod bot-doğrulandı):**
+  1. `9785bd0` — B2.3 alerji bildirimi → çözülmüş dept chat (ölü hardcode `-5015613103` kaldırıldı).
+  2. `5ca6683` — direkt `intent=allergy` → `sendAllergenNotifications` (M4 spec fan-out: mutfak primary/backup + GR + GR müdürü DM; tek front_office grup mesajı kaldırıldı).
+  3. `835d476` — deterministik alerji keyword override (`alerj`/`allerg`/`intoleran`, `normalizeTr`): LLM allergy etiketlemezse keyword zorlar → alerji tek başına LLM'e bağımlı değil.
+  4. `b616940` — kalıcı-doğrulanmış misafirin salt-doğrulama re-send'i (örn. "102 Özgür Özen") forward etmez, "zaten doğrulandı" cevabı döner (sahte talep + SLA önlendi).
+  5. `41eca32` — boş `request_text` artık bot cevabını (reply_text) request_text'e KOPYALAMAZ; boşsa forward edilmez, SLA üretilmez (selamlama sahte "Misafir Talebi" + SLA breach'i önlendi).
+  6. `a84de80` — **EN KRİTİK:** alerji keyword'ü `health_medical` safety pre-classifier short-circuit'ini AŞAR → alerji bildirimi genel tıbbi sohbet diye yutulmaz, allergen pipeline'a düşer. (Diğer safety kategorileri + alerji-kelimesiz tıbbi mesajlar AYNEN korunur.)
+  7. `a7bd45f` — **FIX-2:** Modül 17.c "oda + ad soyad" tek mesajı (örn. "102 Özgür Özen") yakalar (pure-digit gate kaçırıyordu) → `parseVerificationInput` + `normalizeTr` ile v2 eşleşmesinde telegram_id damgalar → Part-C bağlayabilir → alerji Senaryo A'ya ulaşır.
+- **Açık takip (yaşamsal değil, ayrı iş):** DOĞRULANMAMIŞ misafir (telegram_id bağlı değil) direkt alerji bildirirse → room null → Senaryo C → kimse bilgilendirilmez AMA bot yine "Afiyet olsun" der (yanıltıcı). M4 spec'e göre oda bilinmiyorsa oda+isim SORULMALI (M3 ask-flow'da var, direkt-intent BİLDİRİM dalında YOK). Ayrı küçük iş — yaşamsal zincir (doğrulanmış akış) kapandı.
+
 ### Mevcut durum (kod gerçeği — B2.2 sonrası)
 - Beyin: **tek monolit** `system-prompts.ts::buildOrchestratorSystemPrompt` (~430 satır). Constitution/lazy-load YOK (Track 2).
 - Sınıflama: `classify-and-respond.ts` (strict-JSON: reply_text/intents[]/confidence/answered_from_knowledge) + safety pre-classifier (Haiku). **Artık `message-types.ts`'i tüketir → her intent `messageType`+flag taşır.**
@@ -102,9 +116,9 @@ Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit mod
 
 ## AÇIK İŞLER (öncelik sırası)
 
-1. **✅ ÇÖZÜLDÜ — ALERJİ FORWARD BUG (`9785bd0`, prod-verified 2026-06-02).** Semptom: "mantar alerjim var" → bot cevap veriyor AMA hiçbir gruba düşmüyordu. Eski hipotez (front_office resolve olmuyor) canlı DB ile ÇÜRÜTÜLDÜ. Gerçek kök neden: BİLDİRİM dalı ölü hardcode chat id `-5015613103`'e gönderiyordu (DB'de yok → send patlar, `catch (fwdErr)` yutar). Fix: çözülmüş `fwdItem.chatId` (front_office `-5225595171`) kullanılıyor. Butonsuz/sla-yok korundu. Detay: B2.3 bölümü.
-2. **🟡 Post-verify forward'da buton YOK (minor, non-blocking).** verify→pending-request forward yolunda (ör. doğrulama sonrası "havlu") Hemen/Biraz-sonra butonları görünmüyor → revisit. SLA/akış bloklamıyor; muhtemelen B2.3 flag yolu ile örtüşür.
-3. **✅ ÇÖZÜLDÜ — B2.3 TAG** (`v1.0-B2.3-forward-flags`, commit `9785bd0`) atıldı + push edildi 2026-06-02.
+1. **✅ ÇÖZÜLDÜ — ALERJİ YAŞAMSAL ZİNCİRİ (tag `v1.0-B3-allergy-chain`, 7 fix, prod-verified 2026-06-02 17:10).** Uçtan uca kapandı: oda+isim bağlar → Part-C oda çözer → safety aşılır → Senaryo A mutfak+GR DM (4 satır `sent`). Detay: B2.4/B3 bölümü.
+2. **✅ ÇÖZÜLDÜ — Post-verify/selamlama sahte forward + buton sorunu.** `41eca32` (boş request_text forward etmez) + `b616940` (salt-doğrulama re-send guard) ile kapandı — selamlama/doğrulama turu artık SLA'lı sahte talep üretmiyor.
+3. **🟠 DOĞRULANMAMIŞ direkt-alerji → Senaryo C (yaşamsal değil ama spec açığı, sıradaki aday).** telegram_id bağlı olmayan misafir direkt "fıstık alerjim var" derse room null → Senaryo C → kimse bilgilendirilmez, bot yine "Afiyet olsun" der (yanıltıcı). M4: oda bilinmiyorsa oda+isim SORULMALI (M3 ask-flow'da var, direkt-intent BİLDİRİM dalında YOK). Ayrı küçük iş.
 4. **🗣️ AI cevap tonu çok robotik (B1 fazı).** Yanıtlar fazla mekanik → ton yumuşatma. B1 (constitution/prompt) fazında ele alınacak, şimdi değil.
 
 ## AÇIK TAKİP (Phase B dışı, unutma)
