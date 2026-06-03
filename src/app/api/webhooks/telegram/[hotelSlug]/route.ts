@@ -1069,19 +1069,6 @@ async function handleMessage(args: {
             .eq('id', matched.id);
           if (linkTgErr) console.error('[17c-rn] inhouse_guests_v2 telegram_id link hatası:', linkTgErr.message);
 
-          // TEMP DEBUG5 - KALDIRILACAK
-          try {
-            await tg.sendMessage({
-              chat_id: chatId,
-              text:
-                'DEBUG5 17c damgalama | eslesme=' + (matched ? 'VAR' : 'YOK') +
-                ' | damgaUpdate=' + (linkTgErr ? ('HATA:' + linkTgErr.message) : 'OK') +
-                ' | oda=' + (matched ? matched.room_number : 'n/a'),
-            });
-          } catch (dbg5Ex) {
-            console.error('[TEMP-DEBUG5] hata:', dbg5Ex instanceof Error ? dbg5Ex.message : dbg5Ex);
-          }
-
           const { error: linkConvErr } = await supa
             .from('conversations')
             .update({ inhouse_match_guest_id: matched.id })
@@ -1897,20 +1884,7 @@ async function handleMessage(args: {
   let finalIntent = aiRawIntent;
   // Mod\u00fcl 10.6/10.7: shouldForward=false (sosyal) VEYA KB cevab\u0131 \u2192 forward yok
   // FIX 2a: isInfoOnlyQuery=true ise de skip \u2014 bilgi sorusu ASLA departmana forward edilmez
-  let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false) || isInfoOnlyQuery(text);
-  // TEMP DEBUG8 - KALDIRILACAK
-  try {
-    await tg.sendMessage({
-      chat_id: chatId,
-      text:
-        'DEBUG8 ilkSkip | aiShouldForward=' + aiShouldForward +
-        ' | answeredFromKnowledge=' + (aiResult?.answered_from_knowledge ?? 'n/a') +
-        ' | isInfoOnly=' + isInfoOnlyQuery(text) +
-        ' | skipForward=' + skipForward,
-    });
-  } catch (dbg8Ex) {
-    console.error('[TEMP-DEBUG8] hata:', dbg8Ex instanceof Error ? dbg8Ex.message : dbg8Ex);
-  }
+  let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false) || (!aiShouldForward && isInfoOnlyQuery(text));
   // Modül 3: Bu turda oda no (doğrulama) sorusu sorulduysa true — alerji sorusu ASLA aynı turda çıkmasın
   let verificationAskedThisRound = false;
 
@@ -1998,19 +1972,6 @@ async function handleMessage(args: {
         conversation.verified_inhouse_guest_id = tgRow.id as string;
       }
       console.log(`[persistent-verify][part-c] persistentVerifiedGuest telegram_id'den set edildi, doğrulama atlanıyor. guest_id=${tgRow.id}`);
-    }
-    // TEMP DEBUG6 - KALDIRILACAK
-    try {
-      await tg.sendMessage({
-        chat_id: chatId,
-        text:
-          'DEBUG6 PartC | userId=' + userId +
-          ' | sorguSatir=' + (tgRows ? tgRows.length : 'ERR') +
-          ' | hata=' + (tgErr ? tgErr.message : 'yok') +
-          ' | persistentSet=' + (persistentVerifiedGuest ? 'SET' : 'NULL'),
-      });
-    } catch (dbg6Ex) {
-      console.error('[TEMP-DEBUG6] hata:', dbg6Ex instanceof Error ? dbg6Ex.message : dbg6Ex);
     }
   }
 
@@ -2298,28 +2259,8 @@ async function handleMessage(args: {
     !conversation.allergen_pending &&
     !verificationIsActive;
 
-  // TEMP DEBUG7 - KALDIRILACAK
-  try {
-    await tg.sendMessage({
-      chat_id: chatId,
-      text:
-        'DEBUG7 KAPI ONU | persistentSet=' + (persistentVerifiedGuest ? 'SET' : 'NULL') +
-        ' | needsReVerification=' + (typeof needsReVerification !== 'undefined' ? needsReVerification : 'n/a') +
-        ' | skipForward=' + skipForward +
-        ' | aiShouldForward=' + aiShouldForward,
-    });
-  } catch (dbg7aEx) {
-    console.error('[TEMP-DEBUG7] kapi-onu hata:', dbg7aEx instanceof Error ? dbg7aEx.message : dbg7aEx);
-  }
-
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
-    // TEMP DEBUG7 - KALDIRILACAK
-    try {
-      await tg.sendMessage({ chat_id: chatId, text: 'DEBUG7 PASSTHROUGH CALISTI' });
-    } catch (dbg7bEx) {
-      console.error('[TEMP-DEBUG7] passthrough hata:', dbg7bEx instanceof Error ? dbg7bEx.message : dbg7bEx);
-    }
     // KB cevabı değilse forward yapılacak (skipForward zaten false/sosyal kontrolü yukarıda)
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent}`);
   } else if (needsReVerification) {
@@ -2349,13 +2290,6 @@ async function handleMessage(args: {
     // Modül 10.7: verified misafir varsa doğrulama akışına GİRME (needsVerification = personalIntent && !persistentVerifiedGuest)
 
     const effectiveIntent = requiresVerification(aiRawIntent) ? aiRawIntent! : (conversation.verification_pending_intent ?? aiRawIntent ?? 'unknown');
-
-    // TEMP DEBUG7 - KALDIRILACAK
-    try {
-      await tg.sendMessage({ chat_id: chatId, text: 'DEBUG7 VERIFLOW CAGRILDI' });
-    } catch (dbg7cEx) {
-      console.error('[TEMP-DEBUG7] veriflow hata:', dbg7cEx instanceof Error ? dbg7cEx.message : dbg7cEx);
-    }
 
     const vResult = await handleVerificationFlow({
       supa,
