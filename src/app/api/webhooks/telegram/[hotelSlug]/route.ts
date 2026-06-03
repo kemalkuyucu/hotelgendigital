@@ -2622,6 +2622,22 @@ async function handleMessage(args: {
           }
           // ── ALLERGY BİLDİRİM AKIŞI SONU ──────────────────────────────────────
 
+          // TEMP DEBUG2 - KALDIRILACAK
+          try {
+            await tg.sendMessage({
+              chat_id: chatId,
+              text:
+                'DEBUG2 aiShouldForward=' + aiShouldForward +
+                ' | skipForward=' + skipForward +
+                ' | intent=' + aiRawIntent +
+                ' | hedefDept=' + (targetDept || 'YOK') +
+                ' | hedefChatId=' + (targetChatId || 'YOK') +
+                ' | forwardItemSayisi=' + (forwardableItems ? forwardableItems.length : 'ERR'),
+            });
+          } catch (dbg2Ex) {
+            console.error('[TEMP-DEBUG2] hata:', dbg2Ex instanceof Error ? dbg2Ex.message : dbg2Ex);
+          }
+
           // ── Modül 11: Departman DB'den sla_minutes çek ──
           const { data: deptSla } = await supa
             .from('departments')
@@ -2771,6 +2787,13 @@ async function handleMessage(args: {
             .eq('id', conversationId);
         } catch (fwdErr) {
           console.error(`[telegram] forwardToDepartment error [item: ${fwdItem.dept}]:`, fwdErr);
+          // TEMP DEBUG2 - KALDIRILACAK
+          try {
+            await tg.sendMessage({
+              chat_id: chatId,
+              text: 'DEBUG2 FORWARD HATASI=' + (fwdErr instanceof Error ? fwdErr.message : String(fwdErr)),
+            });
+          } catch { /* yut */ }
           // continue — diğer intent'ler etkilenmesin
         }
       }
