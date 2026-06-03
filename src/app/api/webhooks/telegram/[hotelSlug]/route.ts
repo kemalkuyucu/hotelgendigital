@@ -2310,7 +2310,7 @@ async function handleMessage(args: {
     // "ilettim" diyor ama talep düşmüyordu). Doğrulanmış misafirde answered_from_knowledge
     // suppressor'ını KALDIR; forward yalnız gerçekten forward-edilebilir intent varsa ve
     // saf bilgi sorusu değilse olur (non-forwardable/social/KB hâlâ korunur).
-    skipForward = !aiShouldForward || isInfoOnlyQuery(text);
+    skipForward = !aiShouldForward;
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent} skipForward=${skipForward}`);
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
