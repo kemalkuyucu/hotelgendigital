@@ -1898,6 +1898,19 @@ async function handleMessage(args: {
   // Mod\u00fcl 10.6/10.7: shouldForward=false (sosyal) VEYA KB cevab\u0131 \u2192 forward yok
   // FIX 2a: isInfoOnlyQuery=true ise de skip \u2014 bilgi sorusu ASLA departmana forward edilmez
   let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false) || isInfoOnlyQuery(text);
+  // TEMP DEBUG8 - KALDIRILACAK
+  try {
+    await tg.sendMessage({
+      chat_id: chatId,
+      text:
+        'DEBUG8 ilkSkip | aiShouldForward=' + aiShouldForward +
+        ' | answeredFromKnowledge=' + (aiResult?.answered_from_knowledge ?? 'n/a') +
+        ' | isInfoOnly=' + isInfoOnlyQuery(text) +
+        ' | skipForward=' + skipForward,
+    });
+  } catch (dbg8Ex) {
+    console.error('[TEMP-DEBUG8] hata:', dbg8Ex instanceof Error ? dbg8Ex.message : dbg8Ex);
+  }
   // Modül 3: Bu turda oda no (doğrulama) sorusu sorulduysa true — alerji sorusu ASLA aynı turda çıkmasın
   let verificationAskedThisRound = false;
 
