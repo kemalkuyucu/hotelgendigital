@@ -2734,6 +2734,17 @@ async function handleMessage(args: {
               errorHint: slaErr?.hint,
               slaEventNull: !slaEvent,
             });
+            // TEMP DBGSLA - KALDIRILACAK
+            try {
+              await supa.from('bot_messages').insert({
+                conversation_id: conversationId,
+                direction: 'outbound',
+                text: 'DBGSLA INSERT FAIL code=' + (slaErr?.code ?? 'null') + ' msg=' + (slaErr?.message ?? 'null') + ' det=' + (slaErr?.details ?? 'null'),
+                message_type: 'text',
+              });
+            } catch (dbgsEx) {
+              console.error('[TEMP-DBGSLA] hata:', dbgsEx instanceof Error ? dbgsEx.message : dbgsEx);
+            }
           } else {
             console.log(`[sla-forward] inserted [item: ${targetDept}]`, { slaEventId: slaEvent.id });
           }
