@@ -630,6 +630,27 @@ async function handleVerificationFlow(args: {
 }): Promise<VerificationFlowResult> {
   const { supa, tg, botToken, conversationId, conversation, guestMessageText, aiIntent, language } = args;
 
+  // 0. telegram_id damgasi varsa zaten dogrulanmis say (inhouse_guests_v2)
+  try {
+    const { data: stampedRows } = await supa
+      .from('inhouse_guests_v2')
+      .select('id')
+      .eq('telegram_id', String(args.guestTelegramId))
+      .eq('status', 'active')
+      .gte('check_out_date', getTurkeyToday());
+    if (stampedRows && stampedRows.length > 0) {
+      console.log('[verification] telegram_id damgali - zaten dogrulanmis, soru sorulmuyor');
+      return {
+        shouldShortCircuit: false,
+        replyText: args.aiReplyText,
+        verifiedGuestId: stampedRows[0].id,
+        effectiveIntent: aiIntent,
+      };
+    }
+  } catch (stampCheckErr) {
+    console.error('[verification] damga kontrol hatasi:', stampCheckErr instanceof Error ? stampCheckErr.message : stampCheckErr);
+  }
+
   // 1. Zaten doğrulanmış ve TTL geçerli → normal akışa devam
   if (
     conversation.verified_inhouse_guest_id &&
