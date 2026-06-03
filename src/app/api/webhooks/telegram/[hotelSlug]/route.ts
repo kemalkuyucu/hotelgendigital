@@ -2510,6 +2510,19 @@ async function handleMessage(args: {
   // intentData artık array — ilk satırın id'si legacy aiIntentId olarak kullanılır
   const aiIntentId = (intentData as Array<{ id: string }> | null)?.[0]?.id as string | undefined;
 
+  // TEMP DBGFWD - KALDIRILACAK
+  try {
+    const ci = (aiResult?.classifiedIntents ?? []).map((x) => x.department + ':' + (x.shouldForward ? 'F' : 'n') + ':"' + (x.requestText ?? '').slice(0, 18) + '"').join(' | ');
+    await supa.from('bot_messages').insert({
+      conversation_id: conversationId,
+      direction: 'outbound',
+      text: 'DBGFWD skip=' + skipForward + ' aiSF=' + aiShouldForward + ' info=' + isInfoOnlyQuery(text) + ' afk=' + (aiResult?.answered_from_knowledge) + ' intents=[' + ci + ']',
+      message_type: 'text',
+    });
+  } catch (dbgfEx) {
+    console.error('[TEMP-DBGFWD] hata:', dbgfEx instanceof Error ? dbgfEx.message : dbgfEx);
+  }
+
   // ── KB cevabı veya doğrulama short-circuit → forward yapma ───────────────
   if (skipForward) {
     console.log(`[telegram] Forward atlandı (KB veya verification gate). intent=${finalIntent}`);
