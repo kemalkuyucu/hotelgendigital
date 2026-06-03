@@ -2304,8 +2304,14 @@ async function handleMessage(args: {
 
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
-    // KB cevabı değilse forward yapılacak (skipForward zaten false/sosyal kontrolü yukarıda)
-    console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent}`);
+    // Doğrulanmış misafirin operasyonel/kişisel talebi MUTLAKA departmana iletilmeli.
+    // LLM doğrulanmış misafire sıcak "ilettim" cevabı verirken answered_from_knowledge=true
+    // işaretleyebiliyor → eski skipForward bunu true yapıp forward'ı engelliyordu (bot
+    // "ilettim" diyor ama talep düşmüyordu). Doğrulanmış misafirde answered_from_knowledge
+    // suppressor'ını KALDIR; forward yalnız gerçekten forward-edilebilir intent varsa ve
+    // saf bilgi sorusu değilse olur (non-forwardable/social/KB hâlâ korunur).
+    skipForward = !aiShouldForward || isInfoOnlyQuery(text);
+    console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent} skipForward=${skipForward}`);
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
     const reVerMsg = getReVerificationMsg(language);
