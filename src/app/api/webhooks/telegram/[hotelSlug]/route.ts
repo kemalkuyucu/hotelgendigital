@@ -679,6 +679,17 @@ async function handleVerificationFlow(args: {
 
       console.log(`[verification] İlk intent — pending_intent=${pendingIntent} kaydedildi, credentials isteniyor`);
       const askMsg = getVerificationAskMsg(language);
+      // TEMP DEBUG10 - KALDIRILACAK
+      try {
+        await tg.sendMessage({
+          chat_id: Number(args.guestTelegramId),
+          text:
+            'DEBUG10 dogrulama mesaji basiliyor | persistentSet=' + (conversation.verified_inhouse_guest_id ? 'SET' : 'NULL') +
+            ' | nereden=SATIR334',
+        });
+      } catch (dbg10Ex) {
+        console.error('[TEMP-DEBUG10] hata:', dbg10Ex instanceof Error ? dbg10Ex.message : dbg10Ex);
+      }
       return {
         shouldShortCircuit: true,
         replyText: askMsg,
