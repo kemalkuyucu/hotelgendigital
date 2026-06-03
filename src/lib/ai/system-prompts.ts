@@ -6,14 +6,24 @@ export interface DepartmentInfo {
 export function buildOrchestratorSystemPrompt(
   hotelName: string,
   departments: DepartmentInfo[],
-  knowledgeSummary: string
+  knowledgeSummary: string,
+  verifiedGuestName?: string | null
 ): string {
   const departmentList = departments
     .map((d) => `- ${d.code}: ${d.display_name}`)
     .join('\n');
 
+  // Doğrulanmış misafir → orchestrator ASLA oda no/isim sormamalı (kimlik zaten sistemde).
+  const verifiedGuestDirective = verifiedGuestName
+    ? `\n\n=== MİSAFİR KİMLİĞİ ZATEN DOĞRULANMIŞ — KRİTİK, EN ÖNCE UYGULA ===
+Bu misafirin kimliği SİSTEM tarafından doğrulandı: ${verifiedGuestName}.
+- ASLA oda numarası, ad veya soyad SORMA. "Lütfen oda numaranızı, adınızı ve soyadınızı paylaşır mısınız?" / "Örnek: 312 ..." tarzı doğrulama isteği YASAK.
+- Aşağıda operasyonel/kişisel talep için "oda numaranızı paylaşır mısınız" şeklinde örnekler olsa bile bu misafire UYGULAMA — o örnekler yalnızca doğrulanmamış misafir içindir.
+- Misafire ismiyle sıcak hitap et ve talebini DOĞRUDAN işleyip ilgili departmana ilet (intents[] doğru department ile). answered_from_knowledge=false bırak ki talep iletilsin.\n`
+    : '';
+
   // ── Modül 9.2: Sabit konu listesi kaldırıldı — KB-driven matching
-  const prompt = `Sen ${hotelName} otelinin AI asistanısın.
+  const prompt = `Sen ${hotelName} otelinin AI asistanısın.${verifiedGuestDirective}
 
 === MİSAFİR CEVAP TONU — EN ÖNCE OKU ===
 

@@ -1852,6 +1852,27 @@ async function handleMessage(args: {
 
   // (Modül 16.b gate kaldırıldı — meeting_rooms artık HOTEL CONTEXT bloğunda AI'a gidiyor)
 
+  // Doğrulanmış misafir adını LLM'e geçir: telegram_id damgalı + aktif misafir, oda no
+  // SORULMAMALI (orchestrator prompt doğrulanmamış sanıp "oda numaranızı paylaşın" diyordu).
+  // Hata akışı kesmesin (webhook 200). Bulunamazsa null → davranış değişmez (doğrulanmamış akış).
+  let verifiedGuestNameForAI: string | null = null;
+  if (userId != null) {
+    try {
+      const { data: vgRows } = await supa
+        .from('inhouse_guests_v2')
+        .select('guest_name')
+        .eq('telegram_id', String(userId))
+        .eq('status', 'active')
+        .gte('check_out_date', getTurkeyToday())
+        .limit(1);
+      if (vgRows && vgRows.length > 0) {
+        verifiedGuestNameForAI = (vgRows[0].guest_name as string) ?? null;
+      }
+    } catch (vgErr) {
+      console.error('[ai] verifiedGuestName lookup hatası:', vgErr instanceof Error ? vgErr.message : vgErr);
+    }
+  }
+
   // Claude AI çağrısı
   let aiResult: Awaited<ReturnType<typeof classifyAndRespond>> | null = null;
   let aiError: string | null = null;
@@ -1863,6 +1884,7 @@ async function handleMessage(args: {
       departments: deptInfoForAI,
       guestMessage: text,
       context,
+      verifiedGuestName: verifiedGuestNameForAI,
     });
   } catch (err) {
     aiError = err instanceof Error ? err.message : 'unknown AI error';
@@ -1960,21 +1982,6 @@ async function handleMessage(args: {
       .gte('check_out_date', todayPc)
       .order('check_out_date', { ascending: false })
       .limit(1);
-
-    // TEMP DBGPC - KALDIRILACAK
-    try {
-      await supa.from('bot_messages').insert({
-        conversation_id: conversationId,
-        direction: 'outbound',
-        text:
-          'DBGPC userIdStr=' + String(userId) + ' today=' + todayPc +
-          ' rows=' + (tgRows ? tgRows.length : 'ERR') +
-          ' err=' + (tgErr ? tgErr.message : 'yok'),
-        message_type: 'text',
-      });
-    } catch (dbgpcEx) {
-      console.error('[TEMP-DBGPC] hata:', dbgpcEx instanceof Error ? dbgpcEx.message : dbgpcEx);
-    }
 
     if (tgErr) {
       console.error('[persistent-verify][part-c] telegram_id sorgu hatası:', tgErr.message);
@@ -2294,24 +2301,6 @@ async function handleMessage(args: {
     !conversation.allergen_asked &&
     !conversation.allergen_pending &&
     !verificationIsActive;
-
-  // TEMP DBGGATE - KALDIRILACAK
-  try {
-    await supa.from('bot_messages').insert({
-      conversation_id: conversationId,
-      direction: 'outbound',
-      text:
-        'DBGGATE pvg=' + (persistentVerifiedGuest ? 'SET' : 'NULL') +
-        ' needsReVer=' + needsReVerification +
-        ' aiSF=' + aiShouldForward +
-        ' canAsk=' + canAskAllergen +
-        ' infoOnly=' + isInfoOnlyQuery(text) +
-        ' reqVer=' + requiresVerification(aiRawIntent),
-      message_type: 'text',
-    });
-  } catch (dbggEx) {
-    console.error('[TEMP-DBGGATE] hata:', dbggEx instanceof Error ? dbggEx.message : dbggEx);
-  }
 
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
