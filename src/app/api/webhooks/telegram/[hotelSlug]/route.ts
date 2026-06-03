@@ -1963,12 +1963,14 @@ async function handleMessage(args: {
 
     // TEMP DBGPC - KALDIRILACAK
     try {
-      await tg.sendMessage({
-        chat_id: chatId,
+      await supa.from('bot_messages').insert({
+        conversation_id: conversationId,
+        direction: 'outbound',
         text:
           'DBGPC userIdStr=' + String(userId) + ' today=' + todayPc +
           ' rows=' + (tgRows ? tgRows.length : 'ERR') +
           ' err=' + (tgErr ? tgErr.message : 'yok'),
+        message_type: 'text',
       });
     } catch (dbgpcEx) {
       console.error('[TEMP-DBGPC] hata:', dbgpcEx instanceof Error ? dbgpcEx.message : dbgpcEx);
