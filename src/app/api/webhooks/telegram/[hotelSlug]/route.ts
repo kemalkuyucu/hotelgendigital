@@ -2764,6 +2764,18 @@ async function handleMessage(args: {
     message_type: 'text',
   });
 
+  // TEMP DEBUG9 - KALDIRILACAK
+  try {
+    await tg.sendMessage({
+      chat_id: chatId,
+      text:
+        'DEBUG9 cevapKaynak | replyUzunluk=' + (finalResponseText ? finalResponseText.length : 0) +
+        ' | ilk40=' + (finalResponseText ? finalResponseText.substring(0, 40) : 'BOS'),
+    });
+  } catch (dbg9Ex) {
+    console.error('[TEMP-DEBUG9] hata:', dbg9Ex instanceof Error ? dbg9Ex.message : dbg9Ex);
+  }
+
   // Telegram'a cevap gönder
   await tg.sendMessage({
     chat_id: chatId,
