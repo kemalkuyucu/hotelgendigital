@@ -679,17 +679,6 @@ async function handleVerificationFlow(args: {
 
       console.log(`[verification] İlk intent — pending_intent=${pendingIntent} kaydedildi, credentials isteniyor`);
       const askMsg = getVerificationAskMsg(language);
-      // TEMP DEBUG10 - KALDIRILACAK
-      try {
-        await tg.sendMessage({
-          chat_id: Number(args.guestTelegramId),
-          text:
-            'DEBUG10 dogrulama mesaji basiliyor | persistentSet=' + (conversation.verified_inhouse_guest_id ? 'SET' : 'NULL') +
-            ' | nereden=SATIR334',
-        });
-      } catch (dbg10Ex) {
-        console.error('[TEMP-DEBUG10] hata:', dbg10Ex instanceof Error ? dbg10Ex.message : dbg10Ex);
-      }
       return {
         shouldShortCircuit: true,
         replyText: askMsg,
@@ -2774,18 +2763,6 @@ async function handleMessage(args: {
     text: finalResponseText,
     message_type: 'text',
   });
-
-  // TEMP DEBUG9 - KALDIRILACAK
-  try {
-    await tg.sendMessage({
-      chat_id: chatId,
-      text:
-        'DEBUG9 cevapKaynak | replyUzunluk=' + (finalResponseText ? finalResponseText.length : 0) +
-        ' | ilk40=' + (finalResponseText ? finalResponseText.substring(0, 40) : 'BOS'),
-    });
-  } catch (dbg9Ex) {
-    console.error('[TEMP-DEBUG9] hata:', dbg9Ex instanceof Error ? dbg9Ex.message : dbg9Ex);
-  }
 
   // Telegram'a cevap gönder
   await tg.sendMessage({
