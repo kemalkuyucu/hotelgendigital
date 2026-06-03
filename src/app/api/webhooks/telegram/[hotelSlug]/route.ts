@@ -1986,6 +1986,19 @@ async function handleMessage(args: {
       }
       console.log(`[persistent-verify][part-c] persistentVerifiedGuest telegram_id'den set edildi, doğrulama atlanıyor. guest_id=${tgRow.id}`);
     }
+    // TEMP DEBUG6 - KALDIRILACAK
+    try {
+      await tg.sendMessage({
+        chat_id: chatId,
+        text:
+          'DEBUG6 PartC | userId=' + userId +
+          ' | sorguSatir=' + (tgRows ? tgRows.length : 'ERR') +
+          ' | hata=' + (tgErr ? tgErr.message : 'yok') +
+          ' | persistentSet=' + (persistentVerifiedGuest ? 'SET' : 'NULL'),
+      });
+    } catch (dbg6Ex) {
+      console.error('[TEMP-DEBUG6] hata:', dbg6Ex instanceof Error ? dbg6Ex.message : dbg6Ex);
+    }
   }
 
   // ── FALLBACK: telegram_id ÇÖZMEDİYSE mevcut verified_inhouse_guest_id zinciri ──
