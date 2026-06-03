@@ -2295,6 +2295,24 @@ async function handleMessage(args: {
     !conversation.allergen_pending &&
     !verificationIsActive;
 
+  // TEMP DBGGATE - KALDIRILACAK
+  try {
+    await supa.from('bot_messages').insert({
+      conversation_id: conversationId,
+      direction: 'outbound',
+      text:
+        'DBGGATE pvg=' + (persistentVerifiedGuest ? 'SET' : 'NULL') +
+        ' needsReVer=' + needsReVerification +
+        ' aiSF=' + aiShouldForward +
+        ' canAsk=' + canAskAllergen +
+        ' infoOnly=' + isInfoOnlyQuery(text) +
+        ' reqVer=' + requiresVerification(aiRawIntent),
+      message_type: 'text',
+    });
+  } catch (dbggEx) {
+    console.error('[TEMP-DBGGATE] hata:', dbggEx instanceof Error ? dbggEx.message : dbggEx);
+  }
+
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
     // KB cevabı değilse forward yapılacak (skipForward zaten false/sosyal kontrolü yukarıda)
