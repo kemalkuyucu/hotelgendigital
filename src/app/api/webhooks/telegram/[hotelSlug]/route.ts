@@ -2482,6 +2482,21 @@ async function handleMessage(args: {
   // intentData artık array — ilk satırın id'si legacy aiIntentId olarak kullanılır
   const aiIntentId = (intentData as Array<{ id: string }> | null)?.[0]?.id as string | undefined;
 
+  // TEMP DEBUG3 - KALDIRILACAK
+  try {
+    await tg.sendMessage({
+      chat_id: chatId,
+      text:
+        'DEBUG3 intent=' + aiRawIntent +
+        ' | aiShouldForward=' + aiShouldForward +
+        ' | skipForward=' + skipForward +
+        ' | safetyTriggered=' + (aiResult?.safetyTriggered ?? 'n/a') +
+        ' | messageType=' + (aiResult?.classifiedIntents?.[0]?.messageType ?? 'n/a'),
+    });
+  } catch (dbg3Ex) {
+    console.error('[TEMP-DEBUG3] hata:', dbg3Ex instanceof Error ? dbg3Ex.message : dbg3Ex);
+  }
+
   // ── KB cevabı veya doğrulama short-circuit → forward yapma ───────────────
   if (skipForward) {
     console.log(`[telegram] Forward atlandı (KB veya verification gate). intent=${finalIntent}`);
