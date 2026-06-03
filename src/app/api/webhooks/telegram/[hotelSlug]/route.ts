@@ -1961,6 +1961,19 @@ async function handleMessage(args: {
       .order('check_out_date', { ascending: false })
       .limit(1);
 
+    // TEMP DBGPC - KALDIRILACAK
+    try {
+      await tg.sendMessage({
+        chat_id: chatId,
+        text:
+          'DBGPC userIdStr=' + String(userId) + ' today=' + todayPc +
+          ' rows=' + (tgRows ? tgRows.length : 'ERR') +
+          ' err=' + (tgErr ? tgErr.message : 'yok'),
+      });
+    } catch (dbgpcEx) {
+      console.error('[TEMP-DBGPC] hata:', dbgpcEx instanceof Error ? dbgpcEx.message : dbgpcEx);
+    }
+
     if (tgErr) {
       console.error('[persistent-verify][part-c] telegram_id sorgu hatası:', tgErr.message);
     } else if (tgRows && tgRows.length > 0) {
