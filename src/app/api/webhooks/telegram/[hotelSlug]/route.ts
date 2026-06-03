@@ -2510,19 +2510,6 @@ async function handleMessage(args: {
   // intentData artık array — ilk satırın id'si legacy aiIntentId olarak kullanılır
   const aiIntentId = (intentData as Array<{ id: string }> | null)?.[0]?.id as string | undefined;
 
-  // TEMP DBGFWD - KALDIRILACAK
-  try {
-    const ci = (aiResult?.classifiedIntents ?? []).map((x) => x.department + ':' + (x.shouldForward ? 'F' : 'n') + ':"' + (x.requestText ?? '').slice(0, 18) + '"').join(' | ');
-    await supa.from('bot_messages').insert({
-      conversation_id: conversationId,
-      direction: 'outbound',
-      text: 'DBGFWD skip=' + skipForward + ' aiSF=' + aiShouldForward + ' info=' + isInfoOnlyQuery(text) + ' afk=' + (aiResult?.answered_from_knowledge) + ' intents=[' + ci + ']',
-      message_type: 'text',
-    });
-  } catch (dbgfEx) {
-    console.error('[TEMP-DBGFWD] hata:', dbgfEx instanceof Error ? dbgfEx.message : dbgfEx);
-  }
-
   // ── KB cevabı veya doğrulama short-circuit → forward yapma ───────────────
   if (skipForward) {
     console.log(`[telegram] Forward atlandı (KB veya verification gate). intent=${finalIntent}`);
@@ -2549,19 +2536,6 @@ async function handleMessage(args: {
       departments as DeptRouteInfo[],
       baseForwardGuestMessage,
     );
-
-    // TEMP DBGITEMS - KALDIRILACAK
-    try {
-      const fi = forwardableItems.map((x) => x.dept + '@' + x.chatId + '(sla=' + x.createsSlaEvent + ')').join(' | ');
-      await supa.from('bot_messages').insert({
-        conversation_id: conversationId,
-        direction: 'outbound',
-        text: 'DBGITEMS count=' + forwardableItems.length + ' items=[' + fi + ']',
-        message_type: 'text',
-      });
-    } catch (dbgiEx) {
-      console.error('[TEMP-DBGITEMS] hata:', dbgiEx instanceof Error ? dbgiEx.message : dbgiEx);
-    }
 
     if (forwardableItems.length === 0) {
       console.log('[forward] No forwardable items, skipping');
@@ -2713,8 +2687,11 @@ async function handleMessage(args: {
           const { data: slaEvent, error: slaErr } = await supa
             .from('sla_events')
             .insert({
-              conversation_id: conversationId,
-              inhouse_guest_id: persistentVerifiedGuest?.id ?? null,
+              // FK FIX: sla_events.inhouse_guest_id legacy inhouse_guests'e FK'li (canlı drift).
+              // persistentVerifiedGuest.id artık v2 id (Part-C) → legacy'de yok → 23503 FK ihlali
+              // forward'ı tamamen düşürüyordu. Bu kolonu kimse OKUMUYOR (room_number+guest_full_name
+              // zaten denormalize). null geç → FK ihlali yok, forward çalışır.
+              inhouse_guest_id: null,
               department_code: targetDept,
               department_chat_id: deptChatIdForSla,
               request_text: fwdItem.requestText,
@@ -2734,17 +2711,6 @@ async function handleMessage(args: {
               errorHint: slaErr?.hint,
               slaEventNull: !slaEvent,
             });
-            // TEMP DBGSLA - KALDIRILACAK
-            try {
-              await supa.from('bot_messages').insert({
-                conversation_id: conversationId,
-                direction: 'outbound',
-                text: 'DBGSLA INSERT FAIL code=' + (slaErr?.code ?? 'null') + ' msg=' + (slaErr?.message ?? 'null') + ' det=' + (slaErr?.details ?? 'null'),
-                message_type: 'text',
-              });
-            } catch (dbgsEx) {
-              console.error('[TEMP-DBGSLA] hata:', dbgsEx instanceof Error ? dbgsEx.message : dbgsEx);
-            }
           } else {
             console.log(`[sla-forward] inserted [item: ${targetDept}]`, { slaEventId: slaEvent.id });
           }
