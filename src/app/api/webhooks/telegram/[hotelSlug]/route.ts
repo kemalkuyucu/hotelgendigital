@@ -2510,16 +2510,6 @@ async function handleMessage(args: {
   // intentData artık array — ilk satırın id'si legacy aiIntentId olarak kullanılır
   const aiIntentId = (intentData as Array<{ id: string }> | null)?.[0]?.id as string | undefined;
 
-  // TEMP DBGREAL - KALDIRILACAK
-  try {
-    await supa.from('bot_messages').insert({
-      conversation_id: conversationId,
-      direction: 'outbound',
-      text: 'DBGREAL skip=' + skipForward + ' aiSF=' + aiShouldForward + ' pvg=' + (persistentVerifiedGuest ? 'SET' : 'NULL') + ' intentSayisi=' + ((aiResult?.classifiedIntents ?? []).length),
-      message_type: 'text',
-    });
-  } catch (e) { console.error('[DBGREAL]', e); }
-
   // ── KB cevabı veya doğrulama short-circuit → forward yapma ───────────────
   if (skipForward) {
     console.log(`[telegram] Forward atlandı (KB veya verification gate). intent=${finalIntent}`);
