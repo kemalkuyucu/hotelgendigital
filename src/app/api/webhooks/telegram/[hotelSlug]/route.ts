@@ -2550,6 +2550,19 @@ async function handleMessage(args: {
       baseForwardGuestMessage,
     );
 
+    // TEMP DBGITEMS - KALDIRILACAK
+    try {
+      const fi = forwardableItems.map((x) => x.dept + '@' + x.chatId + '(sla=' + x.createsSlaEvent + ')').join(' | ');
+      await supa.from('bot_messages').insert({
+        conversation_id: conversationId,
+        direction: 'outbound',
+        text: 'DBGITEMS count=' + forwardableItems.length + ' items=[' + fi + ']',
+        message_type: 'text',
+      });
+    } catch (dbgiEx) {
+      console.error('[TEMP-DBGITEMS] hata:', dbgiEx instanceof Error ? dbgiEx.message : dbgiEx);
+    }
+
     if (forwardableItems.length === 0) {
       console.log('[forward] No forwardable items, skipping');
     } else {
