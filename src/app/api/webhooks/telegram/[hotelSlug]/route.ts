@@ -1069,6 +1069,19 @@ async function handleMessage(args: {
             .eq('id', matched.id);
           if (linkTgErr) console.error('[17c-rn] inhouse_guests_v2 telegram_id link hatası:', linkTgErr.message);
 
+          // TEMP DEBUG5 - KALDIRILACAK
+          try {
+            await tg.sendMessage({
+              chat_id: chatId,
+              text:
+                'DEBUG5 17c damgalama | eslesme=' + (matched ? 'VAR' : 'YOK') +
+                ' | damgaUpdate=' + (linkTgErr ? ('HATA:' + linkTgErr.message) : 'OK') +
+                ' | oda=' + (matched ? matched.room_number : 'n/a'),
+            });
+          } catch (dbg5Ex) {
+            console.error('[TEMP-DEBUG5] hata:', dbg5Ex instanceof Error ? dbg5Ex.message : dbg5Ex);
+          }
+
           const { error: linkConvErr } = await supa
             .from('conversations')
             .update({ inhouse_match_guest_id: matched.id })
