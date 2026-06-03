@@ -2687,6 +2687,7 @@ async function handleMessage(args: {
           const { data: slaEvent, error: slaErr } = await supa
             .from('sla_events')
             .insert({
+              conversation_id: conversationId,
               // FK FIX: sla_events.inhouse_guest_id legacy inhouse_guests'e FK'li (canlı drift).
               // persistentVerifiedGuest.id artık v2 id (Part-C) → legacy'de yok → 23503 FK ihlali
               // forward'ı tamamen düşürüyordu. Bu kolonu kimse OKUMUYOR (room_number+guest_full_name
@@ -2711,8 +2712,6 @@ async function handleMessage(args: {
               errorHint: slaErr?.hint,
               slaEventNull: !slaEvent,
             });
-            // TEMP DBGSLA2 - KALDIRILACAK
-            try { await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: 'DBGSLA2 code=' + (slaErr?.code ?? 'null') + ' msg=' + (slaErr?.message ?? 'null') + ' det=' + (slaErr?.details ?? 'null') + ' hint=' + (slaErr?.hint ?? 'null') + ' evNull=' + (!slaEvent), message_type: 'text' }); } catch (e2) { console.error('[DBGSLA2]', e2); }
           } else {
             console.log(`[sla-forward] inserted [item: ${targetDept}]`, { slaEventId: slaEvent.id });
           }
