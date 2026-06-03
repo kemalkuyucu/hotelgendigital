@@ -2259,6 +2259,27 @@ async function handleMessage(args: {
     !conversation.allergen_pending &&
     !verificationIsActive;
 
+  // TEMP DEBUG - KALDIRILACAK
+  try {
+    const dbgToday = getTurkeyToday();
+    const { data: dbgRows, error: dbgErr } = await supa
+      .from('inhouse_guests_v2')
+      .select('id, telegram_id, room_number, status, check_out_date')
+      .eq('telegram_id', String(userId))
+      .eq('status', 'active')
+      .gte('check_out_date', dbgToday);
+    await tg.sendMessage({
+      chat_id: chatId,
+      text:
+        'DEBUG userId=' + userId + ' type=' + (typeof userId) +
+        ' | sorguSatir=' + (dbgRows ? dbgRows.length : 'ERR') +
+        ' | hata=' + (dbgErr ? dbgErr.message : 'yok') +
+        ' | persistentVerifiedGuest=' + (persistentVerifiedGuest ? 'SET' : 'NULL'),
+    });
+  } catch (dbgEx) {
+    console.error('[TEMP-DEBUG] hata:', dbgEx instanceof Error ? dbgEx.message : dbgEx);
+  }
+
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
     // KB cevabı değilse forward yapılacak (skipForward zaten false/sosyal kontrolü yukarıda)
