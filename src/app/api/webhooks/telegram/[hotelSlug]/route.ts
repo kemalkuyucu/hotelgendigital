@@ -2259,40 +2259,10 @@ async function handleMessage(args: {
     !conversation.allergen_pending &&
     !verificationIsActive;
 
-  // TEMP DEBUG - KALDIRILACAK
-  try {
-    const dbgToday = getTurkeyToday();
-    const { data: dbgRows, error: dbgErr } = await supa
-      .from('inhouse_guests_v2')
-      .select('id, telegram_id, room_number, status, check_out_date')
-      .eq('telegram_id', String(userId))
-      .eq('status', 'active')
-      .gte('check_out_date', dbgToday);
-    await tg.sendMessage({
-      chat_id: chatId,
-      text:
-        'DEBUG userId=' + userId + ' type=' + (typeof userId) +
-        ' | sorguSatir=' + (dbgRows ? dbgRows.length : 'ERR') +
-        ' | hata=' + (dbgErr ? dbgErr.message : 'yok') +
-        ' | persistentVerifiedGuest=' + (persistentVerifiedGuest ? 'SET' : 'NULL'),
-    });
-  } catch (dbgEx) {
-    console.error('[TEMP-DEBUG] hata:', dbgEx instanceof Error ? dbgEx.message : dbgEx);
-  }
-
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
     // KB cevabı değilse forward yapılacak (skipForward zaten false/sosyal kontrolü yukarıda)
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent}`);
-    // TEMP DEBUG4 - KALDIRILACAK
-    try {
-      await tg.sendMessage({
-        chat_id: chatId,
-        text: 'DEBUG4 PASSTHROUGH girdi | skipForwardBurada=' + skipForward,
-      });
-    } catch (dbg4Ex) {
-      console.error('[TEMP-DEBUG4] passthrough hata:', dbg4Ex instanceof Error ? dbg4Ex.message : dbg4Ex);
-    }
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
     const reVerMsg = getReVerificationMsg(language);
@@ -2374,15 +2344,6 @@ async function handleMessage(args: {
       const freshlyVerifiedThisTurn = vResult.verifiedGuestRecord != null;
       // Gerçek talep var mı? Saklı pending talep VEYA mesaja gömülü talep.
       const hasRealRequest = !!(vResult.originalRequestText || vResult.embeddedRequest);
-      // TEMP DEBUG4 - KALDIRILACAK
-      try {
-        await tg.sendMessage({
-          chat_id: chatId,
-          text: 'DEBUG4 dal2371 | freshlyVerifiedThisTurn=' + freshlyVerifiedThisTurn + ' | hasRealRequest=' + hasRealRequest,
-        });
-      } catch (dbg4bEx) {
-        console.error('[TEMP-DEBUG4] dal2371 hata:', dbg4bEx instanceof Error ? dbg4bEx.message : dbg4bEx);
-      }
       // Taze doğrulama + talep YOK → salt kimlik kanıtı → forward ETME (ForwardableItem
       // üretilmez, misafir yine de doğrulama-başarı cevabını alır). Diğer tüm durumlar
       // (taze+talep, ya da zaten-doğrulanmış passthrough) → forward devam eder.
@@ -2499,21 +2460,6 @@ async function handleMessage(args: {
 
   // intentData artık array — ilk satırın id'si legacy aiIntentId olarak kullanılır
   const aiIntentId = (intentData as Array<{ id: string }> | null)?.[0]?.id as string | undefined;
-
-  // TEMP DEBUG3 - KALDIRILACAK
-  try {
-    await tg.sendMessage({
-      chat_id: chatId,
-      text:
-        'DEBUG3 intent=' + aiRawIntent +
-        ' | aiShouldForward=' + aiShouldForward +
-        ' | skipForward=' + skipForward +
-        ' | safetyTriggered=' + (aiResult?.safetyTriggered ?? 'n/a') +
-        ' | messageType=' + (aiResult?.classifiedIntents?.[0]?.messageType ?? 'n/a'),
-    });
-  } catch (dbg3Ex) {
-    console.error('[TEMP-DEBUG3] hata:', dbg3Ex instanceof Error ? dbg3Ex.message : dbg3Ex);
-  }
 
   // ── KB cevabı veya doğrulama short-circuit → forward yapma ───────────────
   if (skipForward) {
@@ -2654,22 +2600,6 @@ async function handleMessage(args: {
             continue; // Bu item için SLA + normal forward akışını atla
           }
           // ── ALLERGY BİLDİRİM AKIŞI SONU ──────────────────────────────────────
-
-          // TEMP DEBUG2 - KALDIRILACAK
-          try {
-            await tg.sendMessage({
-              chat_id: chatId,
-              text:
-                'DEBUG2 aiShouldForward=' + aiShouldForward +
-                ' | skipForward=' + skipForward +
-                ' | intent=' + aiRawIntent +
-                ' | hedefDept=' + (targetDept || 'YOK') +
-                ' | hedefChatId=' + (targetChatId || 'YOK') +
-                ' | forwardItemSayisi=' + (forwardableItems ? forwardableItems.length : 'ERR'),
-            });
-          } catch (dbg2Ex) {
-            console.error('[TEMP-DEBUG2] hata:', dbg2Ex instanceof Error ? dbg2Ex.message : dbg2Ex);
-          }
 
           // ── Modül 11: Departman DB'den sla_minutes çek ──
           const { data: deptSla } = await supa
@@ -2820,13 +2750,6 @@ async function handleMessage(args: {
             .eq('id', conversationId);
         } catch (fwdErr) {
           console.error(`[telegram] forwardToDepartment error [item: ${fwdItem.dept}]:`, fwdErr);
-          // TEMP DEBUG2 - KALDIRILACAK
-          try {
-            await tg.sendMessage({
-              chat_id: chatId,
-              text: 'DEBUG2 FORWARD HATASI=' + (fwdErr instanceof Error ? fwdErr.message : String(fwdErr)),
-            });
-          } catch { /* yut */ }
           // continue — diğer intent'ler etkilenmesin
         }
       }
