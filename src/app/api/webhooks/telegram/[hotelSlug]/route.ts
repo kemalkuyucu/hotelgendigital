@@ -2285,8 +2285,28 @@ async function handleMessage(args: {
     !conversation.allergen_pending &&
     !verificationIsActive;
 
+  // TEMP DEBUG7 - KALDIRILACAK
+  try {
+    await tg.sendMessage({
+      chat_id: chatId,
+      text:
+        'DEBUG7 KAPI ONU | persistentSet=' + (persistentVerifiedGuest ? 'SET' : 'NULL') +
+        ' | needsReVerification=' + (typeof needsReVerification !== 'undefined' ? needsReVerification : 'n/a') +
+        ' | skipForward=' + skipForward +
+        ' | aiShouldForward=' + aiShouldForward,
+    });
+  } catch (dbg7aEx) {
+    console.error('[TEMP-DEBUG7] kapi-onu hata:', dbg7aEx instanceof Error ? dbg7aEx.message : dbg7aEx);
+  }
+
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
+    // TEMP DEBUG7 - KALDIRILACAK
+    try {
+      await tg.sendMessage({ chat_id: chatId, text: 'DEBUG7 PASSTHROUGH CALISTI' });
+    } catch (dbg7bEx) {
+      console.error('[TEMP-DEBUG7] passthrough hata:', dbg7bEx instanceof Error ? dbg7bEx.message : dbg7bEx);
+    }
     // KB cevabı değilse forward yapılacak (skipForward zaten false/sosyal kontrolü yukarıda)
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent}`);
   } else if (needsReVerification) {
@@ -2316,6 +2336,13 @@ async function handleMessage(args: {
     // Modül 10.7: verified misafir varsa doğrulama akışına GİRME (needsVerification = personalIntent && !persistentVerifiedGuest)
 
     const effectiveIntent = requiresVerification(aiRawIntent) ? aiRawIntent! : (conversation.verification_pending_intent ?? aiRawIntent ?? 'unknown');
+
+    // TEMP DEBUG7 - KALDIRILACAK
+    try {
+      await tg.sendMessage({ chat_id: chatId, text: 'DEBUG7 VERIFLOW CAGRILDI' });
+    } catch (dbg7cEx) {
+      console.error('[TEMP-DEBUG7] veriflow hata:', dbg7cEx instanceof Error ? dbg7cEx.message : dbg7cEx);
+    }
 
     const vResult = await handleVerificationFlow({
       supa,
