@@ -2284,6 +2284,15 @@ async function handleMessage(args: {
   if (persistentVerifiedGuest) {
     // KB cevabı değilse forward yapılacak (skipForward zaten false/sosyal kontrolü yukarıda)
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent}`);
+    // TEMP DEBUG4 - KALDIRILACAK
+    try {
+      await tg.sendMessage({
+        chat_id: chatId,
+        text: 'DEBUG4 PASSTHROUGH girdi | skipForwardBurada=' + skipForward,
+      });
+    } catch (dbg4Ex) {
+      console.error('[TEMP-DEBUG4] passthrough hata:', dbg4Ex instanceof Error ? dbg4Ex.message : dbg4Ex);
+    }
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
     const reVerMsg = getReVerificationMsg(language);
@@ -2365,6 +2374,15 @@ async function handleMessage(args: {
       const freshlyVerifiedThisTurn = vResult.verifiedGuestRecord != null;
       // Gerçek talep var mı? Saklı pending talep VEYA mesaja gömülü talep.
       const hasRealRequest = !!(vResult.originalRequestText || vResult.embeddedRequest);
+      // TEMP DEBUG4 - KALDIRILACAK
+      try {
+        await tg.sendMessage({
+          chat_id: chatId,
+          text: 'DEBUG4 dal2371 | freshlyVerifiedThisTurn=' + freshlyVerifiedThisTurn + ' | hasRealRequest=' + hasRealRequest,
+        });
+      } catch (dbg4bEx) {
+        console.error('[TEMP-DEBUG4] dal2371 hata:', dbg4bEx instanceof Error ? dbg4bEx.message : dbg4bEx);
+      }
       // Taze doğrulama + talep YOK → salt kimlik kanıtı → forward ETME (ForwardableItem
       // üretilmez, misafir yine de doğrulama-başarı cevabını alır). Diğer tüm durumlar
       // (taze+talep, ya da zaten-doğrulanmış passthrough) → forward devam eder.
