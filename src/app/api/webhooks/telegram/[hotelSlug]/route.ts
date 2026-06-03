@@ -2711,6 +2711,8 @@ async function handleMessage(args: {
               errorHint: slaErr?.hint,
               slaEventNull: !slaEvent,
             });
+            // TEMP DBGSLA2 - KALDIRILACAK
+            try { await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: 'DBGSLA2 code=' + (slaErr?.code ?? 'null') + ' msg=' + (slaErr?.message ?? 'null') + ' det=' + (slaErr?.details ?? 'null') + ' hint=' + (slaErr?.hint ?? 'null') + ' evNull=' + (!slaEvent), message_type: 'text' }); } catch (e2) { console.error('[DBGSLA2]', e2); }
           } else {
             console.log(`[sla-forward] inserted [item: ${targetDept}]`, { slaEventId: slaEvent.id });
           }
