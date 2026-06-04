@@ -222,6 +222,10 @@ export async function POST(
       const chat = (update as any)?.message?.chat;
       if (chat && chat.type !== 'private') {
         console.log('CHATIDCATCH id=' + chat.id + ' title=' + (chat.title || ''));
+        await (supa as any).from('hotel_audit_log').insert({
+          action: 'CHATIDCATCH',
+          details: { chat_id: chat.id, title: chat.title || '' },
+        });
       }
     } catch (e) { console.error('[CHATIDCATCH]', e); }
 
