@@ -221,12 +221,7 @@ export async function POST(
     try {
       const chat = (update as any)?.message?.chat;
       if (chat && chat.type !== 'private') {
-        await supa.from('bot_messages').insert({
-          conversation_id: null,
-          direction: 'outbound',
-          text: 'CHATIDCATCH id=' + chat.id + ' title=' + (chat.title || ''),
-          message_type: 'text',
-        });
+        console.log('CHATIDCATCH id=' + chat.id + ' title=' + (chat.title || ''));
       }
     } catch (e) { console.error('[CHATIDCATCH]', e); }
 
