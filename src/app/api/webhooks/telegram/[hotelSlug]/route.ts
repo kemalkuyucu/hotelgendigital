@@ -2311,6 +2311,14 @@ async function handleMessage(args: {
     // suppressor'ını KALDIR; forward yalnız gerçekten forward-edilebilir intent varsa ve
     // saf bilgi sorusu değilse olur (non-forwardable/social/KB hâlâ korunur).
     skipForward = !aiShouldForward;
+    try {
+      await supa.from('bot_messages').insert({
+        conversation_id: conversationId,
+        direction: 'outbound',
+        text: 'DBGAFK afk=' + (aiResult?.answered_from_knowledge ?? 'undef') + ' aiSF=' + aiShouldForward + ' skip=' + skipForward + ' dept=' + finalIntent,
+        message_type: 'text',
+      });
+    } catch (e) { console.error('[DBGAFK]', e); }
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent} skipForward=${skipForward}`);
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
