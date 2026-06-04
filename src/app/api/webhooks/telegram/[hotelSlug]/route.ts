@@ -217,6 +217,19 @@ export async function POST(
       return NextResponse.json({ ok: false, error: 'invalid json' }, { status: 400 });
     }
 
+    // TEMP CHATID-CATCH - KALDIRILACAK
+    try {
+      const chat = (update as any)?.message?.chat;
+      if (chat && chat.type !== 'private') {
+        await supa.from('bot_messages').insert({
+          conversation_id: null,
+          direction: 'outbound',
+          text: 'CHATIDCATCH id=' + chat.id + ' title=' + (chat.title || ''),
+          message_type: 'text',
+        });
+      }
+    } catch (e) { console.error('[CHATIDCATCH]', e); }
+
     // ============================================================
     // MODÜL 11: callback_query dispatch (inline button basımları)
     // ============================================================
