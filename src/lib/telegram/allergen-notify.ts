@@ -135,10 +135,13 @@ async function sendAndLog(p: SendAndLogParams): Promise<void> {
     return;
   }
 
+  const personalizedText =
+    notificationText + `\n👮 <b>Alıcı:</b> ${escHtml(staff.full_name)}`;
+
   try {
     await tg.sendMessage({
       chat_id: dmChatId,
-      text: notificationText,
+      text: personalizedText,
       parse_mode: 'HTML',
       disable_web_page_preview: true,
     });
