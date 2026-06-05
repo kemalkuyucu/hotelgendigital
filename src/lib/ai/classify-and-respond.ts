@@ -36,6 +36,7 @@ export interface ClassifyAndRespondInput {
   context: ConversationContextMessage[]; // Son N mesaj (eski → yeni sırada)
   verifiedGuestName?: string | null; // Doğrulanmış misafir adı (varsa) → oda no SORMA
   verifiedRoomNumber?: string | null; // Doğrulanmış misafir oda no (varsa)
+  verifiedCheckout?: string | null; // Doğrulanmış misafir çıkış tarihi (varsa)
 }
 
 export interface ClassifiedIntentItem {
@@ -139,7 +140,7 @@ export async function classifyAndRespond(
 
   // Knowledge summary'yi cache'den getir (5dk TTL) ve sisteme inject et
   const knowledgeSummary = await getCachedSummary(input.hotelId);
-  const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments, knowledgeSummary, input.verifiedGuestName, input.verifiedRoomNumber);
+  const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments, knowledgeSummary, input.verifiedGuestName, input.verifiedRoomNumber, input.verifiedCheckout);
 
   const hotelContextText = hotelContext ? formatContextForPrompt(hotelContext) : '';
   // HOTEL CONTEXT'i system prompt'a göm — TÜM otel verisi (meeting_rooms dahil) burada

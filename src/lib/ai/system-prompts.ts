@@ -8,7 +8,8 @@ export function buildOrchestratorSystemPrompt(
   departments: DepartmentInfo[],
   knowledgeSummary: string,
   verifiedGuestName?: string | null,
-  verifiedRoomNumber?: string | null
+  verifiedRoomNumber?: string | null,
+  verifiedCheckout?: string | null
 ): string {
   const departmentList = departments
     .map((d) => `- ${d.code}: ${d.display_name}`)
@@ -17,8 +18,9 @@ export function buildOrchestratorSystemPrompt(
   // Doğrulanmış misafir → orchestrator ASLA oda no/isim sormamalı (kimlik zaten sistemde).
   const verifiedGuestDirective = verifiedGuestName
     ? `\n\n=== MİSAFİR KİMLİĞİ ZATEN DOĞRULANMIŞ — KRİTİK, EN ÖNCE UYGULA ===
-Bu misafirin kimliği SİSTEM tarafından doğrulandı: ${verifiedGuestName}${verifiedRoomNumber ? `, oda numarası: ${verifiedRoomNumber}` : ''}.
+Bu misafirin kimliği SİSTEM tarafından doğrulandı: ${verifiedGuestName}${verifiedRoomNumber ? `, oda numarası: ${verifiedRoomNumber}` : ''}${verifiedCheckout ? `, çıkış tarihi: ${verifiedCheckout}` : ''}.
 - Misafir "hangi odadayım", "odam ne" diye sorarsa kayıtlı oda numarasını SÖYLE (yukarıda belirtildi). "Görüntülenemiyor" DEME.
+- Misafir "çıkış tarihim ne", "ne zaman ayrılıyorum" diye sorarsa kayıtlı çıkış tarihini SÖYLE (yukarıda belirtildi). "Görünmüyor" DEME.
 - ASLA oda numarası, ad veya soyad SORMA. "Lütfen oda numaranızı, adınızı ve soyadınızı paylaşır mısınız?" / "Örnek: 312 ..." tarzı doğrulama isteği YASAK.
 - Aşağıda operasyonel/kişisel talep için "oda numaranızı paylaşır mısınız" şeklinde örnekler olsa bile bu misafire UYGULAMA — o örnekler yalnızca doğrulanmamış misafir içindir.
 - Misafire ismiyle sıcak hitap et ve talebini DOĞRUDAN işleyip ilgili departmana ilet (intents[] doğru department ile). answered_from_knowledge=false bırak ki talep iletilsin.\n`

@@ -1857,11 +1857,12 @@ async function handleMessage(args: {
   // Hata akışı kesmesin (webhook 200). Bulunamazsa null → davranış değişmez (doğrulanmamış akış).
   let verifiedGuestNameForAI: string | null = null;
   let verifiedRoomNumberForAI: string | null = null;
+  let verifiedCheckoutForAI: string | null = null;
   if (userId != null) {
     try {
       const { data: vgRows } = await supa
         .from('inhouse_guests_v2')
-        .select('guest_name, room_number')
+        .select('guest_name, room_number, check_out_date')
         .eq('telegram_id', String(userId))
         .eq('status', 'active')
         .gte('check_out_date', getTurkeyToday())
@@ -1869,6 +1870,7 @@ async function handleMessage(args: {
       if (vgRows && vgRows.length > 0) {
         verifiedGuestNameForAI = (vgRows[0].guest_name as string) ?? null;
         verifiedRoomNumberForAI = (vgRows[0].room_number != null ? String(vgRows[0].room_number) : null);
+        verifiedCheckoutForAI = (vgRows[0].check_out_date != null ? String(vgRows[0].check_out_date) : null);
       }
     } catch (vgErr) {
       console.error('[ai] verifiedGuestName lookup hatası:', vgErr instanceof Error ? vgErr.message : vgErr);
@@ -1888,6 +1890,7 @@ async function handleMessage(args: {
       context,
       verifiedGuestName: verifiedGuestNameForAI,
       verifiedRoomNumber: verifiedRoomNumberForAI,
+      verifiedCheckout: verifiedCheckoutForAI,
     });
   } catch (err) {
     aiError = err instanceof Error ? err.message : 'unknown AI error';
