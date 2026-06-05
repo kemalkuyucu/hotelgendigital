@@ -263,7 +263,7 @@ export async function sendAllergenNotifications(
 
     // Mutfak mesajı
     const kitchenText =
-      `⚠️ <b>ALERJEN BİLDİRİMİ</b>\n` +
+      `⚠️ <b>ALERJEN BİLDİRİMİ — Mutfak / F&B</b>\n` +
       `━━━━━━━━━━\n` +
       `🛏 <b>Oda:</b> ${escHtml(room)}\n` +
       `👤 <b>Misafir:</b> ${escHtml(name)}\n` +
@@ -273,7 +273,7 @@ export async function sendAllergenNotifications(
 
     // GR mesajı
     const grText =
-      `⚠️ <b>ALERJEN BİLDİRİMİ</b>\n` +
+      `⚠️ <b>ALERJEN BİLDİRİMİ — Misafir İlişkileri (GR)</b>\n` +
       `━━━━━━━━━━\n` +
       `🛏 <b>Oda:</b> ${escHtml(room)}\n` +
       `👤 <b>Misafir:</b> ${escHtml(name)}\n` +
