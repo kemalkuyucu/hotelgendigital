@@ -2307,7 +2307,6 @@ async function handleMessage(args: {
     !conversation.allergen_asked &&
     !conversation.allergen_pending &&
     !verificationIsActive;
-  console.log(`[DBGALG] isFb=${isFbIntent} asked=${conversation.allergen_asked} pending=${conversation.allergen_pending} verifActive=${verificationIsActive} canAsk=${canAskAllergen}`);
 
   // Persistent misafir varsa doğrulama akışına girme
   if (persistentVerifiedGuest) {
