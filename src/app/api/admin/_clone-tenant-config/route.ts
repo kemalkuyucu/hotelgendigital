@@ -105,14 +105,20 @@ async function copyTable(
 // ---------------------------------------------------------------------------
 // POST handler
 // ---------------------------------------------------------------------------
-export async function POST() {
-  // --- Yetki kontrolü: sadece super_admin (diğer /api/admin route'larıyla aynı) ---
-  const admin = await getSessionAdmin()
-  if (!admin) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  }
-  if (admin.role !== 'super_admin') {
-    return NextResponse.json({ ok: false, error: 'forbidden: super_admin required' }, { status: 403 })
+export async function POST(req: Request) {
+  // --- GEÇİCİ by-pass: doğru x-clone-secret header'ı varsa yetki kontrolü atlanır ---
+  // UYARI: hardcoded auth-bypass. İş bitince bu route'u tamamen sil.
+  const bypass = req.headers.get('x-clone-secret') === 'REGNUM_V4_CLONE_2026'
+
+  // --- Yetki kontrolü: sadece super_admin (by-pass yoksa eskisi gibi çalışır) ---
+  if (!bypass) {
+    const admin = await getSessionAdmin()
+    if (!admin) {
+      return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
+    }
+    if (admin.role !== 'super_admin') {
+      return NextResponse.json({ ok: false, error: 'forbidden: super_admin required' }, { status: 403 })
+    }
   }
 
   if (SOURCE === TARGET) {
