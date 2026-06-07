@@ -41,7 +41,14 @@ export async function refreshTelegramWebhook(
   if (!token) return { ok: false, message: `Bot token bulunamadı — bridge_credentials'da telegram_bot_token_encrypted eksik mi?` };
 
   const tg = new TelegramClient(token);
-  const url = `${VERCEL_URL}/api/webhooks/telegram/${resolvedSlug ?? slug}`;
+  const isPreview = process.env.VERCEL_ENV === 'preview';
+  const baseUrl = isPreview && process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : VERCEL_URL;
+  let url = `${baseUrl}/api/webhooks/telegram/${resolvedSlug ?? slug}`;
+  if (isPreview && process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
+    url += `?x-vercel-protection-bypass=${process.env.VERCEL_AUTOMATION_BYPASS_SECRET}`;
+  }
   try {
     await tg.setWebhook({
       url,
