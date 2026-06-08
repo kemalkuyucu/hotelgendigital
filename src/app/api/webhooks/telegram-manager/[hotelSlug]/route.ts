@@ -35,6 +35,41 @@ function getDemoHotelClient() {
   );
 }
 
+/**
+ * /rapor tarih argümanı parse — "GG.AA" (gün.ay) formatı, yıl = şimdiki yıl,
+ * timezone Europe/Istanbul (+03:00). start = ilk günün 00:00:00,
+ * end = ikinci günün 23:59:59. Geçersizse null (eski son-24-saat davranışı).
+ */
+function parseRaporRange(
+  arg1?: string,
+  arg2?: string
+): { startIso: string; endIso: string; label: string } | null {
+  if (!arg1 || !arg2) return null;
+  const re = /^(\d{1,2})\.(\d{1,2})$/;
+  const m1 = re.exec(arg1);
+  const m2 = re.exec(arg2);
+  if (!m1 || !m2) return null;
+
+  const d1 = Number(m1[1]);
+  const mo1 = Number(m1[2]);
+  const d2 = Number(m2[1]);
+  const mo2 = Number(m2[2]);
+  if (mo1 < 1 || mo1 > 12 || d1 < 1 || d1 > 31) return null;
+  if (mo2 < 1 || mo2 > 12 || d2 < 1 || d2 > 31) return null;
+
+  const year = new Date().getFullYear();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const startDate = new Date(`${year}-${pad(mo1)}-${pad(d1)}T00:00:00+03:00`);
+  const endDate = new Date(`${year}-${pad(mo2)}-${pad(d2)}T23:59:59+03:00`);
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return null;
+
+  return {
+    startIso: startDate.toISOString(),
+    endIso: endDate.toISOString(),
+    label: `${arg1} - ${arg2}`,
+  };
+}
+
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ hotelSlug: string }> }
@@ -116,10 +151,15 @@ export async function POST(
         case '/help':
           response = await handleHelp(hotelRow.name);
           break;
-        case '/rapor':
-          response = await handleRapor(hotelClient);
+        case '/rapor': {
+          // "/rapor 01.06 07.06" → tarih aralığı; yoksa eski son-24-saat
+          const raporRange = parseRaporRange(args[0], args[1]);
+          response = raporRange
+            ? await handleRapor(hotelClient, raporRange)
+            : await handleRapor(hotelClient);
           await sendManagerMessage({ chatId: incomingChatId, text: response, parseMode: 'HTML' });
           return NextResponse.json({ ok: true });
+        }
         case '/durum':
           response = await handleDurum(hotelClient, hotelRow.id, central);
           break;
