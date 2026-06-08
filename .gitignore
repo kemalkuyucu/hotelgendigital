@@ -59,3 +59,7 @@ logs/
 
 # Local development helper scripts
 scripts/
+
+.env*.local
+__*
+scratch_*
