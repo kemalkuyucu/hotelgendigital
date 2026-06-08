@@ -7,6 +7,7 @@ import { handleDurum } from '@/lib/telegram/commands/handle-durum';
 import { handleAktifKonusmalar } from '@/lib/telegram/commands/handle-aktif-konusmalar';
 import { handleSonMesajlar } from '@/lib/telegram/commands/handle-son-mesajlar';
 import { verifyTelegramSecret } from '@/lib/telegram/verify';
+import { getHotelClient } from '@/lib/tenant/get-hotel-client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -91,7 +92,7 @@ export async function POST(
   // Demo hotel için direkt env var'dan, production'da bridge_credentials'tan gelecek
   const hotelClient = hotelSlug === 'demo-hotel'
     ? getDemoHotelClient()
-    : null;
+    : await getHotelClient(hotelRow.id);
 
   if (!hotelClient) {
     console.error(`[manager-webhook] hotel client alınamadı: ${hotelSlug}`);
