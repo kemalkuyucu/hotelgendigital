@@ -42,8 +42,8 @@ export async function refreshTelegramWebhook(
 
   const tg = new TelegramClient(token);
   const isPreview = process.env.VERCEL_ENV === 'preview';
-  const baseUrl = isPreview && process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
+  const baseUrl = isPreview
+    ? 'https://hotelgen-v2-git-hotelgen-v4-hotelgendigital.vercel.app'
     : VERCEL_URL;
   let url = `${baseUrl}/api/webhooks/telegram/${resolvedSlug ?? slug}`;
   if (isPreview && process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
