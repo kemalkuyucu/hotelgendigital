@@ -21,6 +21,7 @@ import {
 } from './message-types';
 // Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
 import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { dispatchToDepartmentBrain } from '@/lib/ai/department-brains';
 
 export interface ConversationContextMessage {
   direction: 'inbound' | 'outbound';
@@ -285,6 +286,21 @@ export async function classifyAndRespond(
       `[allergy-safety-net] Keyword override → allergy intent eklendi (LLM kaçırdı). msg="${input.guestMessage.slice(0, 60)}"`,
     );
   }
+
+    // ── B1.1 KANCA (bayrak kapali — davranis degismez) ──────────────────────────
+    // DEPARTMENT_BRAINS_ENABLED=false oldugu surece dispatchToDepartmentBrain her
+    // zaman { handled: false } doner; akis asagidaki return'e devam eder.
+    // Bayrak acildiginda buradan per-dept beyin devreye girer.
+    const primaryIntent = classifiedIntents[0];
+    if (primaryIntent) {
+      await dispatchToDepartmentBrain({
+        department: primaryIntent.department,
+        requestText: primaryIntent.requestText,
+        guestMessage: input.guestMessage,
+        hotelName: input.hotelName,
+      });
+    }
+    // ── B1.1 KANCA SONU ─────────────────────────────────────────────────────────
 
   // Validasyon
   if (typeof responseToGuest !== 'string' || responseToGuest.length === 0) {
