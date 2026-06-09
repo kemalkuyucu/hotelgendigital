@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 // aynen calisir. Departman beyinleri tek tek eklenecek (7.4 kalibrasyonu).
 
 // Bool tiplenir ki literal-narrowing "unreachable" uyarisi cikmasin.
-export const DEPARTMENT_BRAINS_ENABLED: boolean = false;
+export const DEPARTMENT_BRAINS_ENABLED: boolean = true;
 
 // 7.4 — Her departman beyninin yetenek profili.
 export interface DepartmentBrainConfig {
