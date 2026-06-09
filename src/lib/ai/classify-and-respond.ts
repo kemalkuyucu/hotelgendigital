@@ -293,12 +293,30 @@ export async function classifyAndRespond(
     // Bayrak acildiginda buradan per-dept beyin devreye girer.
     const primaryIntent = classifiedIntents[0];
     if (primaryIntent) {
-      await dispatchToDepartmentBrain({
+      const brainResult = await dispatchToDepartmentBrain({
         department: primaryIntent.department,
         requestText: primaryIntent.requestText,
         guestMessage: input.guestMessage,
         hotelName: input.hotelName,
       });
+      if (brainResult.handled && brainResult.replyText) {
+        return {
+          classifiedIntents,
+          department: primaryIntent.department,
+          shouldForward: false,
+          confidence: 1,
+          reasoning: 'department_brain',
+          response_to_guest: brainResult.replyText,
+          answered_from_knowledge: false,
+          safetyTriggered: false,
+          safetyCategory: null,
+          model: 'department-brain',
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          latency_ms: 0,
+          raw_response: brainResult.replyText,
+        };
+      }
     }
     // ── B1.1 KANCA SONU ─────────────────────────────────────────────────────────
 
