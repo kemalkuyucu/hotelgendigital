@@ -29,6 +29,7 @@ export interface DepartmentBrainInput {
   requestText: string;
   guestMessage: string;
   hotelName: string;
+  hotelContext?: Record<string, unknown> | null;
 }
 
 export interface DepartmentBrainResult {
@@ -39,7 +40,10 @@ export interface DepartmentBrainResult {
 // Passthrough dispatcher. Bayrak KAPALI veya kayitli beyin yoksa handled=false.
 async function runAnimationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const client = new Anthropic();
-  const system = `Sen ${input.hotelName} otelinin animasyon departmani asistanisin.
+  const contextBlock = input.hotelContext
+    ? `\n\nOTEL BİLGİLERİ:\n${JSON.stringify(input.hotelContext, null, 2)}`
+    : '';
+  const system = `Sen ${input.hotelName} otelinin animasyon departmani asistanisin.${contextBlock}
 Gorev: Misafirin animasyon, etkinlik, cocuk kulubu, gece programi ve eglence sorularini nazikce, kisa ve net yanıtla.
 Bilmediginde: "Animasyon ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan sorabilirsiniz."
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."

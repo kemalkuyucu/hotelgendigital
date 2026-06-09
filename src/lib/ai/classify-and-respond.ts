@@ -298,6 +298,7 @@ export async function classifyAndRespond(
         requestText: primaryIntent.requestText,
         guestMessage: input.guestMessage,
         hotelName: input.hotelName,
+        hotelContext: hotelContext as Record<string, unknown> | null,
       });
       if (brainResult.handled && brainResult.replyText) {
         return {
