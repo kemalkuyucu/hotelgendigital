@@ -7,6 +7,7 @@ import { getHotelBySlug } from '@/lib/tenant/get-hotel-by-slug';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
 import { getDecryptedBridge } from '@/lib/tenant/decrypt-credentials';
 import { classifyAndRespond } from '@/lib/ai/classify-and-respond';
+import { dispatchToDepartmentBrain } from '@/lib/ai/department-brains';
 import type { ConversationContextMessage } from '@/lib/ai/classify-and-respond';
 import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-hours';
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
@@ -2316,7 +2317,20 @@ async function handleMessage(args: {
     // "ilettim" diyor ama talep düşmüyordu). Doğrulanmış misafirde answered_from_knowledge
     // suppressor'ını KALDIR; forward yalnız gerçekten forward-edilebilir intent varsa ve
     // saf bilgi sorusu değilse olur (non-forwardable/social/KB hâlâ korunur).
-    skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
+    // B1.1 — Department brain dispatch (persistentVerifiedGuest dalinda)
+    const brainResult = await dispatchToDepartmentBrain({
+      department: finalIntent ?? 'unknown',
+      requestText: text,
+      guestMessage: text,
+      hotelName: hotelName,
+      hotelContext: null,
+    });
+    if (brainResult.handled && brainResult.replyText) {
+      finalResponseText = brainResult.replyText;
+      skipForward = false;
+    } else {
+      skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
+    }
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent} skipForward=${skipForward}`);
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
