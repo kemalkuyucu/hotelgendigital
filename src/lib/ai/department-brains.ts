@@ -14,7 +14,14 @@ export interface DepartmentBrainConfig {
 }
 
 // Kalibrasyon tablosu — su an BOS. Departman beyinleri buraya eklenecek.
-export const DEPARTMENT_BRAIN_REGISTRY: Record<string, DepartmentBrainConfig> = {};
+export const DEPARTMENT_BRAIN_REGISTRY: Record<string, DepartmentBrainConfig> = {
+  animation: {
+    department: 'animation',
+    model: 'claude-haiku-4-5',
+    reasoningDepth: 'low',
+    guardrail: 'loose',
+  },
+};
 
 export interface DepartmentBrainInput {
   department: string;
