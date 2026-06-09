@@ -293,7 +293,7 @@ export async function classifyAndRespond(
     // Bayrak acildiginda buradan per-dept beyin devreye girer.
     const primaryIntent = classifiedIntents[0];
     if (primaryIntent) {
-      console.log('[B1.1-DEBUG] hotelContext keys:', hotelContext ? Object.keys(hotelContext) : 'null');
+      console.log('[B1.1-DEBUG] primaryIntent:', primaryIntent?.department, '| all:', classifiedIntents.map(i => i.department).join(','));
       const brainResult = await dispatchToDepartmentBrain({
         department: primaryIntent.department,
         requestText: primaryIntent.requestText,
