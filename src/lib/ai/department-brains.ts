@@ -22,6 +22,12 @@ export const DEPARTMENT_BRAIN_REGISTRY: Record<string, DepartmentBrainConfig> = 
     reasoningDepth: 'low',
     guardrail: 'loose',
   },
+  housekeeping: {
+    department: 'housekeeping',
+    model: 'claude-haiku-4-5',
+    reasoningDepth: 'medium',
+    guardrail: 'standard',
+  },
 };
 
 export interface DepartmentBrainInput {
@@ -38,6 +44,32 @@ export interface DepartmentBrainResult {
 }
 
 // Passthrough dispatcher. Bayrak KAPALI veya kayitli beyin yoksa handled=false.
+async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
+  const client = new Anthropic();
+  const ctx = input.hotelContext as Record<string, string> | null;
+  const ctxParts = ctx
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+        (p) => typeof p === 'string' && p.trim().length > 0,
+      )
+    : [];
+  const contextBlock =
+    ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
+  const system = `Sen ${input.hotelName} otelinin housekeeping (kat hizmetleri) departmani asistanisin.${contextBlock}
+Gorev: Misafirin temizlik, havlu, carsaf, oda duzeni, ekstra malzeme (sabun, sampuan, tuvalet kagidi vb.) taleplerini nazikce, kisa ve net yanitla.
+Bilmediginde: "Kat hizmetleri ekibimiz en kisa surede ilgilenecektir, lutfen resepsiyondan da destek alabilirsiniz."
+Kapsam disinda (teknik arizа, yemek, animasyon vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
+Her zaman Turkce yaz. Maksimum 3 cumle.`;
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 300,
+    system,
+    messages: [{ role: 'user', content: input.guestMessage }],
+  });
+  const block = response.content.find((b) => b.type === 'text');
+  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  return { handled: true, replyText };
+}
+
 async function runAnimationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const client = new Anthropic();
   const ctx = input.hotelContext as Record<string, string> | null;
@@ -73,5 +105,6 @@ export async function dispatchToDepartmentBrain(
   const config = DEPARTMENT_BRAIN_REGISTRY[input.department];
   if (!config) return { handled: false };
   if (input.department === 'animation') return runAnimationBrain(input);
+  if (input.department === 'housekeeping') return runHousekeepingBrain(input);
   return { handled: false };
 }
