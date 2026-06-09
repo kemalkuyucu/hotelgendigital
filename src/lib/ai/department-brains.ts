@@ -64,7 +64,6 @@ Her zaman Turkce yaz. Maksimum 3 cumle.`;
 export async function dispatchToDepartmentBrain(
   input: DepartmentBrainInput,
 ): Promise<DepartmentBrainResult> {
-  console.error('[B1.1-DISPATCH] called dept=', input.department, 'enabled=', DEPARTMENT_BRAINS_ENABLED);
   if (!DEPARTMENT_BRAINS_ENABLED) return { handled: false };
   const config = DEPARTMENT_BRAIN_REGISTRY[input.department];
   if (!config) return { handled: false };
