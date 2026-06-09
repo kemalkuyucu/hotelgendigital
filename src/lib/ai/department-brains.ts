@@ -40,9 +40,14 @@ export interface DepartmentBrainResult {
 // Passthrough dispatcher. Bayrak KAPALI veya kayitli beyin yoksa handled=false.
 async function runAnimationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const client = new Anthropic();
-  const contextBlock = input.hotelContext
-    ? `\n\nOTEL BİLGİLERİ:\n${JSON.stringify(input.hotelContext, null, 2)}`
-    : '';
+  const ctx = input.hotelContext as Record<string, string> | null;
+  const ctxParts = ctx
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+        (p) => typeof p === 'string' && p.trim().length > 0,
+      )
+    : [];
+  const contextBlock =
+    ctxParts.length > 0 ? `\n\nOTEL BİLGİLERİ:\n${ctxParts.join('\n\n')}` : '';
   const system = `Sen ${input.hotelName} otelinin animasyon departmani asistanisin.${contextBlock}
 Gorev: Misafirin animasyon, etkinlik, cocuk kulubu, gece programi ve eglence sorularini nazikce, kisa ve net yanıtla.
 Bilmediginde: "Animasyon ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan sorabilirsiniz."
