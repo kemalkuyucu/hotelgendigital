@@ -28,6 +28,12 @@ export const DEPARTMENT_BRAIN_REGISTRY: Record<string, DepartmentBrainConfig> = 
     reasoningDepth: 'medium',
     guardrail: 'standard',
   },
+  spa: {
+    department: 'spa',
+    model: 'claude-haiku-4-5',
+    reasoningDepth: 'low',
+    guardrail: 'loose',
+  },
 };
 
 export interface DepartmentBrainInput {
@@ -144,6 +150,36 @@ Her zaman Turkce yaz. Maksimum 3 cumle.`;
   return { handled: true, replyText };
 }
 
+async function runSpaBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
+  const client = new Anthropic();
+  const ctx = input.hotelContext as Record<string, string> | null;
+  const ctxParts = ctx
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+        (p) => typeof p === 'string' && p.trim().length > 0,
+      )
+    : [];
+  const contextBlock =
+    ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
+  const system = `Sen ${input.hotelName} otelinin spa & wellness departmani asistanisin.${contextBlock}
+Gorev: Misafirin spa, masaj, sauna, hamam, buhar odasi, cilt bakimi ve rezervasyon sorularini nazikce, sicak ve kisa yanitla.
+- Calisma saatleri, masaj turleri, rezervasyon ve genel spa bilgilerini ver.
+- Misafir hizmet turu veya saat belirtmediyse, once nazikce hangi hizmeti ve hangi saati istedigini sor.
+Bilmediginde: "Spa ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan da destek alabilirsiniz."
+Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
+Her zaman Turkce yaz. Maksimum 3 cumle.`;
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 300,
+    system,
+    messages: [{ role: 'user', content: input.guestMessage }],
+  });
+
+  const block = response.content.find((b) => b.type === 'text');
+  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  return { handled: true, replyText };
+}
+
 export async function dispatchToDepartmentBrain(
   input: DepartmentBrainInput,
 ): Promise<DepartmentBrainResult> {
@@ -152,5 +188,6 @@ export async function dispatchToDepartmentBrain(
   if (!config) return { handled: false };
   if (input.department === 'animation') return runAnimationBrain(input);
   if (input.department === 'housekeeping') return runHousekeepingBrain(input);
+  if (input.department === 'spa') return runSpaBrain(input);
   return { handled: false };
 }
