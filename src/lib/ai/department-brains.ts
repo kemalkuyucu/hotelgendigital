@@ -45,6 +45,30 @@ export interface DepartmentBrainResult {
 }
 
 // Passthrough dispatcher. Bayrak KAPALI veya kayitli beyin yoksa handled=false.
+const TR_SAYI_KELIMELERI: Record<string, number> = {
+  bir: 1, iki: 2, 'üç': 3, uc: 3, 'dört': 4, dort: 4, 'beş': 5, bes: 5,
+  'altı': 6, alti: 6, yedi: 7, sekiz: 8, dokuz: 9, on: 10,
+  yirmi: 20, otuz: 30, 'kırk': 40, kirk: 40, elli: 50,
+};
+
+function extractMaxItemQuantity(text: string): number | null {
+  if (!text) return null;
+  const lower = text.toLocaleLowerCase('tr-TR');
+  let max: number | null = null;
+  const digits = lower.match(/\d+/g);
+  if (digits) {
+    for (const d of digits) {
+      const n = parseInt(d, 10);
+      if (!Number.isNaN(n) && (max === null || n > max)) max = n;
+    }
+  }
+  for (const [kelime, deger] of Object.entries(TR_SAYI_KELIMELERI)) {
+    const re = new RegExp(`(^|[^a-zçğıöşü])${kelime}([^a-zçğıöşü]|$)`, 'i');
+    if (re.test(lower) && (max === null || deger > max)) max = deger;
+  }
+  return max;
+}
+
 async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const client = new Anthropic();
   const ctx = input.hotelContext as Record<string, string> | null;
@@ -59,11 +83,9 @@ async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<Depart
 Gorev: Misafirin temizlik, havlu, carsaf, oda duzeni, ekstra malzeme (sabun, sampuan, tuvalet kagidi vb.) taleplerini nazikce, kisa ve net yanitla.
 
 HAVLU/MALZEME KURALI:
-- Standart hak (kisi basi): 1 banyo (buyuk) + 1 yuz (kucuk) + 1 ayak havlusu. Bir turden kisi basi 1 VEYA 2 adet KABUL EDILEBILIR ve asiri DEGILDIR.
-- NET ASIRI TALEP ESIGI: Bir turden 2 adede kadar (1 veya 2) olan talepler HER ZAMAN normaldir, ASLA asiri sayilmaz. Sadece bir turden bariz yuksek miktar istenirse (orn. 5, 10, 50, 100 gibi) asiri talep say.
-- Asiri talepte: adet/tur SORMA, pazarlik etme; dogrudan "Talebinizi ekibimize ilettim, en kisa surede degerlendirip size donus yapacaklardir." gibi kibar ve taahhutsuz bir yanit ver. AYRICA yanitin EN BASINA ayri bir satir olarak: ##OVERLIMIT## (sistem temizler, misafir gormez).
-- Talep asiri DEGIL ama misafir tur veya adet belirtmediyse, once nazikce hangi turden kac adet istedigini sor.
-- Makul ve net talep (bir turden en fazla 2 adet) ise normal sekilde karsila ve ##OVERLIMIT## isaretini ASLA yazma.
+- Standart hak (kisi basi): 1 banyo (buyuk) + 1 yuz (kucuk) + 1 ayak havlusu. Bir turden kisi basi 1 veya 2 adet normaldir.
+- Misafir tur veya adet belirtmediyse, once nazikce hangi turden kac adet istedigini sor.
+- Net ve makul talebi sicak, kisa, net karsila. Miktar/adet pazarligi YAPMA; miktarin asiri olup olmadigina SEN karar verme, sadece talebi anlayip yanitla.
 
 Bilmediginde: "Kat hizmetleri ekibimiz en kisa surede ilgilenecektir, lutfen resepsiyondan da destek alabilirsiniz."
 Kapsam disinda (teknik ariza, yemek, animasyon vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
@@ -73,6 +95,16 @@ KAPANIS KURALI:
 - Yanitlarinda hicbir emoji kullanma.
 - Yaniti kisa ve sicak bir cumleyle bitir.
 - "Ihtiyaciniz olursa bildirin", "baska bir sey olursa soyleyin" gibi bos/dolgu/tekrarli kapanis cumlesi EKLEME; misafir zaten talebini iletti. Kapanis dolu ve baglama uygun olsun.`;
+  // Deterministik asiri talep kapisi: miktar karari kodda, LLM'de DEGIL.
+  const maxQty = extractMaxItemQuantity(input.guestMessage);
+  if (maxQty !== null && maxQty >= 3) {
+    return {
+      handled: true,
+      replyText: 'Talebinizi ekibimize ilettim, en kısa sürede değerlendirip size dönüş yapacaklardır.',
+      overLimit: true,
+    };
+  }
+
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 300,
@@ -80,13 +112,8 @@ KAPANIS KURALI:
     messages: [{ role: 'user', content: input.guestMessage }],
   });
   const block = response.content.find((b) => b.type === 'text');
-  let replyText = block && block.type === 'text' ? block.text.trim() : '';
-  let overLimit = false;
-  if (replyText.includes('##OVERLIMIT##')) {
-    overLimit = true;
-    replyText = replyText.replace(/##OVERLIMIT##/g, '').trim();
-  }
-  return { handled: true, replyText, overLimit };
+  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  return { handled: true, replyText, overLimit: false };
 }
 
 async function runAnimationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
