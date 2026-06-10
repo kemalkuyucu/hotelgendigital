@@ -35,7 +35,7 @@ export async function handleSlaCallback(params: CallbackParams): Promise<void> {
   const responseType = parts[parts.length - 1]; // 'immediate' | 'delayed'
   const slaEventId = parts.slice(2, parts.length - 1).join(':'); // UUID (tire içerebilir)
 
-  if (!['immediate', 'delayed'].includes(responseType)) {
+  if (!['immediate', 'delayed', 'contacted'].includes(responseType)) {
     await answerCallback(params.botToken, params.callbackQueryId, 'Geçersiz tip');
     return;
   }
@@ -77,8 +77,8 @@ export async function handleSlaCallback(params: CallbackParams): Promise<void> {
       response_type: responseType,
       responder_telegram_id: params.fromTelegramId,
       responder_username: responderName,
-      final_status: responseType === 'immediate' ? 'completed_immediate' : 'completed_delayed',
-      closed_at: responseType === 'immediate' ? now.toISOString() : null,
+      final_status: responseType === 'immediate' ? 'completed_immediate' : responseType === 'contacted' ? 'completed_contacted' : 'completed_delayed',
+      closed_at: (responseType === 'immediate' || responseType === 'contacted') ? now.toISOString() : null,
       updated_at: now.toISOString(),
     })
     .eq('id', slaEventId);
@@ -92,7 +92,7 @@ export async function handleSlaCallback(params: CallbackParams): Promise<void> {
     .eq('id', slaEvent.conversation_id as string)
     .maybeSingle();
 
-  if (conversation?.telegram_chat_id) {
+  if (conversation?.telegram_chat_id && responseType !== 'contacted') {
     const guestFirstName =
       (slaEvent.guest_full_name as string | null)?.split(' ')[0] ?? 'Sayın Misafirimiz';
 
@@ -116,6 +116,8 @@ export async function handleSlaCallback(params: CallbackParams): Promise<void> {
     const statusLabel =
       responseType === 'immediate'
         ? `✅ Hemen ilgileniliyor — ${responderName} (${formatTime(now)})`
+        : responseType === 'contacted'
+        ? `Misafire donuldu - ${responderName} (${formatTime(now)})`
         : `⏳ Biraz sonra ilgilenilecek — ${responderName} (${formatTime(now)})`;
 
     await fetch(
@@ -190,9 +192,11 @@ async function sendReceptionInfoMessage(p: ReceptionInfoParams): Promise<void> {
     const frontOfficeChatId = foRow.telegram_chat_id as number;
 
     // Yanıt bilgilerini hazırla
-    const responseEmoji = p.responseType === 'immediate' ? '🟢' : '🟡';
+    const responseEmoji = p.responseType === 'contacted' ? '' : p.responseType === 'immediate' ? '🟢' : '🟡';
     const responseLabel =
-      p.responseType === 'immediate' ? 'Hemen ilgileniyoruz' : 'Biraz sonra ilgileniyoruz';
+      p.responseType === 'contacted'
+        ? 'Standart disi talep - misafire donuldu'
+        : p.responseType === 'immediate' ? 'Hemen ilgileniyoruz' : 'Biraz sonra ilgileniyoruz';
 
     // Departman adını bul (sla_event'teki department_code'dan)
     const deptCode = (p.slaEvent.department_code as string) ?? '';
