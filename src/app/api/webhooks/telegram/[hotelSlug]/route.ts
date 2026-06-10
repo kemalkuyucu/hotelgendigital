@@ -2856,9 +2856,11 @@ async function handleMessage(args: {
   });
 
   // B1.1 spa Adim 2: rezervasyon niyeti -> spa sorumlusuna bildirim
+  console.error('[spa-dbg] reservationNotify=', aiResult?.reservationNotify, 'finalIntent=', aiResult?.department);
   if (aiResult?.reservationNotify) {
     try {
       const spaStaff = await getActiveStaffNow(supa, 'spa' as any);
+      console.error('[spa-dbg] spaStaff len=', spaStaff.length, 'first_id=', spaStaff[0]?.telegram_user_id);
       const spaResponsible = spaStaff[0];
       if (spaResponsible?.telegram_user_id) {
         const spaNotifyChatId = Number(BigInt(spaResponsible.telegram_user_id));
