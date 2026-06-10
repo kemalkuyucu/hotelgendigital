@@ -41,6 +41,7 @@ export interface DepartmentBrainInput {
 export interface DepartmentBrainResult {
   handled: boolean;        // false -> orkestratorun kendi yaniti kullanilir
   replyText?: string;
+  overLimit?: boolean;
 }
 
 // Passthrough dispatcher. Bayrak KAPALI veya kayitli beyin yoksa handled=false.
@@ -62,6 +63,8 @@ HAVLU/MALZEME KURALI:
 - Misafir havlu/malzeme isterken turunu veya adedini belirtmediyse, once nazikce hangi turden kac adet istedigini sor; boylece yanlis malzeme gitmez.
 - Makul talep (tur basina en fazla 2 adet) ise normal sekilde karsila.
 - Tur basina 2 adedi belirgin asan miktari (orn. 10 havlu, 100 sampuan) DOGRUDAN kabul etme ve adet sozu verme; "Talebinizi ekibimize ilettim, en kisa surede degerlendirip size donus yapacaklardir." gibi kibar ve taahhutsuz bir yanit ver.
+- Boyle asiri bir talepte, misafir yanitinin EN BASINA ayri bir satir olarak su isareti ekle: ##OVERLIMIT## . Bu isaret sistem tarafindan temizlenir, misafir gormez.
+- Talep makul ise (tur basina en fazla 2 adet) ##OVERLIMIT## isaretini ASLA yazma.
 
 Bilmediginde: "Kat hizmetleri ekibimiz en kisa surede ilgilenecektir, lutfen resepsiyondan da destek alabilirsiniz."
 Kapsam disinda (teknik ariza, yemek, animasyon vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
@@ -73,8 +76,13 @@ Her zaman Turkce yaz; kisa ve oz tut.`;
     messages: [{ role: 'user', content: input.guestMessage }],
   });
   const block = response.content.find((b) => b.type === 'text');
-  const replyText = block && block.type === 'text' ? block.text.trim() : '';
-  return { handled: true, replyText };
+  let replyText = block && block.type === 'text' ? block.text.trim() : '';
+  let overLimit = false;
+  if (replyText.includes('##OVERLIMIT##')) {
+    overLimit = true;
+    replyText = replyText.replace(/##OVERLIMIT##/g, '').trim();
+  }
+  return { handled: true, replyText, overLimit };
 }
 
 async function runAnimationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
