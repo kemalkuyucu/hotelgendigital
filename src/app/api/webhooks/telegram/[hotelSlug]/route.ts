@@ -1892,6 +1892,7 @@ async function handleMessage(args: {
       verifiedRoomNumber: verifiedRoomNumberForAI,
       verifiedCheckout: verifiedCheckoutForAI,
     });
+    console.log('[DBG-OVERLIMIT]', { overLimit: aiResult.overLimit ?? false, dept: aiResult.department });
   } catch (err) {
     aiError = err instanceof Error ? err.message : 'unknown AI error';
     console.error('[telegram] AI hatası:', aiError);

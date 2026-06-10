@@ -67,6 +67,7 @@ export interface ClassifyAndRespondOutput {
   prompt_tokens: number;
   completion_tokens: number;
   latency_ms: number;
+  overLimit?: boolean;
   raw_response: string;
 }
 
@@ -315,6 +316,7 @@ export async function classifyAndRespond(
           prompt_tokens: 0,
           completion_tokens: 0,
           latency_ms: 0,
+          overLimit: brainResult.overLimit ?? false,
           raw_response: brainResult.replyText,
         };
       }
