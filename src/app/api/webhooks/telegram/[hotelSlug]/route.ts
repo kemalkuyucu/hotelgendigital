@@ -2855,6 +2855,27 @@ async function handleMessage(args: {
     text: finalResponseText,
   });
 
+  // B1.1 spa Adim 2: rezervasyon niyeti -> spa sorumlusuna bildirim
+  if (aiResult?.reservationNotify) {
+    try {
+      const spaStaff = await getActiveStaffNow(supa, 'spa' as any);
+      const spaResponsible = spaStaff[0];
+      if (spaResponsible?.telegram_user_id) {
+        const spaNotifyChatId = Number(BigInt(spaResponsible.telegram_user_id));
+        const spaRoomPart = verifiedRoomNumberForAI ? `Oda ${verifiedRoomNumberForAI}` : 'Oda bilgisi yok';
+        const spaNamePart = verifiedGuestNameForAI ?? 'Misafir';
+        const spaNotifyText =
+          `Spa rezervasyon talebi\n\n` +
+          `${spaRoomPart} - ${spaNamePart}\n` +
+          `Mesaj: "${text}"\n\n` +
+          `Lutfen misafirle irtibata gecin.`;
+        await tg.sendMessage({ chat_id: spaNotifyChatId, text: spaNotifyText });
+      }
+    } catch (e) {
+      console.error('[spa-notify] failed', e instanceof Error ? e.message : e);
+    }
+  }
+
   // (a) Alerji sorusu — F&B cevabından 900ms sonra ayrı mesaj
   if (canAskAllergen) {
     const allergenQuestion =

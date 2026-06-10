@@ -48,6 +48,7 @@ export interface DepartmentBrainResult {
   handled: boolean;        // false -> orkestratorun kendi yaniti kullanilir
   replyText?: string;
   overLimit?: boolean;
+  reservationNotify?: boolean;
 }
 
 // Passthrough dispatcher. Bayrak KAPALI veya kayitli beyin yoksa handled=false.
@@ -177,7 +178,11 @@ Her zaman Turkce yaz. Maksimum 3 cumle.`;
 
   const block = response.content.find((b) => b.type === 'text');
   const replyText = block && block.type === 'text' ? block.text.trim() : '';
-  return { handled: true, replyText };
+  const lowerMsg = input.guestMessage.toLowerCase();
+  const reservationNotify = ['rezervasyon', 'randevu', 'rezerve'].some((k) =>
+    lowerMsg.includes(k),
+  );
+  return { handled: true, replyText, reservationNotify };
 }
 
 export async function dispatchToDepartmentBrain(

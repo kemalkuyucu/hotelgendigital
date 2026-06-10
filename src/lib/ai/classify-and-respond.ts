@@ -68,6 +68,7 @@ export interface ClassifyAndRespondOutput {
   completion_tokens: number;
   latency_ms: number;
   overLimit?: boolean;
+  reservationNotify?: boolean;
   raw_response: string;
 }
 
@@ -317,6 +318,7 @@ export async function classifyAndRespond(
           completion_tokens: 0,
           latency_ms: 0,
           overLimit: brainResult.overLimit ?? false,
+          reservationNotify: brainResult.reservationNotify ?? false,
           raw_response: brainResult.replyText,
         };
       }
