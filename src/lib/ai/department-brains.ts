@@ -66,7 +66,12 @@ HAVLU/MALZEME KURALI:
 
 Bilmediginde: "Kat hizmetleri ekibimiz en kisa surede ilgilenecektir, lutfen resepsiyondan da destek alabilirsiniz."
 Kapsam disinda (teknik ariza, yemek, animasyon vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
-Her zaman Turkce yaz; kisa ve oz tut.`;
+Her zaman Turkce yaz; kisa ve oz tut.
+
+KAPANIS KURALI:
+- Yanitlarinda hicbir emoji kullanma.
+- Yaniti kisa ve sicak bir cumleyle bitir.
+- "Ihtiyaciniz olursa bildirin", "baska bir sey olursa soyleyin" gibi bos/dolgu/tekrarli kapanis cumlesi EKLEME; misafir zaten talebini iletti. Kapanis dolu ve baglama uygun olsun.`;
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 300,
