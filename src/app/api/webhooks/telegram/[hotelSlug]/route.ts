@@ -2520,6 +2520,28 @@ async function handleMessage(args: {
   // ── KB cevabı veya doğrulama short-circuit → forward yapma ───────────────
   if (skipForward) {
     console.log(`[telegram] Forward atlandı (KB veya verification gate). intent=${finalIntent}`);
+    // B1.1 spa Adim 2 (skipForward yolu): rezervasyon niyeti -> spa sorumlusuna bildirim
+    console.error('[spa-dbg2] reservationNotify=', aiResult?.reservationNotify);
+    if (aiResult?.reservationNotify) {
+      try {
+        const spaStaff = await getActiveStaffNow(supa, 'spa' as any);
+        console.error('[spa-dbg2] spaStaff len=', spaStaff.length);
+        const spaResp = spaStaff[0];
+        if (spaResp?.telegram_user_id) {
+          const spaNotifyChatId = Number(BigInt(spaResp.telegram_user_id));
+          const spaRoomPart = verifiedRoomNumberForAI ? `Oda ${verifiedRoomNumberForAI}` : 'Oda bilgisi yok';
+          const spaNamePart = verifiedGuestNameForAI ?? 'Misafir';
+          const spaNotifyText =
+            `Spa rezervasyon talebi\n\n` +
+            `${spaRoomPart} - ${spaNamePart}\n` +
+            `Mesaj: "${text}"\n\n` +
+            `Lutfen misafirle irtibata gecin.`;
+          await tg.sendMessage({ chat_id: spaNotifyChatId, text: spaNotifyText });
+        }
+      } catch (e) {
+        console.error('[spa-notify] failed', e instanceof Error ? e.message : e);
+      }
+    }
     if (aiResult?.answered_from_knowledge) {
       await logKnowledgeAnswer(supa, {
         conversationId,
