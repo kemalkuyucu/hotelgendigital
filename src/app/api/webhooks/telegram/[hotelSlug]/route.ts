@@ -2521,11 +2521,9 @@ async function handleMessage(args: {
   if (skipForward) {
     console.log(`[telegram] Forward atlandı (KB veya verification gate). intent=${finalIntent}`);
     // B1.1 spa Adim 2 (skipForward yolu): rezervasyon niyeti -> spa sorumlusuna bildirim
-    console.error('[spa-dbg2] reservationNotify=', aiResult?.reservationNotify);
     if (aiResult?.reservationNotify) {
       try {
         const spaStaff = await getActiveStaffNow(supa, 'spa' as any);
-        console.error('[spa-dbg2] spaStaff len=', spaStaff.length);
         const spaResp = spaStaff[0];
         if (spaResp?.telegram_user_id) {
           const spaNotifyChatId = Number(BigInt(spaResp.telegram_user_id));
@@ -2878,11 +2876,9 @@ async function handleMessage(args: {
   });
 
   // B1.1 spa Adim 2: rezervasyon niyeti -> spa sorumlusuna bildirim
-  console.error('[spa-dbg] reservationNotify=', aiResult?.reservationNotify, 'finalIntent=', aiResult?.department);
   if (aiResult?.reservationNotify) {
     try {
       const spaStaff = await getActiveStaffNow(supa, 'spa' as any);
-      console.error('[spa-dbg] spaStaff len=', spaStaff.length, 'first_id=', spaStaff[0]?.telegram_user_id);
       const spaResponsible = spaStaff[0];
       if (spaResponsible?.telegram_user_id) {
         const spaNotifyChatId = Number(BigInt(spaResponsible.telegram_user_id));
