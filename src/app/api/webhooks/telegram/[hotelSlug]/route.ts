@@ -22,6 +22,7 @@ import { handleSlaCallback } from '@/lib/sla/handle-callback';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
 import { getTurkeyToday } from '@/lib/date/turkeyTime'; // Modül 18: timezone fix
 import { sendForwardWithSlaButtons } from '@/lib/sla/send-forward-with-buttons';
+import { getActiveStaffNow } from '@/lib/hotel-admin/staff-client';
 // Modül 15.4: Auto-file belge gönderme
 import {
   sendTelegramDocument,
@@ -1892,7 +1893,6 @@ async function handleMessage(args: {
       verifiedRoomNumber: verifiedRoomNumberForAI,
       verifiedCheckout: verifiedCheckoutForAI,
     });
-    console.log('[DBG-OVERLIMIT]', { overLimit: aiResult.overLimit ?? false, dept: aiResult.department });
   } catch (err) {
     aiError = err instanceof Error ? err.message : 'unknown AI error';
     console.error('[telegram] AI hatası:', aiError);
@@ -2743,12 +2743,37 @@ async function handleMessage(args: {
             `📝 <b>Talep:</b> "${esc(fwdItem.requestText)}"\n` +
             `🕐 <b>Saat:</b> ${esc(trDateStr)}`;
 
+          // ── B1.1 overlimit: standart disi talepte vardiyadaki sorumlu adi ──
+          let overlimitStaffName = '';
+          if (aiResult?.overLimit) {
+            try {
+              const activeStaff = await getActiveStaffNow(supa, targetDept as any);
+              overlimitStaffName = activeStaff[0]?.full_name ?? '';
+            } catch (e) {
+              console.error('[overlimit] staff lookup failed', e instanceof Error ? e.message : e);
+            }
+          }
+
+          const greeting = overlimitStaffName ? `Sn. ${esc(overlimitStaffName)},\n\n` : '';
+          const overlimitHtml =
+            `⚠️ <b>Standart Disi Talep</b>\n\n` +
+            greeting +
+            roomLine +
+            `👤 <b>Misafir:</b> ${esc(guestFullNameForSla)}\n` +
+            `📝 <b>Talep:</b> "${esc(fwdItem.requestText)}"\n\n` +
+            `Standart hak (kisi basi): 1 banyo + 1 yuz + 1 ayak havlusu.\n` +
+            `Lutfen odadaki kisi sayisina gore degerlendirip misafire donus yapin.\n\n` +
+            `🕐 <b>Saat:</b> ${esc(trDateStr)}`;
+
+          const finalGroupHtml = aiResult?.overLimit ? overlimitHtml : groupMsgHtml;
+
           // ── Modül 11: Departman grubuna SLA butonlu mesaj gönder ──
           if (slaEvent) {
             const { messageId: slaMsgId, ok: slaOk } = await sendForwardWithSlaButtons({
               botToken,
               chatId: deptChatIdForSla,
-              html: groupMsgHtml,
+              html: finalGroupHtml,
+              variant: aiResult?.overLimit ? 'overlimit' : 'normal',
               slaEventId: slaEvent.id as string,
             });
             console.log(`[sla-forward] sent [item: ${targetDept}]`, { messageId: slaMsgId, ok: slaOk, deptChatIdForSla });
