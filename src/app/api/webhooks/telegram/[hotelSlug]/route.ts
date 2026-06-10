@@ -2325,11 +2325,9 @@ async function handleMessage(args: {
       hotelName: hotelName,
       hotelContext: null,
     });
+    skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
     if (brainResult.handled && brainResult.replyText) {
       finalResponseText = brainResult.replyText;
-      skipForward = false;
-    } else {
-      skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
     }
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent} skipForward=${skipForward}`);
   } else if (needsReVerification) {
