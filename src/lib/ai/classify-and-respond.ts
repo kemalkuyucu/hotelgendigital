@@ -304,7 +304,7 @@ export async function classifyAndRespond(
         return {
           classifiedIntents,
           department: primaryIntent.department,
-          shouldForward: false,
+          shouldForward: primaryIntent.shouldForward,
           confidence: 1,
           reasoning: 'department_brain',
           response_to_guest: brainResult.replyText,
