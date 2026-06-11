@@ -304,12 +304,12 @@ export async function classifyAndRespond(
       for (const it of classifiedIntents) {
         const rd = (it.rawDepartment ?? '').toLowerCase().trim();
         if (rd === 'allergy') continue;
-        if (it.department !== 'front_office') {
+        if (it.department !== 'front_office' || it.createsSlaEvent) {
           it.department = 'front_office';
           it.shouldForward = true;
-          it.messageType = foRouting.messageType;
-          it.withButtons = foRouting.withButtons;
-          it.createsSlaEvent = foRouting.createsSlaEvent;
+          it.messageType = 'BILDIRIM';
+          it.withButtons = false;
+          it.createsSlaEvent = false;
           redirected = true;
         }
       }

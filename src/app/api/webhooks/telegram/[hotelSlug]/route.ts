@@ -2586,6 +2586,27 @@ async function handleMessage(args: {
           // late_checkout orchestrator enum'unda YOK → erişilemez). Flag build-site'ta
           // strictly boolean → undefined ASLA bu dala düşemez (Risk 1). Davranış bugünküyle birebir.
           if (!fwdItem.createsSlaEvent) {
+            const isAllergyNotify = (fwdItem.rawDepartment ?? '').toLowerCase().trim() === 'allergy';
+            if (!isAllergyNotify) {
+              // ── BAGAJ / BELLSERVICE BILDIRIMI (SLA yok, buton yok, alerji DEGIL) ──
+              const bgRoom = persistentVerifiedGuest?.room_number ?? null;
+              const bgName = persistentVerifiedGuest
+                ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim()
+                : guestName;
+              const escBg = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const roomTxt = bgRoom ? `${escBg(bgRoom)} numaralı odada konaklayan ` : '';
+              const bagajHtml =
+                `🛎 <b>Bagaj Talebi</b>\n\n` +
+                `${roomTxt}<b>${escBg(bgName)}</b>, valizinin odasına bırakılmasını istiyor.\n\n` +
+                `⚠️ Lütfen oda numarasını sistemden teyit ederek bırakınız.`;
+              await tg.sendMessage({ chat_id: targetChatId, text: bagajHtml, parse_mode: 'HTML' });
+              console.log(`[bagaj-notify] Bagaj bildirimi gönderildi (SLA yok) [chatId=${deptChatIdForSla}]`);
+              await supa
+                .from('conversations')
+                .update({ last_intent: targetDept, last_forwarded_at: new Date().toISOString() })
+                .eq('id', conversationId);
+              continue;
+            }
             console.log(`[allergy-notify] Alerji bildirimi akışı — butonsuz, sla_events YOK [chatId=${deptChatIdForSla}]`);
 
             // (1) guest_allergens tablosuna kaydet (allergen_pending akışındaki mantıkla)
