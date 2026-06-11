@@ -34,6 +34,12 @@ export const DEPARTMENT_BRAIN_REGISTRY: Record<string, DepartmentBrainConfig> = 
     reasoningDepth: 'low',
     guardrail: 'loose',
   },
+  front_office: {
+    department: 'front_office',
+    model: 'claude-haiku-4-5',
+    reasoningDepth: 'medium',
+    guardrail: 'standard',
+  },
 };
 
 export interface DepartmentBrainInput {
@@ -185,6 +191,41 @@ Her zaman Turkce yaz. Maksimum 3 cumle.`;
   return { handled: true, replyText, reservationNotify };
 }
 
+async function runFrontOfficeBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
+  const client = new Anthropic();
+  const ctx = input.hotelContext as Record<string, string> | null;
+  const ctxParts = ctx
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+        (p) => typeof p === 'string' && p.trim().length > 0,
+      )
+    : [];
+  const contextBlock =
+    ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
+  const system = `Sen ${input.hotelName} otelinin on buro (resepsiyon) departmani asistanisin.${contextBlock}
+Gorev: Misafirin on buro / resepsiyon konularini nazikce, kisa ve net yanitla. Kapsam: oda anahtari/kart, bagaj, transfer/taksi, uyandirma servisi, fatura, genel otel bilgisi, gec cikis ve oda degisikligi yonlendirmesi.
+- Misafirin talebi net degilse, once nazikce ne istedigini sor.
+- Net ve makul talebi sicak, kisa, net karsila.
+Bilmediginde veya panelde bilgi yoksa UYDURMA: "On buro ekibimiz en kisa surede size yardimci olacaktir." de.
+Kimlik/oda/cikis dogrulamasi gerektiren islemleri on buroya yonlendir.
+Kapsam disinda (teknik ariza, temizlik, yemek, spa, animasyon): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
+Her zaman Turkce yaz; kisa ve oz tut, en fazla 4 cumle.
+
+KAPANIS KURALI:
+- Yanitlarinda hicbir emoji kullanma.
+- "Ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME.`;
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 300,
+    system,
+    messages: [{ role: 'user', content: input.guestMessage }],
+  });
+
+  const block = response.content.find((b) => b.type === 'text');
+  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  return { handled: true, replyText };
+}
+
 export async function dispatchToDepartmentBrain(
   input: DepartmentBrainInput,
 ): Promise<DepartmentBrainResult> {
@@ -194,5 +235,6 @@ export async function dispatchToDepartmentBrain(
   if (input.department === 'animation') return runAnimationBrain(input);
   if (input.department === 'housekeeping') return runHousekeepingBrain(input);
   if (input.department === 'spa') return runSpaBrain(input);
+  if (input.department === 'front_office') return runFrontOfficeBrain(input);
   return { handled: false };
 }
