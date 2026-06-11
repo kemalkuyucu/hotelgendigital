@@ -102,7 +102,7 @@ export default function EskalasyonClient() {
   return (
     <div>
       <div style={{ marginBottom: 8 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Eskalasyon</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#f1f5f9' }}>Eskalasyon</h1>
         <p style={{ color: '#9ca3af', fontSize: 14, marginTop: 4 }}>
           SLA suresinde yanitlanmayan veya resepsiyonda yanitsiz kalan talepler. Tamamlananlar burada gorunmez.
         </p>
