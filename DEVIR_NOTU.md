@@ -114,6 +114,20 @@ Tek-beyin orchestrator → 4 mesaj tipli + departman-constitution'lı hibrit mod
 
 ---
 
+## B1.1 SPA — Adım 2 ✅ CANLI (2026-06-11)
+
+> Not: master spec'teki "7.5.2 spa" maddesinin karşılığı. `HotelGen_v4_Master.md` repoda yok → kayıt buraya alındı.
+
+- **Adım 2 CANLI ✅ (2026-06-11):** rezervasyon/randevu/rezerve niyeti → **SPA GRUBUNA** bildirim (`departments.telegram_chat_id`, `code='spa'`). **DM değil grup.** `getActiveStaffNow` KALDIRILDI (front_office 294-300 kalıbının aynısı: `code='spa'` → `telegram_chat_id` → `tg.sendMessage`; chat yoksa `console.warn` + atla).
+- **Niyet kapısı:** `department-brains.ts::runSpaBrain` → `reservationNotify = ['rezervasyon','randevu','rezerve'].some(...)`; `classify-and-respond.ts` flag'i taşır; `route.ts` `skipForward` kolunda (2524) tüketir. Spa bilgi-amaçlı, SLA kanalına forward edilmez.
+- **Commit zinciri:** `4c7ded2` (spa sorumlusuna bildirim) → `e5ef8c7` (çift bildirimi kaldır — route.ts'teki 2. blok silindi, sadece skipForward kolu kaldı) → `b52e09b` (DM → grup). Branch: `hotelgen-v4`.
+
+**KÖK NEDEN — 5 saatlik düşmeme (webhook secret):** Bot 5 saat boyunca düşüktü çünkü webhook **`secret_token` olmadan** bağlanmıştı. `route.ts:186` secret kontrolü (gelen `x-telegram-bot-api-secret-token` ≠ `TELEGRAM_WEBHOOK_SECRET`) her update'e **401** dönüyordu; `getWebhookInfo` → `last_error_message: "Wrong response from the webhook: 401 Unauthorized"`, `pending_update_count` artıyordu. **Çözüm:** `setWebhook` çağrısını `&secret_token=<TELEGRAM_WEBHOOK_SECRET ile birebir aynı>` ile yapmak → 401 temizlendi, pending 0. **DERS: webhook'u HER ZAMAN `secret_token` ile bağla.**
+
+**BOT DÜZELTMESİ (eski not YANLIŞTI):** Tek bot var. Gerçek `@handle = RegnumBelek_v4_bot`, görünen ad (first_name) `RegnumBelekTest_bot`. `getMe` ile doğrulandı (`id=8887001623`). Eski **"iki ayrı bot"** notu **YANLIŞ** — düzeltildi. (Ayrıca `8660403945`/@HotelsYonetici_bot bir **manager** botudur, guest endpoint'iyle karıştırma.)
+
+---
+
 ## AÇIK İŞLER (öncelik sırası)
 
 1. **✅ ÇÖZÜLDÜ — ALERJİ YAŞAMSAL ZİNCİRİ (tag `v1.0-B3-allergy-chain`, 7 fix, prod-verified 2026-06-02 17:10).** Uçtan uca kapandı: oda+isim bağlar → Part-C oda çözer → safety aşılır → Senaryo A mutfak+GR DM (4 satır `sent`). Detay: B2.4/B3 bölümü.
