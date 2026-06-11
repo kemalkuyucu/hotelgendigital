@@ -48,6 +48,7 @@ export interface DepartmentBrainInput {
   guestMessage: string;
   hotelName: string;
   hotelContext?: Record<string, unknown> | null;
+  conversationContext?: { role: string; content: string }[] | null;
 }
 
 export interface DepartmentBrainResult {
@@ -218,11 +219,14 @@ BILGI SORUSU (hizmet var mi, saat kac vb.): cevap otel bilgilerinde varsa nazikc
 Kapsam disinda (teknik ariza, temizlik, yemek, spa, animasyon): "Bu konuda sizi ilgili departmana yonlendiriyorum." de.
 Her zaman Turkce yaz, sicak ve kisa tut; emoji KULLANMA; "ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME.`;
 
+  const history = (input.conversationContext ?? [])
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
+    .map((m) => ({ role: m.role === 'assistant' ? 'assistant' as const : 'user' as const, content: m.content }));
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 300,
     system,
-    messages: [{ role: 'user', content: input.guestMessage }],
+    messages: [...history, { role: 'user' as const, content: input.guestMessage }],
   });
 
   const block = response.content.find((b) => b.type === 'text');
