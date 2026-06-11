@@ -2523,10 +2523,13 @@ async function handleMessage(args: {
     // B1.1 spa Adim 2 (skipForward yolu): rezervasyon niyeti -> spa sorumlusuna bildirim
     if (aiResult?.reservationNotify) {
       try {
-        const spaStaff = await getActiveStaffNow(supa, 'spa' as any);
-        const spaResp = spaStaff[0];
-        if (spaResp?.telegram_user_id) {
-          const spaNotifyChatId = Number(BigInt(spaResp.telegram_user_id));
+        const { data: spaDept } = await supa
+          .from('departments')
+          .select('telegram_chat_id')
+          .eq('code', 'spa')
+          .maybeSingle();
+        if (spaDept?.telegram_chat_id) {
+          const spaNotifyChatId = Number(spaDept.telegram_chat_id);
           const spaRoomPart = verifiedRoomNumberForAI ? `Oda ${verifiedRoomNumberForAI}` : 'Oda bilgisi yok';
           const spaNamePart = verifiedGuestNameForAI ?? 'Misafir';
           const spaNotifyText =
@@ -2535,6 +2538,8 @@ async function handleMessage(args: {
             `Mesaj: "${text}"\n\n` +
             `Lutfen misafirle irtibata gecin.`;
           await tg.sendMessage({ chat_id: spaNotifyChatId, text: spaNotifyText });
+        } else {
+          console.warn('[spa-notify] spa telegram_chat_id bulunamadi, bildirim atlandi');
         }
       } catch (e) {
         console.error('[spa-notify] failed', e instanceof Error ? e.message : e);
