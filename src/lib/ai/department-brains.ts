@@ -245,7 +245,16 @@ Her zaman Turkce yaz, sicak ve kisa tut; emoji KULLANMA; "ihtiyaciniz olursa bil
   }
 
   const block = response.content.find((b) => b.type === 'text');
-  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  let replyText = block && block.type === 'text' ? block.text.trim() : '';
+  // Deterministik temizlik: misafir kimlik/oda verdikten sonra beyin bazen gereksiz
+  // "talebinizi iletmemi ister misiniz?" gibi onay sorusu ekliyor. Bu kalibi iceren
+  // cumleyi sil (ilk turdaki "isim/oda alabilir miyim?" sorusuna DOKUNMAZ — o kalip farkli).
+  replyText = replyText
+    .replace(/[^.!?]*iletmemi ister[^.!?]*\?/gi, '')
+    .replace(/[^.!?]*iletmemi mi ister[^.!?]*\?/gi, '')
+    .replace(/[^.!?]*ister misiniz\?/gi, (m) => /iletmem|talebi/i.test(m) ? '' : m)
+    .replace(/\s{2,}/g, ' ')
+    .trim();
   return { handled: true, replyText };
 }
 
