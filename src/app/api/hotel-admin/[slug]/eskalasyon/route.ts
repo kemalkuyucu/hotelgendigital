@@ -45,7 +45,7 @@ export async function GET(
   let query = tenant.hotelSupabase
     .from('sla_events')
     .select(
-      'id, room_number, guest_full_name, request_text, department_code, forwarded_at, sla_deadline, responded_at, escalated_at, reception_sla_deadline, reception_responded_at, final_status, closed_at, created_at'
+      'id, room_number, guest_full_name, request_text, department_code, forwarded_at, sla_deadline, responded_at, escalated_at, reception_sla_deadline, reception_responded_at, reception_response_text, final_status, closed_at, created_at'
     )
     // Sadece sorunlular: eskale edilmis VEYA cevapsiz kapanmis
     .or('escalated_at.not.is.null,final_status.eq.no_response')
@@ -88,6 +88,7 @@ export async function GET(
       reception_responded_at: e.reception_responded_at,
       final_status: e.final_status,
       closed_at: e.closed_at,
+      explanation: e.reception_response_text || null,
       reason,
       elapsed_minutes: elapsedMinutes,
       still_open: !e.closed_at,
