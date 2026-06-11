@@ -25,6 +25,7 @@ type NavItemKey =
   | 'belgeler'
   | 'cevre-kesfi'
   | 'toplanti-salonlari'
+  | 'eskalasyon'
   | 'departman-personeli'
 
 interface NavItem {
@@ -87,6 +88,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
     { key: 'belgeler',           label: 'Belgeler',               href: `/hotel-admin/${slug}/bilgi-yonetimi/belgeler`,             isSubItem: true },
     { key: 'cevre-kesfi',        label: 'Çevre Keşfi',           href: `/hotel-admin/${slug}/bilgi-yonetimi/cevre-kesfi`,          isSubItem: true },
     { key: 'toplanti-salonlari', label: '🏛️ Toplantı Salonları', href: `/hotel-admin/${slug}/bilgi-yonetimi/toplanti-salonlari`,   isSubItem: true },
+    { key: 'eskalasyon', label: 'Eskalasyon', href: `/hotel-admin/${slug}/bilgi-yonetimi/eskalasyon`, isSubItem: true },
   ]
 
   async function handleLogout() {
