@@ -191,6 +191,7 @@ export async function runSlaCheck(
         .from('sla_events')
         .update({
           final_status: 'no_response',
+          reception_response_text: 'Sistem notu: Talep resepsiyona iletildi, taninan surede yanitlanmadi (sebep yogunluk olabilir). Otomatik olarak yonetici raporuna eklendi.',
           closed_at: now.toISOString(),
           updated_at: now.toISOString(),
         })
