@@ -36,8 +36,8 @@ export const DEPARTMENT_BRAIN_REGISTRY: Record<string, DepartmentBrainConfig> = 
   },
   front_office: {
     department: 'front_office',
-    model: 'claude-haiku-4-5',
-    reasoningDepth: 'medium',
+    model: 'claude-sonnet-4-6',
+    reasoningDepth: 'high',
     guardrail: 'standard',
   },
 };
@@ -230,14 +230,14 @@ Her zaman Turkce yaz, sicak ve kisa tut; emoji KULLANMA; "ihtiyaciniz olursa bil
   let response;
   try {
     response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-6',
       max_tokens: 300,
       system,
       messages: [{ role: 'user' as const, content: userContent }],
     });
   } catch {
     response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-6',
       max_tokens: 300,
       system,
       messages: [{ role: 'user' as const, content: input.guestMessage }],
