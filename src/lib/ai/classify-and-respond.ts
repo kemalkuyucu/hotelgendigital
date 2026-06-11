@@ -289,6 +289,37 @@ export async function classifyAndRespond(
     );
   }
 
+    // ── BAGAJ / BELLSERVICE ON BURO OVERRIDE (deterministik) ────────────────────
+    // Bagaj/valiz/bavul tasima talebi islevsel olarak ON BURO (bellservice) isidir;
+    // LLM bunu bazen housekeeping etiketliyor → yanlis departman beynine dusuyordu.
+    // Yonlendirme karari LLM'e tek basina birakilmaz (havlu/alerji dersi). Ham metinde
+    // bagaj anahtar kelimesi varsa, ilgili intent'in DEPARTMANI front_office'e zorlanir;
+    // shouldForward + requestText korunur. Yeni intent EKLENMEZ (cift kart olmasin) —
+    // mevcut intent yerinde guncellenir. Allergy intent'lerine DOKUNULMAZ.
+    const BAGGAGE_KEYWORDS = ['bagaj', 'valiz', 'bavul', 'baggage', 'luggage'];
+    const hasBaggageKeyword = BAGGAGE_KEYWORDS.some((kw) => normalizedGuestMsg.includes(kw));
+    if (hasBaggageKeyword) {
+      const foRouting = routeIntentToDepartment('front_office');
+      let redirected = false;
+      for (const it of classifiedIntents) {
+        const rd = (it.rawDepartment ?? '').toLowerCase().trim();
+        if (rd === 'allergy') continue;
+        if (it.department !== 'front_office') {
+          it.department = 'front_office';
+          it.shouldForward = true;
+          it.messageType = foRouting.messageType;
+          it.withButtons = foRouting.withButtons;
+          it.createsSlaEvent = foRouting.createsSlaEvent;
+          redirected = true;
+        }
+      }
+      if (redirected) {
+        console.log(
+          `[baggage-override] Bagaj talebi front_office'e yonlendirildi. msg="${input.guestMessage.slice(0, 60)}"`,
+        );
+      }
+    }
+
     // ── B1.1 KANCA (bayrak kapali — davranis degismez) ──────────────────────────
     // DEPARTMENT_BRAINS_ENABLED=false oldugu surece dispatchToDepartmentBrain her
     // zaman { handled: false } doner; akis asagidaki return'e devam eder.
