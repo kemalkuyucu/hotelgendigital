@@ -95,10 +95,13 @@ export async function handleSlaCallback(params: CallbackParams): Promise<void> {
   if (conversation?.telegram_chat_id && responseType !== 'contacted') {
     const guestFirstName =
       (slaEvent.guest_full_name as string | null)?.split(' ')[0] ?? 'Sayın Misafirimiz';
+    const guestNameDisplay = guestFirstName
+      ? guestFirstName.charAt(0).toLocaleUpperCase('tr-TR') + guestFirstName.slice(1).toLocaleLowerCase('tr-TR')
+      : 'Misafirimiz';
 
     const guestReply =
       responseType === 'immediate'
-        ? `Talebinizi aldık, hemen ilgileniyoruz. ${guestFirstName}, en kısa sürede odanıza geleceğiz.`
+        ? `Sayın ${guestNameDisplay}, talebinizi aldık. Hemen ilgileniyoruz ve ilgili personeli yönlendiriyoruz.`
         : `Talebinizi aldık, biraz sonra ilgileneceğiz. Anlayışınız için teşekkür ederiz.`;
 
     await fetch(`https://api.telegram.org/bot${params.botToken}/sendMessage`, {
