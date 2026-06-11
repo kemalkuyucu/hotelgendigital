@@ -103,19 +103,19 @@ export default function EskalasyonClient() {
     <div>
       <div style={{ marginBottom: 8 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Eskalasyon</h1>
-        <p style={{ color: '#6b7280', fontSize: 14, marginTop: 4 }}>
+        <p style={{ color: '#9ca3af', fontSize: 14, marginTop: 4 }}>
           SLA suresinde yanitlanmayan veya resepsiyonda yanitsiz kalan talepler. Tamamlananlar burada gorunmez.
         </p>
       </div>
 
       {/* Filtreler */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', margin: '16px 0' }}>
-        <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: '#374151' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: '#cbd5e1' }}>
           Departman
           <select
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
-            style={{ marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14 }}
+            style={{ marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #334155', fontSize: 14, background: '#1e293b', color: '#e2e8f0' }}
           >
             {DEPT_OPTIONS.map((c) => (
               <option key={c} value={c}>
@@ -124,22 +124,22 @@ export default function EskalasyonClient() {
             ))}
           </select>
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: '#374151' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: '#cbd5e1' }}>
           Baslangic
           <input
             type="date"
             value={start}
             onChange={(e) => setStart(e.target.value)}
-            style={{ marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14 }}
+            style={{ marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #334155', fontSize: 14, background: '#1e293b', color: '#e2e8f0', colorScheme: 'dark' }}
           />
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: '#374151' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: '#cbd5e1' }}>
           Bitis
           <input
             type="date"
             value={end}
             onChange={(e) => setEnd(e.target.value)}
-            style={{ marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14 }}
+            style={{ marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #334155', fontSize: 14, background: '#1e293b', color: '#e2e8f0', colorScheme: 'dark' }}
           />
         </label>
         <button
@@ -161,7 +161,7 @@ export default function EskalasyonClient() {
       </div>
 
       {/* Ozet */}
-      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+      <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12 }}>
         {loading ? 'Yukleniyor...' : `${rows.length} kayit`}
       </div>
 
@@ -173,27 +173,27 @@ export default function EskalasyonClient() {
 
       {/* Tablo */}
       {!loading && !error && rows.length === 0 && (
-        <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>
+        <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
           Bu araliki icin eskalasyon kaydi yok.
         </div>
       )}
 
       {rows.length > 0 && (
-        <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 10 }}>
+        <div style={{ overflowX: 'auto', border: '1px solid #334155', borderRadius: 10, background: 'rgba(15,23,42,0.6)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#374151' }}>Departman</th>
-                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#374151' }}>Oda / Misafir</th>
-                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#374151' }}>Talep</th>
-                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#374151' }}>Saat</th>
-                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#374151' }}>Neden</th>
-                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#374151' }}>Gecen sure</th>
+              <tr style={{ background: 'rgba(30,41,59,0.9)', textAlign: 'left' }}>
+                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#cbd5e1' }}>Departman</th>
+                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#cbd5e1' }}>Oda / Misafir</th>
+                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#cbd5e1' }}>Talep</th>
+                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#cbd5e1' }}>Saat</th>
+                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#cbd5e1' }}>Neden</th>
+                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#cbd5e1' }}>Gecen sure</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+                <tr key={r.id} style={{ borderTop: '1px solid #1e293b', color: '#e2e8f0' }}>
                   <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                     {DEPT_LABELS[r.department_code] || r.department_code}
                   </td>
@@ -202,7 +202,7 @@ export default function EskalasyonClient() {
                     {r.guest_full_name ? ` / ${r.guest_full_name}` : ''}
                   </td>
                   <td style={{ padding: '10px 12px', maxWidth: 320 }}>{r.request_text || '-'}</td>
-                  <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', color: '#6b7280' }}>
+                  <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', color: '#94a3b8' }}>
                     {fmtTime(r.escalated_at || r.forwarded_at || r.created_at)}
                   </td>
                   <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
