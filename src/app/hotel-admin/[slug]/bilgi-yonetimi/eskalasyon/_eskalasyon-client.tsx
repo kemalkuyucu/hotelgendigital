@@ -15,6 +15,7 @@ type Row = {
   reception_responded_at: string | null;
   final_status: string | null;
   closed_at: string | null;
+  explanation: string | null;
   reason: 'no_response' | 'sla_exceeded';
   elapsed_minutes: number;
   still_open: boolean;
@@ -95,6 +96,40 @@ export default function EskalasyonClient() {
     }
   }, [slug, department, start, end]);
 
+  function downloadCsv() {
+    const headers = ['Departman', 'Oda', 'Misafir', 'Talep', 'Saat', 'Neden', 'Gecen sure (dk)', 'Aciklama'];
+    const reasonLabel = (r: Row) => {
+      if (r.final_status === 'no_response') return 'Resepsiyon yanit vermedi';
+      if (r.final_status === 'escalated_resolved') return 'Resepsiyon acikladi';
+      return 'SLA asildi';
+    };
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    const lines = [headers.map(esc).join(';')];
+    for (const r of rows) {
+      lines.push([
+        DEPT_LABELS[r.department_code] || r.department_code,
+        r.room_number || '',
+        r.guest_full_name || '',
+        r.request_text || '',
+        fmtTime(r.escalated_at || r.forwarded_at || r.created_at),
+        reasonLabel(r),
+        String(r.elapsed_minutes),
+        r.explanation || '',
+      ].map(esc).join(';'));
+    }
+    const csv = '﻿' + lines.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `eskalasyon_${start}_${end}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   useEffect(() => {
     load();
   }, [load]);
@@ -158,6 +193,22 @@ export default function EskalasyonClient() {
         >
           {loading ? 'Yukleniyor...' : 'Yenile'}
         </button>
+        <button
+          onClick={downloadCsv}
+          disabled={loading || rows.length === 0}
+          style={{
+            padding: '9px 16px',
+            borderRadius: 8,
+            border: '1px solid #334155',
+            background: '#1e293b',
+            color: '#e2e8f0',
+            fontSize: 14,
+            cursor: loading || rows.length === 0 ? 'default' : 'pointer',
+            opacity: loading || rows.length === 0 ? 0.5 : 1,
+          }}
+        >
+          CSV Indir
+        </button>
       </div>
 
       {/* Ozet */}
@@ -189,6 +240,7 @@ export default function EskalasyonClient() {
                 <th style={{ padding: '10px 12px', fontWeight: 600, color: '#cbd5e1' }}>Saat</th>
                 <th style={{ padding: '10px 12px', fontWeight: 600, color: '#cbd5e1' }}>Neden</th>
                 <th style={{ padding: '10px 12px', fontWeight: 600, color: '#cbd5e1' }}>Gecen sure</th>
+                <th style={{ padding: '10px 12px', fontWeight: 600, color: '#cbd5e1' }}>Aciklama</th>
               </tr>
             </thead>
             <tbody>
@@ -206,9 +258,13 @@ export default function EskalasyonClient() {
                     {fmtTime(r.escalated_at || r.forwarded_at || r.created_at)}
                   </td>
                   <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
-                    {r.reason === 'no_response' ? (
+                    {r.final_status === 'no_response' ? (
                       <span style={{ background: '#fee2e2', color: '#991b1b', padding: '3px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
                         Resepsiyon yanit vermedi
+                      </span>
+                    ) : r.final_status === 'escalated_resolved' ? (
+                      <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                        Resepsiyon acikladi
                       </span>
                     ) : (
                       <span style={{ background: '#ffedd5', color: '#9a3412', padding: '3px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
@@ -219,6 +275,9 @@ export default function EskalasyonClient() {
                   <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                     {fmtElapsed(r.elapsed_minutes)}
                     {r.still_open ? <span style={{ color: '#dc2626', marginLeft: 6, fontSize: 12 }}>(acik)</span> : null}
+                  </td>
+                  <td style={{ padding: '10px 12px', maxWidth: 360, color: '#cbd5e1', fontSize: 13 }}>
+                    {r.explanation || '-'}
                   </td>
                 </tr>
               ))}
