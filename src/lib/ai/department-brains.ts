@@ -40,6 +40,12 @@ export const DEPARTMENT_BRAIN_REGISTRY: Record<string, DepartmentBrainConfig> = 
     reasoningDepth: 'high',
     guardrail: 'standard',
   },
+  technical: {
+    department: 'technical',
+    model: 'claude-haiku-4-5',
+    reasoningDepth: 'medium',
+    guardrail: 'standard',
+  },
 };
 
 export interface DepartmentBrainInput {
@@ -252,6 +258,42 @@ Her zaman Turkce yaz. Sicak ama kisa tut. Emoji kullanma. "Ihtiyaciniz olursa bi
   return { handled: true, replyText };
 }
 
+async function runTechnicalBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
+  const client = new Anthropic();
+  const ctx = input.hotelContext as Record<string, string> | null;
+  const ctxParts = ctx
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+        (p) => typeof p === 'string' && p.trim().length > 0,
+      )
+    : [];
+  const contextBlock =
+    ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
+  const system = `Sen ${input.hotelName} otelinin teknik servis departmani asistanisin. Sicak, profesyonel ve cozum odakli bir insan gibi konusursun. Misafirin bildirdigi ariza veya sorunla bizzat sen ilgilenirsin.${contextBlock}
+Gorev: Misafirin odasindaki veya oteldeki teknik sorunlari (klima, isitma, sicak su, elektrik, aydinlatma, televizyon, internet/wifi, tesisat ve su kacagi, kapi/kilit, mobilya arizasi vb.) anlayip nazikce, kisa ve guven verici sekilde yanitla.
+
+Calisma ilkelerin:
+- Misafiri baska bir yere (resepsiyon, telefon) yonlendirme; sorunu sen sahiplenirsin.
+- Ariza talebi teknik ekibe arka planda OTOMATIK iletilir; bu senin gorevin degil, sistem hallediyor. Misafire ekibin en kisa surede ilgilenecegini sicakca bildir.
+- Misafir sorunu bildirdiyse is yola cikmistir; onay isteme, "iletmemi ister misiniz" gibi soru sorma.
+- Bilgi sorularini otel bilgilerinden yanitla. Bilgi yoksa uydurma; "Teknik ekibimiz en kisa surede ilgilenecektir." de.
+- Kapsam disi konular (temizlik ve havlu, yemek, spa, animasyon) icin misafiri ilgili departmana yonlendir.
+
+KAPANIS KURALI:
+- Hicbir emoji kullanma.
+- Yaniti kisa, sicak ve guven verici bir cumleyle bitir.
+- "Ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME; misafir zaten sorunu iletti.
+Her zaman Turkce yaz; kisa ve oz tut.`;
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 300,
+    system,
+    messages: [{ role: 'user', content: input.guestMessage }],
+  });
+  const block = response.content.find((b) => b.type === 'text');
+  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  return { handled: true, replyText };
+}
+
 export async function dispatchToDepartmentBrain(
   input: DepartmentBrainInput,
 ): Promise<DepartmentBrainResult> {
@@ -262,5 +304,6 @@ export async function dispatchToDepartmentBrain(
   if (input.department === 'housekeeping') return runHousekeepingBrain(input);
   if (input.department === 'spa') return runSpaBrain(input);
   if (input.department === 'front_office') return runFrontOfficeBrain(input);
+  if (input.department === 'technical') return runTechnicalBrain(input);
   return { handled: false };
 }
