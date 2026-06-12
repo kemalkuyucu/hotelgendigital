@@ -2224,6 +2224,7 @@ async function handleMessage(args: {
           newRoom: reParsed.roomNumber,
         });
 
+        console.log('[DEBUG-REVERIFY-2227] re-verify dalina girildi, reParsed:', JSON.stringify(reParsed), 'currentVerifiedGuest room:', currentVerifiedGuest?.room_number);
         const reVerMsg =
           language === 'en'
             ? `I've updated your information, ${reVerResult.guestFirstName ?? ''}. I've recorded that you are now in room ${reParsed.roomNumber}. Would you like me to forward your request?`
