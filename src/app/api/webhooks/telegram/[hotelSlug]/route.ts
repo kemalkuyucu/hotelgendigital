@@ -2176,7 +2176,6 @@ async function handleMessage(args: {
     check_out_date: string; is_active: boolean;
   };
   const currentVerifiedGuest: VerifiedGuestShape | null = persistentVerifiedGuest as VerifiedGuestShape | null;
-  console.log('[DEBUG-PVG] persistentVerifiedGuest:', persistentVerifiedGuest ? JSON.stringify({room: persistentVerifiedGuest.room_number, name: persistentVerifiedGuest.last_name}) : 'NULL', 'aiShouldForward:', aiShouldForward);
 
   if (currentVerifiedGuest && aiShouldForward) {
     const reParsed = parseVerificationInput(text);
@@ -2225,7 +2224,6 @@ async function handleMessage(args: {
           newRoom: reParsed.roomNumber,
         });
 
-        console.log('[DEBUG-REVERIFY-2227] re-verify dalina girildi, reParsed:', JSON.stringify(reParsed), 'currentVerifiedGuest room:', currentVerifiedGuest?.room_number);
         const reVerMsg =
           language === 'en'
             ? `I've updated your information, ${reVerResult.guestFirstName ?? ''}. I've recorded that you are now in room ${reParsed.roomNumber}. Would you like me to forward your request?`
