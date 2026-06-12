@@ -2176,6 +2176,7 @@ async function handleMessage(args: {
     check_out_date: string; is_active: boolean;
   };
   const currentVerifiedGuest: VerifiedGuestShape | null = persistentVerifiedGuest as VerifiedGuestShape | null;
+  console.log('[DEBUG-PVG] persistentVerifiedGuest:', persistentVerifiedGuest ? JSON.stringify({room: persistentVerifiedGuest.room_number, name: persistentVerifiedGuest.last_name}) : 'NULL', 'aiShouldForward:', aiShouldForward);
 
   if (currentVerifiedGuest && aiShouldForward) {
     const reParsed = parseVerificationInput(text);
