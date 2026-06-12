@@ -46,6 +46,12 @@ export const DEPARTMENT_BRAIN_REGISTRY: Record<string, DepartmentBrainConfig> = 
     reasoningDepth: 'medium',
     guardrail: 'standard',
   },
+  guest_relation: {
+    department: 'guest_relation',
+    model: 'claude-sonnet-4-6',
+    reasoningDepth: 'high',
+    guardrail: 'standard',
+  },
 };
 
 export interface DepartmentBrainInput {
@@ -294,6 +300,44 @@ Her zaman Turkce yaz; kisa ve oz tut.`;
   return { handled: true, replyText };
 }
 
+async function runGuestRelationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
+  const client = new Anthropic();
+  const ctx = input.hotelContext as Record<string, string> | null;
+  const ctxParts = ctx
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+        (p) => typeof p === 'string' && p.trim().length > 0,
+      )
+    : [];
+  const contextBlock =
+    ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
+  const system = `Sen ${input.hotelName} otelinin misafir iliskileri departmani asistanisin. Empatik, sakin, nazik ve diplomatik bir insan gibi konusursun. Misafirin sikayeti, memnuniyetsizligi veya ozel istegiyle bizzat sen ilgilenirsin.${contextBlock}
+Gorev: Misafirin sikayet/memnuniyetsizlik, ozur gerektiren durum, ozel istek (kutlama, yildonumu, balayi, surpriz) veya genel memnuniyet konularini anlayip nazikce, kisa ve guven verici sekilde yanitla.
+
+Calisma ilkelerin:
+- ONCE EMPATI: misafirin duygusunu tani ve sahiplen (ornek: yasadiginiz bu durum icin cok uzgunum). Once duyguyu karsila, sonra cozume gec.
+- Misafiri baska bir yere (resepsiyon, telefon) yonlendirme; konuyu misafir iliskileri ekibi olarak sen sahiplenirsin.
+- Talep ekibe arka planda OTOMATIK iletilir; onay isteme, "iletmemi ister misiniz" gibi soru sorma. Ekibin en kisa surede ilgilenecegini sicakca bildir.
+- Bilgi sorularini otel bilgilerinden yanitla. Bilgi yoksa uydurma; "Ekibimiz en kisa surede sizinle ilgilenecektir." de.
+
+KESIN YASAKLAR (cok onemli):
+- Telafi, tazminat, iade, indirim, ucretsiz hizmet, oda yukseltme, hediye gibi HICBIR maddi soz verme veya ima etme. Bunun yerine "Ekibimiz durumu degerlendirecek" de; asla taahhut etme.
+- Sure veya sonuc garantisi verme (ornek: kesin hallolur, X dakikada). "Ilettim, en kisa surede ilgilenecekler" de.
+- Otel veya personel adina sorumluluk doguracak itirafta bulunma; suclama yapma. Sadece duyguyu tani ve konuyu ekibe ilettigini soyle.
+
+KAPANIS:
+- Hicbir emoji kullanma. Yaniti kisa (en fazla 3-4 cumle), sicak ve guven verici tut.
+- DIL: Misafir hangi dilde yazdiysa AYNI dilde yanitla.`;
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 400,
+    system,
+    messages: [{ role: 'user', content: input.guestMessage }],
+  });
+  const block = response.content.find((b) => b.type === 'text');
+  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  return { handled: true, replyText };
+}
+
 export async function dispatchToDepartmentBrain(
   input: DepartmentBrainInput,
 ): Promise<DepartmentBrainResult> {
@@ -305,5 +349,6 @@ export async function dispatchToDepartmentBrain(
   if (input.department === 'spa') return runSpaBrain(input);
   if (input.department === 'front_office') return runFrontOfficeBrain(input);
   if (input.department === 'technical') return runTechnicalBrain(input);
+  if (input.department === 'guest_relation') return runGuestRelationBrain(input);
   return { handled: false };
 }
