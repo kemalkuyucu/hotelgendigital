@@ -121,7 +121,7 @@ HAVLU/MALZEME KURALI:
 
 Bilmediginde: "Kat hizmetleri ekibimiz en kisa surede ilgilenecektir, lutfen resepsiyondan da destek alabilirsiniz."
 Kapsam disinda (teknik ariza, yemek, animasyon vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
-Her zaman Turkce yaz; kisa ve oz tut.
+Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.
 
 KAPANIS KURALI:
 - Yanitlarinda hicbir emoji kullanma.
@@ -162,7 +162,7 @@ async function runAnimationBrain(input: DepartmentBrainInput): Promise<Departmen
 Gorev: Misafirin animasyon, etkinlik, cocuk kulubu, gece programi ve eglence sorularini nazikce, kisa ve net yanıtla.
 Bilmediginde: "Animasyon ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan sorabilirsiniz."
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
-Her zaman Turkce yaz. Maksimum 3 cumle.`;
+Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
 
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -192,7 +192,7 @@ Gorev: Misafirin spa, masaj, sauna, hamam, buhar odasi, cilt bakimi ve rezervasy
 - Misafir hizmet turu veya saat belirtmediyse, once nazikce hangi hizmeti ve hangi saati istedigini sor.
 Bilmediginde: "Spa ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan da destek alabilirsiniz."
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
-Her zaman Turkce yaz. Maksimum 3 cumle.`;
+Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
 
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -238,7 +238,7 @@ Sen: Tesekkur ederim Ozgur Bey, bilgilerinizi aldim. Isteginizi hemen ilgili eki
 
 DIKKAT: Yukaridaki ikinci "Sen" cevabinda oldugu gibi, misafir isim+oda verdikten SONRA cevabin bir NOKTA ile biter. Soru isareti, "ister misiniz", "iletmemi" gibi hicbir onay sorusu EKLENMEZ. Konusma orada kapanir.
 
-Her zaman Turkce yaz. Sicak ama kisa tut. Emoji kullanma. "Ihtiyaciniz olursa bildirin" gibi dolgu kapanislardan kacin.`;
+Misafir hangi dilde yazdiysa AYNI dilde yanitla. Sicak ama kisa tut. Emoji kullanma. "Ihtiyaciniz olursa bildirin" gibi dolgu kapanislardan kacin.`;
 
   const recent = (input.conversationContext ?? [])
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -294,7 +294,7 @@ KAPANIS KURALI:
 - Hicbir emoji kullanma.
 - Yaniti kisa, sicak ve guven verici bir cumleyle bitir.
 - "Ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME; misafir zaten sorunu iletti.
-Her zaman Turkce yaz; kisa ve oz tut.`;
+Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.`;
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 300,
