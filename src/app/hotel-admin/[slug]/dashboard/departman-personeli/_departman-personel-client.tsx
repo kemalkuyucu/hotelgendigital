@@ -36,13 +36,13 @@ interface Toast {
 
 // ─── Departman renk paleti ────────────────────────────────────────────────────
 const DEPT_COLORS: Record<string, { bg: string; border: string; text: string; badge: string }> = {
-  front_office:   { bg: 'rgba(99,102,241,0.08)',  border: 'rgba(99,102,241,0.25)',  text: '#a5b4fc', badge: 'rgba(99,102,241,0.18)'  },
-  housekeeping:   { bg: 'rgba(16,185,129,0.08)',  border: 'rgba(16,185,129,0.25)',  text: '#6ee7b7', badge: 'rgba(16,185,129,0.18)'  },
-  technical:      { bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.25)',  text: '#fcd34d', badge: 'rgba(245,158,11,0.18)'  },
-  fb:             { bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.25)',   text: '#fca5a5', badge: 'rgba(239,68,68,0.18)'   },
-  guest_relation: { bg: 'rgba(236,72,153,0.08)',  border: 'rgba(236,72,153,0.25)',  text: '#f9a8d4', badge: 'rgba(236,72,153,0.18)'  },
-  spa:            { bg: 'rgba(14,165,233,0.08)',  border: 'rgba(14,165,233,0.25)',  text: '#7dd3fc', badge: 'rgba(14,165,233,0.18)'  },
-  animation:      { bg: 'rgba(168,85,247,0.08)',  border: 'rgba(168,85,247,0.25)',  text: '#d8b4fe', badge: 'rgba(168,85,247,0.18)'  },
+  front_office: { bg: 'rgba(99,102,241,0.08)', border: 'rgba(99,102,241,0.25)', text: '#a5b4fc', badge: 'rgba(99,102,241,0.18)' },
+  housekeeping: { bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.25)', text: '#6ee7b7', badge: 'rgba(16,185,129,0.18)' },
+  technical: { bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.25)', text: '#fcd34d', badge: 'rgba(245,158,11,0.18)' },
+  fb: { bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.25)', text: '#fca5a5', badge: 'rgba(239,68,68,0.18)' },
+  guest_relation: { bg: 'rgba(236,72,153,0.08)', border: 'rgba(236,72,153,0.25)', text: '#f9a8d4', badge: 'rgba(236,72,153,0.18)' },
+  spa: { bg: 'rgba(14,165,233,0.08)', border: 'rgba(14,165,233,0.25)', text: '#7dd3fc', badge: 'rgba(14,165,233,0.18)' },
+  animation: { bg: 'rgba(168,85,247,0.08)', border: 'rgba(168,85,247,0.25)', text: '#d8b4fe', badge: 'rgba(168,85,247,0.18)' },
 }
 
 function getDeptColor(key: string) {
@@ -196,13 +196,12 @@ function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: 
             backdropFilter: 'blur(16px)',
             background:
               t.type === 'success' ? 'rgba(22,163,74,0.85)' :
-              t.type === 'error'   ? 'rgba(185,28,28,0.85)' :
-                                     'rgba(37,99,235,0.85)',
-            border: `1px solid ${
-              t.type === 'success' ? 'rgba(74,222,128,0.4)' :
-              t.type === 'error'   ? 'rgba(248,113,113,0.4)' :
-                                     'rgba(147,197,253,0.4)'
-            }`,
+                t.type === 'error' ? 'rgba(185,28,28,0.85)' :
+                  'rgba(37,99,235,0.85)',
+            border: `1px solid ${t.type === 'success' ? 'rgba(74,222,128,0.4)' :
+                t.type === 'error' ? 'rgba(248,113,113,0.4)' :
+                  'rgba(147,197,253,0.4)'
+              }`,
             boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
             color: '#f8fafc',
             fontSize: '13.5px',

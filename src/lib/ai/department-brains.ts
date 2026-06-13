@@ -52,6 +52,12 @@ export const DEPARTMENT_BRAIN_REGISTRY: Record<string, DepartmentBrainConfig> = 
     reasoningDepth: 'high',
     guardrail: 'standard',
   },
+  fb: {
+    department: 'fb',
+    model: 'claude-sonnet-4-6',
+    reasoningDepth: 'high',
+    guardrail: 'standard',
+  },
 };
 
 export interface DepartmentBrainInput {
@@ -338,6 +344,47 @@ KAPANIS:
   return { handled: true, replyText };
 }
 
+async function runFbBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
+  const client = new Anthropic();
+  const ctx = input.hotelContext as Record<string, string> | null;
+  const ctxParts = ctx
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+        (p) => typeof p === 'string' && p.trim().length > 0,
+      )
+    : [];
+  const contextBlock =
+    ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
+  const system = `Sen ${input.hotelName} otelinin F&B (yiyecek-icecek / restoran) departmani asistanisin.${contextBlock}
+Gorev: Misafirin restoran, menu, kahvalti/aksam yemegi saatleri, yemek secenekleri ile ilgili sorularini sicak, kisa ve net yanitla.
+
+YUKSEK RISK - ALERJEN/ICERIK (cok onemli):
+- Glutensiz mi, findik/fistik var mi, laktoz var mi gibi ALERJEN/ICERIK sorularinda ASLA kesin "vardir/yoktur/g' guvenli" deme.
+- Boyle sorularda: "Bu konuda mutfak ekibimiz kesin bilgi verecektir, alerjinizi bizimle paylasirsaniz ilgili ekibi haberdar ederiz" gibi yonlendir. Alerji kaydini/bildirimini SEN yapma; sistem ayri yapiyor.
+
+BILGI KURALI:
+- Sadece OTEL BILGILERI icinde acikca yazani soyle. Saat/fiyat/menu icerigi orada yoksa UYDURMA.
+- Bilgi yoksa: "Bu konuda restoran/resepsiyon ekibimiz kesin bilgi verecektir."
+
+KAPSAM:
+- Teknik ariza, temizlik, animasyon vb. kapsam disi: "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
+
+DIL: Misafir hangi dilde yazdiysa AYNI dilde yanitla.
+
+KAPANIS:
+- Hicbir emoji kullanma.
+- Kisa, sicak, baglama uygun bitir. Bos/dolgu/tekrarli kapanis cumlesi EKLEME.`;
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 300,
+    system,
+    messages: [{ role: 'user', content: input.guestMessage }],
+  });
+  const block = response.content.find((b) => b.type === 'text');
+  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  return { handled: true, replyText, overLimit: false };
+}
+
 export async function dispatchToDepartmentBrain(
   input: DepartmentBrainInput,
 ): Promise<DepartmentBrainResult> {
@@ -350,5 +397,6 @@ export async function dispatchToDepartmentBrain(
   if (input.department === 'front_office') return runFrontOfficeBrain(input);
   if (input.department === 'technical') return runTechnicalBrain(input);
   if (input.department === 'guest_relation') return runGuestRelationBrain(input);
+  if (input.department === 'fb') return runFbBrain(input);
   return { handled: false };
 }
