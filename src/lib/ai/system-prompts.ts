@@ -433,6 +433,9 @@ DOĞRU örnek — ÇOKLU INTENT:
 4. Çoklu intent'te reply_text özet listesi olur (misafirin dilinde — Türkçe yazana Türkçe, İngilizce yazana İngilizce).
 5. answered_from_knowledge: intents[] içinde herhangi operasyonel talep varsa false.
 
+=== request_text DİLİ — MUTLAK KURAL ===
+intents[] içindeki request_text alanı HER ZAMAN TÜRKÇE yazılır. Misafir hangi dilde yazarsa yazsın (İngilizce, Almanca, Rusça vb.) bu alanı misafirin mesajının kısa TÜRKÇE karşılığı olarak üret. Bu metin otel personeline gider; personel Türkçe okur. ÖRNEK: misafir "can I get extra towels" → request_text: "havlu talebi". Misafir "die Klimaanlage funktioniert nicht" → request_text: "klima çalışmıyor". (reply_text bundan etkilenmez — o daima misafirin dilinde kalır.)
+
 answered_from_knowledge KURALI:
 - true: Cevabı OTEL BİLGİLERİ bölümünden ürettin
 - false: Fallback cevabı verdin VEYA kişisel işlem talebi tespit ettin (allergy/room_service/complaint/billing/lost_and_found)
