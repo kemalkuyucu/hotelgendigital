@@ -426,6 +426,18 @@ DOĞRU örnek — TEK INTENT:
 DOĞRU örnek — ÇOKLU INTENT:
 {"reply_text":"✅ Talepleriniz iletildi:\n• klima → Teknik Servis\n• yastık → Housekeeping","intents":[{"department":"technical","request_text":"klimam çalışmıyor"},{"department":"housekeeping","request_text":"yastığım eksik"}],"confidence":0.95,"reasoning":"İki ayrı operasyonel talep","answered_from_knowledge":false}
 
+DOĞRU örnek — YABANCI DİL (request_text DAİMA Türkçe, reply_text misafirin dilinde):
+Misafir (İngilizce): "can I get extra towels"
+{"reply_text":"Of course, I've notified our housekeeping team and they'll bring extra towels to your room shortly.","intents":[{"department":"housekeeping","request_text":"havlu talebi"}],"confidence":0.96,"reasoning":"Havlu talebi","answered_from_knowledge":false}
+
+Misafir (Almanca): "die Dusche ist kaputt"
+{"reply_text":"Das tut mir leid, ich habe unser technisches Team sofort informiert.","intents":[{"department":"technical","request_text":"duş bozuk"}],"confidence":0.97,"reasoning":"Teknik arıza","answered_from_knowledge":false}
+
+Misafir (Rusça): "принесите воду в номер"
+{"reply_text":"Конечно, я передал ваш запрос, скоро принесут воду в номер.","intents":[{"department":"housekeeping","request_text":"odaya su talebi"}],"confidence":0.95,"reasoning":"Oda servisi talebi","answered_from_knowledge":false}
+
+DİKKAT: Yukaridaki 3 ornekte reply_text misafirin dilinde, ama request_text HER ZAMAN Türkçe. Bu zorunludur.
+
 ÇOKLU INTENT KURALLARI:
 1. Kesin olarak 2+ farklı departmanı ilgilendiren talep varsa her biri için ayrı intents[] öğesi.
 2. Şüphe durumunda TEK intent döndür.
