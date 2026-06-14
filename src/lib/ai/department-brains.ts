@@ -385,12 +385,28 @@ KAPANIS:
   return { handled: true, replyText, overLimit: false };
 }
 
+// ── BEYINCIK (Asama 2) — departman refleks/guardrail katmani ──────────────────
+// Merkezi mekanizma, dagitik icerik: tek calistirici, her departman kendi
+// refleksini config.guardrail sikiliginda calistirir. null = gec (beyne devam),
+// non-null = refleks kesti. Safety'nin "forward oncesi kapi" deseninin
+// departman-bazli karsiligi. ISKELET: simdilik tum departmanlar null (davranis DEGISMEZ).
+async function runDepartmentBeyincik(
+  input: DepartmentBrainInput,
+  config: DepartmentBrainConfig,
+): Promise<DepartmentBrainResult | null> {
+  void input;
+  void config;
+  return null;
+}
+
 export async function dispatchToDepartmentBrain(
   input: DepartmentBrainInput,
 ): Promise<DepartmentBrainResult> {
   if (!DEPARTMENT_BRAINS_ENABLED) return { handled: false };
   const config = DEPARTMENT_BRAIN_REGISTRY[input.department];
   if (!config) return { handled: false };
+  const reflex = await runDepartmentBeyincik(input, config);
+  if (reflex) return reflex;
   if (input.department === 'animation') return runAnimationBrain(input);
   if (input.department === 'housekeeping') return runHousekeepingBrain(input);
   if (input.department === 'spa') return runSpaBrain(input);
