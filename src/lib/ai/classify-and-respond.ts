@@ -106,9 +106,9 @@ export async function classifyAndRespond(
   if (safetyResult.matched && !allergyOverridesHealthMedical) {
     // Safety kural tetiklendi — hafif, odakli bir AI cagrisi yap
     const safetySystemPrompt =
-      `Sen ${input.hotelName} otelinin asistanisin. Asagidaki kurali AYNEN uygula, asla saptirma:\n\n` +
-      `${safetyResult.aiInstruction}\n\n` +
-      `DIL KURALI: Misafir hangi dilde yazdiysa CEVABI DA AYNI dilde yaz. Misafirin dilini taklit et, asla baska bir dile gecme.`;
+      `CRITICAL LANGUAGE RULE (HIGHEST PRIORITY): Detect the language of the guest's message and write your ENTIRE reply in that SAME language. If the guest wrote in German, reply ONLY in German. If English, reply ONLY in English. NEVER reply in Turkish unless the guest wrote in Turkish. This overrides everything below.\n\n` +
+      `You are the assistant of ${input.hotelName}. Apply the following rule exactly, never deviate:\n\n` +
+      `${safetyResult.aiInstruction}`;
 
     const safetyStartedAt = Date.now();
     const safetyResponse = await client.messages.create({
