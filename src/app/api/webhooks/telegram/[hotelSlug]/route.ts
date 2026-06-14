@@ -2180,6 +2180,7 @@ async function handleMessage(args: {
   if (currentVerifiedGuest && aiShouldForward) {
     const reParsed = parseVerificationInput(text);
     if (
+      !reParsed.hasEmbeddedRequest &&  // BEYINCIK: mesajda talep varsa re-verify YOK; dogrulanmis misafir "eslesme bulamadim" duymaz, talep normal akar (dedup ikinci karti keser)
       reParsed.roomNumber !== null &&
       reParsed.firstName !== null &&
       reParsed.lastName !== null &&
