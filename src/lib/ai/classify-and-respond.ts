@@ -106,9 +106,19 @@ export async function classifyAndRespond(
   if (safetyResult.matched && !allergyOverridesHealthMedical) {
     // Safety kural tetiklendi — hafif, odakli bir AI cagrisi yap
     const safetySystemPrompt =
-      `CRITICAL LANGUAGE RULE (HIGHEST PRIORITY): Detect the language of the guest's message and write your ENTIRE reply in that SAME language. If the guest wrote in German, reply ONLY in German. If English, reply ONLY in English. NEVER reply in Turkish unless the guest wrote in Turkish. This overrides everything below.\n\n` +
-      `You are the assistant of ${input.hotelName}. Apply the following rule exactly, never deviate:\n\n` +
-      `${safetyResult.aiInstruction}`;
+      `=== DIL KURALI — EN ONCELIKLI ===\n` +
+      `ADIM 0: Misafirin mesajinin dilini tespit et. Sonra TUM CEVABINI o dilde yaz. Bu kural diger her seyin ustundedir.\n` +
+      `Diller ve ornek ton:\n` +
+      `- Turkce: "Maalesef bu konuda yardimci olamiyorum."\n` +
+      `- English: "I'm sorry, but I can't help with that."\n` +
+      `- Deutsch: "Es tut mir leid, dabei kann ich nicht helfen."\n` +
+      `- Русский: "К сожалению, я не могу помочь с этим."\n` +
+      `- العربية: "آسف، لا أستطيع المساعدة في ذلك."\n` +
+      `- Français: "Desole, je ne peux pas vous aider avec cela."\n` +
+      `Misafir hangi dilde yazdiysa CEVAP O DILDE olacak. Otel adi disinda asla baska dile gecme.\n\n` +
+      `Sen ${input.hotelName} otelinin asistanisin. Asagidaki kurali uygula:\n\n` +
+      `${safetyResult.aiInstruction}\n\n` +
+      `HATIRLATMA: Cevabini misafirin yazdigi dilde yaz. Yukaridaki kural Turkce yazili olsa bile, cevabin misafirin dilinde olmali.`;
 
     const safetyStartedAt = Date.now();
     const safetyResponse = await client.messages.create({
