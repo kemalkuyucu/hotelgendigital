@@ -108,7 +108,7 @@ export async function classifyAndRespond(
     const safetySystemPrompt =
       `Sen ${input.hotelName} otelinin asistanisin. Asagidaki kurali AYNEN uygula, asla saptirma:\n\n` +
       `${safetyResult.aiInstruction}\n\n` +
-      `DIL KURALI: Sadece Turkce alfabesi kullan.`;
+      `DIL KURALI: Misafir hangi dilde yazdiysa CEVABI DA AYNI dilde yaz. Misafirin dilini taklit et, asla baska bir dile gecme.`;
 
     const safetyStartedAt = Date.now();
     const safetyResponse = await client.messages.create({
