@@ -2737,6 +2737,41 @@ async function handleMessage(args: {
             aiIntentIdForItem,
           });
 
+          // ── BEYINCIK REFLEKS (forward katmani): cift SLA karti onleme ──────────────
+          // Ayni konusma + ayni departmanda HALA ACIK (yanitlanmamis+kapanmamis) talep
+          // varken, misafir ayni seyi tekrar yazinca IKINCI kart acma. Deterministik:
+          // acik event'in request_text'i ile yeni talep Jaccard>=0.5 ortusum -> ayni say,
+          // bu item'i atla. Dusuk ortusum (farkli konu) -> normal kart (talep KAYBOLMAZ).
+          const dedupNorm = (s: string): string[] =>
+            normalizeTr(String(s ?? ''))
+              .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+              .split(/\s+/)
+              .filter((w) => w.length >= 3);
+          const { data: openDupEvents } = await supa
+            .from('sla_events')
+            .select('id, request_text')
+            .eq('conversation_id', conversationId)
+            .eq('department_code', targetDept)
+            .is('responded_at', null)
+            .is('closed_at', null)
+            .order('created_at', { ascending: false })
+            .limit(5);
+          if (openDupEvents && openDupEvents.length > 0) {
+            const newSet = new Set(dedupNorm(fwdItem.requestText));
+            const isDuplicate = openDupEvents.some((ev) => {
+              const oldSet = new Set(dedupNorm(String(ev.request_text ?? '')));
+              if (newSet.size === 0 || oldSet.size === 0) return false;
+              let inter = 0;
+              for (const t of newSet) if (oldSet.has(t)) inter++;
+              const uni = new Set([...newSet, ...oldSet]).size;
+              return uni > 0 && inter / uni >= 0.5;
+            });
+            if (isDuplicate) {
+              console.log(`[dedup] Acik ayni talep var, ikinci kart atlandi [item: ${targetDept}] req="${fwdItem.requestText.slice(0, 60)}"`);
+              continue;
+            }
+          }
+
           const { data: slaEvent, error: slaErr } = await supa
             .from('sla_events')
             .insert({
