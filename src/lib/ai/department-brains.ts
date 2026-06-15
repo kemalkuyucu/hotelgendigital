@@ -160,11 +160,19 @@ KAPANIS KURALI:
     };
   }
 
+  const recent = (input.conversationContext ?? [])
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
+    .slice(-6)
+    .map((m) => `${m.role === 'assistant' ? 'Asistan' : 'Misafir'}: ${m.content.trim()}`)
+    .join('\n');
+  const userContent = recent
+    ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
+    : input.guestMessage;
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 300,
     system,
-    messages: [{ role: 'user', content: input.guestMessage }],
+    messages: [{ role: 'user', content: userContent }],
   });
   const block = response.content.find((b) => b.type === 'text');
   const replyText = block && block.type === 'text' ? block.text.trim() : '';

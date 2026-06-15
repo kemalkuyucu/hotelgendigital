@@ -343,7 +343,7 @@ export async function classifyAndRespond(
         guestMessage: input.guestMessage,
         hotelName: input.hotelName,
         hotelContext: hotelContext as Record<string, unknown> | null,
-        conversationContext: (input.context ?? []).map((m) => ({ role: String((m as { role?: string }).role ?? 'user'), content: String((m as { content?: string }).content ?? '') })),
+        conversationContext: (input.context ?? []).map((m) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.text ?? '' })),
       });
       if (brainResult.handled && brainResult.replyText) {
         return {
