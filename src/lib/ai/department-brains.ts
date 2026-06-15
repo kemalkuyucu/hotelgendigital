@@ -75,6 +75,7 @@ export interface DepartmentBrainResult {
   overLimit?: boolean;
   reservationNotify?: boolean;
   hasQuantity?: boolean;
+  normalizedRequest?: string;
 }
 
 // Passthrough dispatcher. Bayrak KAPALI veya kayitli beyin yoksa handled=false.
@@ -83,6 +84,26 @@ const TR_SAYI_KELIMELERI: Record<string, number> = {
   'altı': 6, alti: 6, yedi: 7, sekiz: 8, dokuz: 9, on: 10,
   yirmi: 20, otuz: 30, 'kırk': 40, kirk: 40, elli: 50,
 };
+
+const HOUSEKEEPING_ITEM_PATTERNS: Array<{ re: RegExp; label: string }> = [
+  { re: /banyo\s*havlu/i, label: 'banyo havlusu' },
+  { re: /(yuz|yüz)\s*havlu/i, label: 'yuz havlusu' },
+  { re: /ayak\s*havlu/i, label: 'ayak havlusu' },
+  { re: /havlu/i, label: 'havlu' },
+  { re: /(carsaf|çarşaf|nevresim)/i, label: 'carsaf' },
+  { re: /yastik|yastık/i, label: 'yastik' },
+  { re: /battaniye/i, label: 'battaniye' },
+  { re: /(sabun|sampuan|şampuan|dus jeli|duş jeli)/i, label: 'banyo malzemesi' },
+  { re: /(tuvalet kagidi|tuvalet kağıdı)/i, label: 'tuvalet kagidi' },
+];
+
+function buildHousekeepingSummary(convText: string, qty: number | null): string | null {
+  if (qty === null) return null;
+  for (const p of HOUSEKEEPING_ITEM_PATTERNS) {
+    if (p.re.test(convText)) return `${qty} ${p.label}`;
+  }
+  return null;
+}
 
 function extractMaxItemQuantity(text: string): number | null {
   if (!text) return null;
@@ -147,7 +168,16 @@ KAPANIS KURALI:
   });
   const block = response.content.find((b) => b.type === 'text');
   const replyText = block && block.type === 'text' ? block.text.trim() : '';
-  return { handled: true, replyText, overLimit: false, hasQuantity: maxQty !== null };
+  // Adet netleştiyse kart metnini deterministik uret (ham son mesaj yerine "2 yuz havlusu").
+  // Tum konusma + son mesaj birlesik taranir; tur kelimesi + adet eslestirilir.
+  const convForSummary = [
+    ...(input.conversationContext ?? []).map((m) => m.content),
+    input.guestMessage,
+  ].join(' ');
+  const normalizedRequest = maxQty !== null
+    ? (buildHousekeepingSummary(convForSummary, maxQty) ?? undefined)
+    : undefined;
+  return { handled: true, replyText, overLimit: false, hasQuantity: maxQty !== null, normalizedRequest };
 }
 
 async function runAnimationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {

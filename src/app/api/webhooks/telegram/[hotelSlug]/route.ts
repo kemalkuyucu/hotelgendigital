@@ -2598,8 +2598,14 @@ async function handleMessage(args: {
         // lavabo ...") -> karta kirli metin dusuyor. Tek talep varsa misafirin O ANKI
         // ham mesajini kullan (deterministik, personele "ne yazdiysa o" gider). Multi-
         // intent (>1) ise AI'in departman-bazli ayirdigi metni KORU (gercek ayrim var).
-        if (forwardableItems.length === 1 && text && text.trim()) {
-          fwdItem.requestText = text.trim();
+        if (forwardableItems.length === 1) {
+          // Housekeeping beyni adedi netlestirdiyse temiz ozeti kullan ("2 yuz havlusu"),
+          // aksi halde misafirin o anki ham mesaji (orchestrator birlestirme sizintisina karsi).
+          if (aiResult?.normalizedRequest && aiResult.normalizedRequest.trim()) {
+            fwdItem.requestText = aiResult.normalizedRequest.trim();
+          } else if (text && text.trim()) {
+            fwdItem.requestText = text.trim();
+          }
         }
         try {
           const targetDept = fwdItem.dept;
