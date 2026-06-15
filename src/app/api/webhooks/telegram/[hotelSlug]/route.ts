@@ -2575,6 +2575,14 @@ async function handleMessage(args: {
     } else {
       for (let itemIndex = 0; itemIndex < forwardableItems.length; itemIndex++) {
         const fwdItem = forwardableItems[itemIndex];
+        // ── BEYINCIK: kart metni ham mesaja sabit (tek-intent) ──────────────────────
+        // Orchestrator bazen onceki turlarin taleplerini birlestiriyor ("klima ... ve
+        // lavabo ...") -> karta kirli metin dusuyor. Tek talep varsa misafirin O ANKI
+        // ham mesajini kullan (deterministik, personele "ne yazdiysa o" gider). Multi-
+        // intent (>1) ise AI'in departman-bazli ayirdigi metni KORU (gercek ayrim var).
+        if (forwardableItems.length === 1 && text && text.trim()) {
+          fwdItem.requestText = text.trim();
+        }
         try {
           const targetDept = fwdItem.dept;
           const targetChatId = fwdItem.chatId;
