@@ -12,6 +12,7 @@ import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
 import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/verification/verify-guest';
+import { createReceptionApproval, receptionNotifiedMsg, receptionWaitMsg, handlePendingMatchCallback } from '@/lib/verification/reception-approval';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { formatGuestAddress } from '@/lib/utils/salutation';
 import { downloadTelegramAudio } from '@/lib/voice/download-telegram-audio';
@@ -243,6 +244,29 @@ export async function POST(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu talep zaten işlendi' }),
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // pgm: inhouse eslesmeme resepsiyon onay butonlari
+      if (cq.data?.startsWith('pgm:')) {
+        if (cq.data === 'pgm:noop') {
+          await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu kayit zaten islendi' }),
+          });
+          return NextResponse.json({ ok: true });
+        }
+        await handlePendingMatchCallback({
+          supa,
+          botToken,
+          callbackQueryId: cq.id,
+          callbackData: cq.data,
+          callbackChatId: cq.message?.chat?.id ?? 0,
+          callbackMessageId: cq.message?.message_id ?? 0,
+          approverTelegramId: String(cq.from.id),
+          approverName: cq.from.username ?? cq.from.first_name ?? null,
         });
         return NextResponse.json({ ok: true });
       }
@@ -629,7 +653,7 @@ async function handleVerificationFlow(args: {
   aiReplyText: string;
   language: string;
 }): Promise<VerificationFlowResult> {
-  const { supa, tg, botToken, conversationId, conversation, guestMessageText, aiIntent, language } = args;
+  const { supa, botToken, conversationId, conversation, guestMessageText, aiIntent, language } = args;
 
   // 0. telegram_id damgasi varsa zaten dogrulanmis say (inhouse_guests_v2)
   try {
@@ -666,13 +690,12 @@ async function handleVerificationFlow(args: {
     };
   }
 
-  // 2. Kilitlenmiş mi? (attempts >= MAX ve hâlâ doğrulanmamış)
+  // 2. Resepsiyon onayi bekleniyor mu? (attempts >= MAX, kart zaten gonderildi)
   if (conversation.verification_attempts >= MAX_VERIFICATION_ATTEMPTS) {
-    console.log(`[verification] Kilitli — attempts=${conversation.verification_attempts}`);
-    const lockedMsg = getVerificationLockedMsg(language);
+    console.log(`[verification] Resepsiyon onayi bekleniyor — attempts=${conversation.verification_attempts}`);
     return {
       shouldShortCircuit: true,
-      replyText: lockedMsg,
+      replyText: receptionWaitMsg(language),
       verifiedGuestId: null,
       effectiveIntent: 'front_office',
     };
@@ -824,28 +847,23 @@ async function handleVerificationFlow(args: {
       .eq('id', conversationId);
 
     if (newAttempts >= MAX_VERIFICATION_ATTEMPTS) {
-      // Kilitlendi → ön büroya bildirim gönder
-      console.log(`[verification] Kilitlendi — attempts=${newAttempts}`);
+      // Inhouse eslesmeme → resepsiyon onay akisi (Master 6.1)
+      console.log(`[verification] Inhouse eslesmeme — resepsiyon onay karti, attempts=${newAttempts}`);
 
-      // Bildirim — void (hata olsa bile kilidi uygula)
-      void notifyFrontDeskUnverified({
-        hotelSupabase: supa,
+      await createReceptionApproval({
+        supa,
         botToken,
-        tg,
-        conversationId,
         guestTelegramId: args.guestTelegramId,
         guestTelegramUsername: args.guestTelegramUsername,
-        pendingIntent: conversation.verification_pending_intent ?? aiIntent,
-        attemptedRoomNumber: roomNumber,
-        attemptedLastName: lastName,
-        originalMessage: guestMessageText,
+        attemptedRoomNumber: roomNumber!,
+        attemptedGuestName: `${firstName ?? ''} ${lastName ?? ''}`.trim(),
+        messageExcerpt: guestMessageText,
         language,
       });
 
-      const lockedMsg = getVerificationLockedMsg(language);
       return {
         shouldShortCircuit: true,
-        replyText: lockedMsg,
+        replyText: receptionNotifiedMsg(language),
         verifiedGuestId: null,
         effectiveIntent: 'front_office',
       };
