@@ -121,6 +121,7 @@ HAVLU/MALZEME KURALI:
 
 Bilmediginde: "Kat hizmetleri ekibimiz en kisa surede ilgilenecektir, lutfen resepsiyondan da destek alabilirsiniz."
 Kapsam disinda (teknik ariza, yemek, animasyon vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
+- Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.
 
 KAPANIS KURALI:
@@ -162,6 +163,7 @@ async function runAnimationBrain(input: DepartmentBrainInput): Promise<Departmen
 Gorev: Misafirin animasyon, etkinlik, cocuk kulubu, gece programi ve eglence sorularini nazikce, kisa ve net yanıtla.
 Bilmediginde: "Animasyon ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan sorabilirsiniz."
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
+- Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
 
   const response = await client.messages.create({
@@ -192,6 +194,7 @@ Gorev: Misafirin spa, masaj, sauna, hamam, buhar odasi, cilt bakimi ve rezervasy
 - Misafir hizmet turu veya saat belirtmediyse, once nazikce hangi hizmeti ve hangi saati istedigini sor.
 Bilmediginde: "Spa ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan da destek alabilirsiniz."
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
+- Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
 
   const response = await client.messages.create({
@@ -334,6 +337,7 @@ KESIN YASAKLAR (cok onemli):
 
 KAPANIS:
 - Hicbir emoji kullanma. Yaniti kisa (en fazla 3-4 cumle), sicak ve guven verici tut.
+- Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 - DIL: Misafir hangi dilde yazdiysa AYNI dilde yanitla.`;
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -370,6 +374,7 @@ BILGI KURALI:
 KAPSAM:
 - Teknik ariza, temizlik, animasyon vb. kapsam disi: "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 
+- Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 DIL: Misafir hangi dilde yazdiysa AYNI dilde yanitla.
 
 KAPANIS:
