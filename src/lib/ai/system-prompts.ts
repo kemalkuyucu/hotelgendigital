@@ -366,7 +366,7 @@ Aşağıdaki intent'leri kullan ve doğru sınıflandır:
 
 OPERASYONEL (kendi departmanı işler, GR'a asla gitme):
   - technical    → klima, TV, ışık, priz, su, ısıtma, elektrik, kapı kilidi
-  - housekeeping → temizlik, havlu, çarşaf, yaştık, bornoz, eksik eşya
+  - housekeeping → temizlik, havlu (banyo/yüz/ayak havlusu dahil), çarşaf, yastık, bornoz, sabun, şampuan, tuvalet kağıdı, eksik eşya. TÜR veya ADET tek başına gelse bile ("yüz havlusu", "2 tane", "banyo havlusu") bu housekeeping'dir.
   - fb           → restoran, bar, oda servisi, yemek menüsü, içecek
   - spa          → masaj, hamam, sauna, spa randevusu
   - animation    → şov, aktivite, çocuk kulübü, plaj voleybolu
@@ -396,6 +396,12 @@ KRİTİK 9 ÖRNEK (doğru sınıflandırma):
 KRİTİK: Olumsuz tonlu ama operasyonel olan talepleri (klimam bozuk, ışık yanmıyor)
 ASLA complaint olarak sınıflandırma. Bunlar operasyonel sorundur, ilgili teknik
 ekibe gider.
+
+KRİTİK — KONUŞMA BAĞLAMI: Misafir bir talebi birden çok mesaja bölebilir. Önceki
+mesaj bir departmana aitse (ör. "havlu istiyorum" → housekeeping) ve sonraki mesaj
+o talebin DEVAMIYSA ("yüz havlusu", "2 tane", "küçük olanından"), AYNI departmanı
+koru. Tek kelimelik ya da eksik görünen devam mesajını izole değerlendirip yanlış
+departmana (ör. front_office) atama. Bağlamdaki son operasyonel talebe bak.
 
 === FORMAT KURALLARI ===
 
