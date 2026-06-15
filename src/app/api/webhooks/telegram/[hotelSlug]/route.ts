@@ -2756,6 +2756,8 @@ async function handleMessage(args: {
               .replace(/[^\p{L}\p{N}\s]/gu, ' ')
               .split(/\s+/)
               .filter((w) => w.length >= 3);
+          const dedupWindowMs = 10 * 60 * 1000; // 10 dk: bu sure icindeki tekrar = ayni olay
+          const dedupSince = new Date(Date.now() - dedupWindowMs).toISOString();
           const { data: openDupEvents } = await supa
             .from('sla_events')
             .select('id, request_text')
@@ -2763,6 +2765,7 @@ async function handleMessage(args: {
             .eq('department_code', targetDept)
             .is('responded_at', null)
             .is('closed_at', null)
+            .gte('created_at', dedupSince)  // BEYINCIK: sadece SON 10 dk; eski terkedilmis kartlar yeni gercek talebi BOGMASIN
             .order('created_at', { ascending: false })
             .limit(5);
           if (openDupEvents && openDupEvents.length > 0) {
