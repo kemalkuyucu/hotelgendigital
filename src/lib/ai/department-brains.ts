@@ -74,6 +74,7 @@ export interface DepartmentBrainResult {
   replyText?: string;
   overLimit?: boolean;
   reservationNotify?: boolean;
+  hasQuantity?: boolean;
 }
 
 // Passthrough dispatcher. Bayrak KAPALI veya kayitli beyin yoksa handled=false.
@@ -146,7 +147,7 @@ KAPANIS KURALI:
   });
   const block = response.content.find((b) => b.type === 'text');
   const replyText = block && block.type === 'text' ? block.text.trim() : '';
-  return { handled: true, replyText, overLimit: false };
+  return { handled: true, replyText, overLimit: false, hasQuantity: maxQty !== null };
 }
 
 async function runAnimationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
