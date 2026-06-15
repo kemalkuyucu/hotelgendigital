@@ -203,33 +203,68 @@ export async function handlePendingMatchCallback(args: {
   const resolvedBy = args.approverName ? `tg:${args.approverName}` : `tg:${args.approverTelegramId}`;
 
   if (action === 'approve') {
-    const today = todayTR();
-    const checkout = addDays(today, 7); // varsayilan; resepsiyon panelden duzeltebilir
-    const { error: insErr } = await supa.from('inhouse_guests_v2').insert({
-      room_number: String(pending.attempted_room_number),
-      guest_name: String(pending.attempted_guest_name),
-      status: 'active',
-      check_in_date: today,
-      check_out_date: checkout,
-      telegram_id: String(pending.telegram_id),
-    });
-    if (insErr) {
-      console.error('[pgm][approve] inhouse insert err:', insErr.message);
-      await answer('Kayit olusturulamadi, tekrar deneyin.');
+      const today = todayTR();
+      const checkout = addDays(today, 7); // varsayilan; resepsiyon panelden duzeltebilir
+      const tgIdStr = String(pending.telegram_id);
+      const roomStr = String(pending.attempted_room_number);
+      const nameStr = String(pending.attempted_guest_name);
+
+      // GUARD A — ayni telegram_id baska aktif satira damgaliysa once temizle
+      // (oda degisikligi olabilir) -> tek telegram_id daima tek satir, Step 0 belirsizligi olmaz
+      await supa.from('inhouse_guests_v2')
+        .update({ telegram_id: null })
+        .eq('telegram_id', tgIdStr)
+        .eq('status', 'active');
+
+      // GUARD B — ayni odada farkli isimli aktif kayit var mi? (stale inhouse uyarisi; insert'i ENGELLEMEZ)
+      let roomNameConflict: string | null = null;
+      const { data: roomRows } = await supa.from('inhouse_guests_v2')
+        .select('guest_name')
+        .eq('room_number', roomStr)
+        .eq('status', 'active');
+      if (roomRows && roomRows.length > 0) {
+        const wanted = nameStr.toLocaleLowerCase('tr').trim();
+        const other = roomRows.find(
+          (r) => String(r.guest_name ?? '').toLocaleLowerCase('tr').trim() !== wanted,
+        );
+        if (other) roomNameConflict = String(other.guest_name);
+      }
+
+      const { error: insErr } = await supa.from('inhouse_guests_v2').insert({
+        room_number: roomStr,
+        guest_name: nameStr,
+        status: 'active',
+        check_in_date: today,
+        check_out_date: checkout,
+        telegram_id: tgIdStr,
+      });
+      if (insErr) {
+        console.error('[pgm][approve] inhouse insert err:', insErr.message);
+        await answer('Kayit olusturulamadi, tekrar deneyin.');
+        return;
+      }
+      await supa.from('pending_guest_matches')
+        .update({ resolved: true, resolved_at: new Date().toISOString(), resolved_by_user_id: resolvedBy })
+        .eq('id', pendingId);
+      await fetch(TG_API(botToken, 'sendMessage'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: guestChatId, text: approvedMsg(lang) }),
+      }).catch(() => {});
+      if (roomNameConflict) {
+        await fetch(TG_API(botToken, 'sendMessage'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: args.callbackChatId,
+            text: `Uyari: Oda ${roomStr} icin zaten "${roomNameConflict}" isimli aktif kayit vardi; "${nameStr}" de eklendi. Oda degisikligi olduysa lutfen inhouse'u guncelleyip bana guncel diye bildirin.`,
+          }),
+        }).catch(() => {});
+      }
+      await editCardClosed(botToken, args.callbackChatId, args.callbackMessageId, '✅ Onaylandi');
+      await answer('Onaylandi, misafir bilgilendirildi.');
       return;
     }
-    await supa.from('pending_guest_matches')
-      .update({ resolved: true, resolved_at: new Date().toISOString(), resolved_by_user_id: resolvedBy })
-      .eq('id', pendingId);
-    await fetch(TG_API(botToken, 'sendMessage'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: guestChatId, text: approvedMsg(lang) }),
-    }).catch(() => {});
-    await editCardClosed(botToken, args.callbackChatId, args.callbackMessageId, '✅ Onaylandi');
-    await answer('Onaylandi, misafir bilgilendirildi.');
-    return;
-  }
 
   if (action === 'reject') {
     await supa.from('pending_guest_matches')
