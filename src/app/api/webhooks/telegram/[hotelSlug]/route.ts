@@ -365,15 +365,25 @@ function getVerificationAskMsg(lang: string): string {
   return msgs[lang] ?? msgs['tr'];
 }
 
-function getVerificationFailMsg(lang: string): string {
-  const msgs: Record<string, string> = {
-    tr: 'Bilgilerinizi doğrulayamadım. Oda numarası ve soyadınızı kontrol edip tekrar deneyebilir misiniz? Örnek: 312 Kuyucu',
-    en: 'I could not verify your details. Could you double-check your room number and last name and try again? Example: 312 Smith',
-    de: 'Ihre Angaben konnten nicht bestätigt werden. Bitte prüfen Sie Zimmernummer und Nachname. Beispiel: 312 Müller',
-    ru: 'Не удалось подтвердить данные. Проверьте номер комнаты и фамилию и попробуйте снова. Пример: 312 Иванов',
-    ar: 'تعذّر التحقق من بياناتك. يرجى التحقق من رقم الغرفة واسم العائلة والمحاولة مجدداً. مثال: 312 علي',
+function getVerificationFailMsg(lang: string, attempt: number): string {
+  // attempt 1 = yumusak ("dogru yazdigindan emin misin")
+  // attempt 2+ = uyari ("hala eslesmedi, bir sorun olabilir")
+  const soft: Record<string, string> = {
+    tr: 'Bilgilerinizi doğrulayamadım. Oda numarası ve soyadınızı doğru yazdığınızdan emin misiniz? Örnek: 312 Kuyucu',
+    en: 'I could not verify your details. Are you sure your room number and last name are correct? Example: 312 Smith',
+    de: 'Ihre Angaben konnten nicht bestätigt werden. Sind Zimmernummer und Nachname korrekt? Beispiel: 312 Müller',
+    ru: 'Не удалось подтвердить данные. Вы уверены, что номер комнаты и фамилия указаны верно? Пример: 312 Иванов',
+    ar: 'يلع 312 :لاثم .ةحيحص ةلئاعلا مساو ةفرغلا مقر نأ نم دكأتم له .كتانايب نم ققحتلا رذّعت',
   };
-  return msgs[lang] ?? msgs['tr'];
+  const warn: Record<string, string> = {
+    tr: 'Bilgileriniz hâlâ eşleşmedi. Bir sorun olabilir; gerekirse resepsiyona kontrol ettirmemiz gerekebilir. Bir kez daha deneyelim: oda numarası ve soyadınız. Örnek: 312 Kuyucu',
+    en: 'Your details still did not match. There may be an issue; we may need to check with reception. Let us try once more: room number and last name. Example: 312 Smith',
+    de: 'Ihre Angaben stimmen weiterhin nicht überein. Möglicherweise liegt ein Problem vor; eventuell müssen wir es an der Rezeption prüfen. Versuchen wir es noch einmal: Zimmernummer und Nachname. Beispiel: 312 Müller',
+    ru: 'Данные снова не совпали. Возможна ошибка; может потребоваться проверка на ресепшене. Попробуем ещё раз: номер комнаты и фамилия. Пример: 312 Иванов',
+    ar: 'يلع 312 :لاثم .ةلئاعلا مساو ةفرغلا مقر :ىرخأ ةرم لواحنل .لابقتسالا يف ققحتلا ىلإ جاتحن دق ؛ةلكشم كانه نوكت دق .ىرخأ ةرم كتانايب قباطتت مل',
+  };
+  const table = attempt >= 2 ? warn : soft;
+  return table[lang] ?? table['tr'];
 }
 
 function getVerificationLockedMsg(lang: string): string {
@@ -869,7 +879,7 @@ async function handleVerificationFlow(args: {
       };
     }
 
-    const failMsg = getVerificationFailMsg(language);
+    const failMsg = getVerificationFailMsg(language, newAttempts);
     return {
       shouldShortCircuit: true,
       replyText: failMsg,
