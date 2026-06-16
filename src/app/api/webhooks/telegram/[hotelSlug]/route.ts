@@ -2053,11 +2053,6 @@ async function handleMessage(args: {
     }
   }
 
-  console.log('[DIAG2] tgId=', String(userId),
-    'partC=', persistentVerifiedGuest ? persistentVerifiedGuest.id+'/'+persistentVerifiedGuest.room_number : 'NULL',
-    'conv_vid=', conversation.verified_inhouse_guest_id,
-    'needsReVerif=', needsReVerification);
-
   // ── FALLBACK: telegram_id ÇÖZMEDİYSE mevcut verified_inhouse_guest_id zinciri ──
   // (Part C bir satır set ettiyse buraya GİRİLMEZ.) Aşağısı BİREBİR eski davranış:
   // v2-by-id → legacy-by-id → Part A (yıkıcı-olmayan temizleme).
