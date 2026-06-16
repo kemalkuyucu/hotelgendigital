@@ -2372,7 +2372,6 @@ async function handleMessage(args: {
     // Modül 10: Normal doğrulama gate
     // NOT: allergen_room_verify artık buraya GELMİYOR — allergen_verify_pending kendi gate'inde işlendi (yukarıda).
     // NOT: isInfoOnlyQuery=true ise gate'e GIRME — bilgi soruları doğrulama gerektirmez, AI'a düşsün.
-    aiShouldForward &&
     !canAskAllergen && // ← Modül 3: alerji önce sorulacak turda oda no sorusu ÇIKMASIN
     !isInfoOnlyQuery(text) && // ← Modül 10 Fix 2: bilgi soruları verification gate'ini bypass eder
     (requiresVerification(aiRawIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at)))
