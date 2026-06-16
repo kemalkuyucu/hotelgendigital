@@ -2213,8 +2213,8 @@ async function handleMessage(args: {
       reParsed.firstName !== null &&
       reParsed.lastName !== null &&
       (
-        reParsed.roomNumber !== currentVerifiedGuest.room_number ||
-        reParsed.lastName.toLowerCase() !== (currentVerifiedGuest.last_name ?? '').toLowerCase()
+        normalizeTr(reParsed.roomNumber) !== normalizeTr(currentVerifiedGuest.room_number) ||
+        normalizeTr(reParsed.lastName) !== normalizeTr(currentVerifiedGuest.last_name ?? '')
       )
     ) {
       // Misafir yeni kimlik bilgisi yazmış → re-verify
