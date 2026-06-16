@@ -356,6 +356,9 @@ export async function classifyAndRespond(
                 brainResult.hasQuantity === false &&
                 brainResult.overLimit !== true
               ? false
+              : primaryIntent.department === 'fb' &&
+                brainResult.isInfoOnly === true
+              ? false
               : primaryIntent.shouldForward,
           confidence: 1,
           reasoning: 'department_brain',

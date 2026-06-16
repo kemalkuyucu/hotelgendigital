@@ -76,6 +76,7 @@ export interface DepartmentBrainResult {
   reservationNotify?: boolean;
   hasQuantity?: boolean;
   normalizedRequest?: string;
+  isInfoOnly?: boolean;
 }
 
 // Passthrough dispatcher. Bayrak KAPALI veya kayitli beyin yoksa handled=false.
@@ -468,7 +469,14 @@ DIL: Misafir hangi dilde yazdiysa AYNI dilde yanitla.
 
 KAPANIS:
 - Hicbir emoji kullanma.
-- Kisa, sicak, baglama uygun bitir. Bos/dolgu/tekrarli kapanis cumlesi EKLEME.`;
+- Kisa, sicak, baglama uygun bitir. Bos/dolgu/tekrarli kapanis cumlesi EKLEME.
+
+CIKTI BICIMI (COK ONEMLI):
+- Yanitini SADECE su JSON formatinda ver, baska hicbir metin/markdown ekleme:
+  {"reply": "<misafire gidecek mesaj>", "infoOnly": <true|false>}
+- infoOnly=true: misafir SADECE bilgi/sohbet sordu (yemek-icecek saatleri, menu, restoran konumu, genel soru). Aksiyon/talep/siparis YOK.
+- infoOnly=false: misafir bir AKSIYON/TALEP/SIPARIS iletti (oda servisi siparisi, ozel istek, "su gonderin/getirin", rezervasyon talebi vb.) VEYA alerjen/icerik endisesi bildirdi.
+- Suphede kalirsan infoOnly=false ver (guvenli taraf).`;
 
   const recent = (input.conversationContext ?? [])
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -480,13 +488,28 @@ KAPANIS:
     : input.guestMessage;
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 300,
+    max_tokens: 400,
     system,
     messages: [{ role: 'user', content: userContent }],
   });
   const block = response.content.find((b) => b.type === 'text');
-  const replyText = block && block.type === 'text' ? block.text.trim() : '';
-  return { handled: true, replyText, overLimit: false };
+  const raw = block && block.type === 'text' ? block.text.trim() : '';
+  // Brain JSON dondurur: { reply, infoOnly }. infoOnly=true => saf bilgi/sohbet (kart dusmez).
+  let replyText = raw;
+  let isInfoOnly = false;
+  try {
+    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed.reply === 'string') {
+      replyText = parsed.reply.trim();
+      isInfoOnly = parsed.infoOnly === true;
+    }
+  } catch {
+    // JSON degilse: duz metni reply kabul et, infoOnly=false (guvenli taraf: forward eder)
+    replyText = raw;
+    isInfoOnly = false;
+  }
+  return { handled: true, replyText, overLimit: false, isInfoOnly };
 }
 
 // ── BEYINCIK (Asama 2) — departman refleks/guardrail katmani ──────────────────
