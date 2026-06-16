@@ -346,11 +346,6 @@ export async function classifyAndRespond(
         conversationContext: (input.context ?? []).map((m) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.text ?? '' })),
       });
       if (brainResult.handled && brainResult.replyText) {
-        if (primaryIntent.department === 'fb') {
-          console.log('[FB-DEBUG] isInfoOnly=', brainResult.isInfoOnly,
-            '| replyText=', (brainResult.replyText ?? '').slice(0, 120),
-            '| primaryShouldForward=', primaryIntent.shouldForward);
-        }
         return {
           classifiedIntents,
           department: primaryIntent.department,
