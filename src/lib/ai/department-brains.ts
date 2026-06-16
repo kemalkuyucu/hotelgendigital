@@ -202,17 +202,28 @@ async function runAnimationBrain(input: DepartmentBrainInput): Promise<Departmen
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BİLGİLERİ:\n${ctxParts.join('\n\n')}` : '';
   const system = `Sen ${input.hotelName} otelinin animasyon departmani asistanisin.${contextBlock}
+
+DURUM KURALI:
+- Talep DOGRUDAN animasyon ekibine iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
 Gorev: Misafirin animasyon, etkinlik, cocuk kulubu, gece programi ve eglence sorularini nazikce, kisa ve net yanıtla.
 Bilmediginde: "Animasyon ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan sorabilirsiniz."
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
 
+  const recent = (input.conversationContext ?? [])
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
+    .slice(-6)
+    .map((m) => `${m.role === 'assistant' ? 'Asistan' : 'Misafir'}: ${m.content.trim()}`)
+    .join('\n');
+  const userContent = recent
+    ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
+    : input.guestMessage;
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 300,
     system,
-    messages: [{ role: 'user', content: input.guestMessage }],
+    messages: [{ role: 'user', content: userContent }],
   });
 
   const block = response.content.find((b) => b.type === 'text');
@@ -231,6 +242,9 @@ async function runSpaBrain(input: DepartmentBrainInput): Promise<DepartmentBrain
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
   const system = `Sen ${input.hotelName} otelinin spa & wellness departmani asistanisin.${contextBlock}
+
+DURUM KURALI:
+- Talep DOGRUDAN spa ekibine iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
 Gorev: Misafirin spa, masaj, sauna, hamam, buhar odasi, cilt bakimi ve rezervasyon sorularini nazikce, sicak ve kisa yanitla.
 - Calisma saatleri, masaj turleri, rezervasyon ve genel spa bilgilerini ver.
 - Misafir hizmet turu veya saat belirtmediyse, once nazikce hangi hizmeti ve hangi saati istedigini sor.
@@ -239,11 +253,19 @@ Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
 
+  const recent = (input.conversationContext ?? [])
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
+    .slice(-6)
+    .map((m) => `${m.role === 'assistant' ? 'Asistan' : 'Misafir'}: ${m.content.trim()}`)
+    .join('\n');
+  const userContent = recent
+    ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
+    : input.guestMessage;
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 300,
     system,
-    messages: [{ role: 'user', content: input.guestMessage }],
+    messages: [{ role: 'user', content: userContent }],
   });
 
   const block = response.content.find((b) => b.type === 'text');
@@ -324,6 +346,9 @@ async function runTechnicalBrain(input: DepartmentBrainInput): Promise<Departmen
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
   const system = `Sen ${input.hotelName} otelinin teknik servis departmani asistanisin. Sicak, profesyonel ve cozum odakli bir insan gibi konusursun. Misafirin bildirdigi ariza veya sorunla bizzat sen ilgilenirsin.${contextBlock}
+
+DURUM KURALI:
+- Ariza/talep DOGRUDAN teknik ekibe iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" veya "giderilecektir" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
 Gorev: Misafirin odasindaki veya oteldeki teknik sorunlari (klima, isitma, sicak su, elektrik, aydinlatma, televizyon, internet/wifi, tesisat ve su kacagi, kapi/kilit, mobilya arizasi vb.) anlayip nazikce, kisa ve guven verici sekilde yanitla.
 
 Calisma ilkelerin:
@@ -342,11 +367,19 @@ KAPANIS KURALI:
 - Yaniti kisa, sicak ve guven verici bir cumleyle bitir.
 - "Ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME; misafir zaten sorunu iletti.
 Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.`;
+  const recent = (input.conversationContext ?? [])
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
+    .slice(-6)
+    .map((m) => `${m.role === 'assistant' ? 'Asistan' : 'Misafir'}: ${m.content.trim()}`)
+    .join('\n');
+  const userContent = recent
+    ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
+    : input.guestMessage;
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 300,
     system,
-    messages: [{ role: 'user', content: input.guestMessage }],
+    messages: [{ role: 'user', content: userContent }],
   });
   const block = response.content.find((b) => b.type === 'text');
   const replyText = block && block.type === 'text' ? block.text.trim() : '';
@@ -364,6 +397,9 @@ async function runGuestRelationBrain(input: DepartmentBrainInput): Promise<Depar
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
   const system = `Sen ${input.hotelName} otelinin misafir iliskileri departmani asistanisin. Empatik, sakin, nazik ve diplomatik bir insan gibi konusursun. Misafirin sikayeti, memnuniyetsizligi veya ozel istegiyle bizzat sen ilgilenirsin.${contextBlock}
+
+DURUM KURALI:
+- Konu/talep DOGRUDAN misafir iliskileri ekibine iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel konuyu/talebi karsila.
 Gorev: Misafirin sikayet/memnuniyetsizlik, ozur gerektiren durum, ozel istek (kutlama, yildonumu, balayi, surpriz) veya genel memnuniyet konularini anlayip nazikce, kisa ve guven verici sekilde yanitla.
 
 Calisma ilkelerin:
@@ -381,11 +417,19 @@ KAPANIS:
 - Hicbir emoji kullanma. Yaniti kisa (en fazla 3-4 cumle), sicak ve guven verici tut.
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 - DIL: Misafir hangi dilde yazdiysa AYNI dilde yanitla.`;
+  const recent = (input.conversationContext ?? [])
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
+    .slice(-6)
+    .map((m) => `${m.role === 'assistant' ? 'Asistan' : 'Misafir'}: ${m.content.trim()}`)
+    .join('\n');
+  const userContent = recent
+    ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
+    : input.guestMessage;
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 400,
     system,
-    messages: [{ role: 'user', content: input.guestMessage }],
+    messages: [{ role: 'user', content: userContent }],
   });
   const block = response.content.find((b) => b.type === 'text');
   const replyText = block && block.type === 'text' ? block.text.trim() : '';
@@ -403,6 +447,9 @@ async function runFbBrain(input: DepartmentBrainInput): Promise<DepartmentBrainR
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
   const system = `Sen ${input.hotelName} otelinin F&B (yiyecek-icecek / restoran) departmani asistanisin.${contextBlock}
+
+DURUM KURALI:
+- Talep DOGRUDAN F&B ekibine iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
 Gorev: Misafirin restoran, menu, kahvalti/aksam yemegi saatleri, yemek secenekleri ile ilgili sorularini sicak, kisa ve net yanitla.
 
 YUKSEK RISK - ALERJEN/ICERIK (cok onemli):
@@ -423,11 +470,19 @@ KAPANIS:
 - Hicbir emoji kullanma.
 - Kisa, sicak, baglama uygun bitir. Bos/dolgu/tekrarli kapanis cumlesi EKLEME.`;
 
+  const recent = (input.conversationContext ?? [])
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
+    .slice(-6)
+    .map((m) => `${m.role === 'assistant' ? 'Asistan' : 'Misafir'}: ${m.content.trim()}`)
+    .join('\n');
+  const userContent = recent
+    ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
+    : input.guestMessage;
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 300,
     system,
-    messages: [{ role: 'user', content: input.guestMessage }],
+    messages: [{ role: 'user', content: userContent }],
   });
   const block = response.content.find((b) => b.type === 'text');
   const replyText = block && block.type === 'text' ? block.text.trim() : '';
