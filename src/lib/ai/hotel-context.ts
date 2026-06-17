@@ -116,16 +116,22 @@ export async function buildHotelContext(
 
   // --- Paralel: KB facts, belgeler, yakın çevre, güvenlik kuralları ---
   const [
-    knowledgeFacts,
+    knowledgeFactsRaw,
     documents,
     nearbyPlaces,
     safetyRules,
+    menuItems,
   ] = await Promise.all([
     fetchKnowledgeFacts(supabase),
     fetchDocuments(supabase, options.departmentHint),
     fetchNearbyPlaces(supabase, options.perplexityInterestHint),
     fetchSafetyRules(),
+    fetchMenuItems(supabase),
   ]);
+
+  const knowledgeFacts = menuItems
+    ? (knowledgeFactsRaw ? `${knowledgeFactsRaw}\n\n${menuItems}` : menuItems)
+    : knowledgeFactsRaw;
 
   return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo, safetyRules };
 }
@@ -184,6 +190,26 @@ async function fetchKnowledgeFacts(supabase: SupabaseClient): Promise<string> {
   }
 
   return `BILGI TABANI:\n${blocks.join('\n\n')}`;
+}
+
+async function fetchMenuItems(supabase: SupabaseClient): Promise<string> {
+  const { data } = await supabase
+    .from('menu_items')
+    .select('item_name, category, price, currency, is_paid')
+    .eq('is_active', true)
+    .order('display_order', { ascending: true });
+
+  if (!data || data.length === 0) return '';
+
+  const lines = data.map((row) => {
+    const ucret = row.is_paid
+      ? `${row.price ?? 0} ${row.currency ?? 'TRY'} (UCRETLI)`
+      : 'UCRETSIZ';
+    const kat = row.category ? ` [${row.category}]` : '';
+    return `- ${row.item_name}${kat}: ${ucret}`;
+  });
+
+  return `ROOM-SERVICE MENUSU (oda servisi siparis edilebilir kalemler ve fiyatlari):\n${lines.join('\n')}`;
 }
 
 /**
