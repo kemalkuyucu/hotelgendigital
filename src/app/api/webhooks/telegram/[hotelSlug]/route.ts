@@ -125,7 +125,16 @@ function buildForwardableItems(
     // mesajını taşır → reqText dolu → etkilenmez.)
     const reqText = (item.requestText ?? '').trim();
     if (!reqText) continue;
-    const resolved = resolveTargetDepartment(item.department, departments);
+    // ANIMATION ROUTING (B1.1): Rezervasyon/aksiyon talepleri Guest Relations'a duser.
+    // Bilgi sorulari classify-and-respond.ts'te zaten shouldForward=false ile elenir;
+    // buraya ulasan her animation item rezervasyon talebidir. Animasyon ekibi sahada,
+    // telefon tasimaz -> GR daha saglikli kanal. (Otel-bazli ayar: backlog, default GR.)
+    let routedDepartment = item.department;
+    if ((item.department ?? '').toLowerCase().trim() === 'animation') {
+      console.log(`[animation-routing] Rezervasyon talebi GR'a yonlendiriliyor. raw=${item.department}`);
+      routedDepartment = 'guest_relation';
+    }
+    const resolved = resolveTargetDepartment(routedDepartment, departments);
     if (!resolved || !resolved.targetChatId) continue;
     items.push({
       dept: resolved.targetDept ?? item.department,
