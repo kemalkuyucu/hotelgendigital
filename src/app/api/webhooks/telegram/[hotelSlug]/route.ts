@@ -2921,6 +2921,18 @@ async function handleMessage(args: {
               console.log(`[sla] department message sent with buttons [item: ${targetDept}]. msgId=${slaMsgId}`);
             } else {
               console.error(`[sla-forward] sendForwardWithSlaButtons FAILED or no messageId [item: ${targetDept}]`, { slaOk, slaMsgId });
+              // BUG-2 FIX: forward basarisiz (ok:false / msgId yok) → oksuz SLA olusmasin.
+              // Az once insert edilen sla_events satirini geri al, yoksa cron 3 dk sonra
+              // "cevapsiz SLA" eskalasyonu tetikler (kart hicbir yere gitmedigi halde).
+              const { error: rollbackErr } = await supa
+                .from('sla_events')
+                .delete()
+                .eq('id', slaEvent.id as string);
+              if (rollbackErr) {
+                console.error(`[sla-forward] ROLLBACK FAILED [item: ${targetDept}] — oksuz SLA acik kalabilir`, { id: slaEvent.id, msg: rollbackErr.message });
+              } else {
+                console.log(`[sla-forward] ROLLBACK OK — oksuz sla_events silindi [item: ${targetDept}] id=${slaEvent.id}`);
+              }
             }
           } else {
             // sla_events oluşturulamadı — butonlu olmayan fallback mesaj gönder
