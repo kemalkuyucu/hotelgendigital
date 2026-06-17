@@ -359,6 +359,9 @@ export async function classifyAndRespond(
               : primaryIntent.department === 'fb' &&
                 brainResult.isInfoOnly === true
               ? false
+              : primaryIntent.department === 'animation' &&
+                brainResult.isInfoOnly === true
+              ? false
               : primaryIntent.shouldForward,
           confidence: 1,
           reasoning: 'department_brain',

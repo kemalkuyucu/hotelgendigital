@@ -210,7 +210,12 @@ Gorev: Misafirin animasyon, etkinlik, cocuk kulubu, gece programi ve eglence sor
 Bilmediginde: "Animasyon ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan sorabilirsiniz."
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
-Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
+Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.
+
+CIKTI BICIMI: Yanitini SADECE su JSON olarak ver, baska metin/markdown YOK:
+{"reply": "misafire gidecek cevap", "infoOnly": true veya false}
+infoOnly=true: saf bilgi/sohbet (etkinlik saati, program sorusu, ne var ne yok). Animasyon bolumu tamamen bilgi-sohbettir; neredeyse her zaman infoOnly=true.
+infoOnly=false: SADECE misafir somut bir aksiyon/ozel istek/sikayet iletiyorsa (orn. 'su etkinlige beni yazdir', 'cocugum icin yer ayirt'). Animasyonda suphede true yaz (bilgi kabul et), cunku bu bolum bilgi agirliklidir.`;
 
   const recent = (input.conversationContext ?? [])
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -222,14 +227,29 @@ Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
     : input.guestMessage;
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
+    max_tokens: 400,
     system,
     messages: [{ role: 'user', content: userContent }],
   });
 
   const block = response.content.find((b) => b.type === 'text');
-  const replyText = block && block.type === 'text' ? block.text.trim() : '';
-  return { handled: true, replyText };
+  const raw = block && block.type === 'text' ? block.text.trim() : '';
+  // FB beyniyle ayni kalip: brain JSON dondurur { reply, infoOnly }.
+  // infoOnly=true => saf bilgi/sohbet (kart dusmez). Parse basarisizsa duz metin + infoOnly=false (guvenli taraf).
+  let replyText = raw;
+  let isInfoOnly = false;
+  try {
+    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed.reply === 'string') {
+      replyText = parsed.reply.trim();
+      isInfoOnly = parsed.infoOnly === true;
+    }
+  } catch {
+    replyText = raw;
+    isInfoOnly = false;
+  }
+  return { handled: true, replyText, overLimit: false, isInfoOnly };
 }
 
 async function runSpaBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
