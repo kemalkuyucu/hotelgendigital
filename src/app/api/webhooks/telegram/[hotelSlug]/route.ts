@@ -2933,6 +2933,27 @@ async function handleMessage(args: {
               } else {
                 console.log(`[sla-forward] ROLLBACK OK — oksuz sla_events silindi [item: ${targetDept}] id=${slaEvent.id}`);
               }
+              // Gecersiz chat_id (chat not found) → yapilandirilabilir ALERT_CHAT_ID'ye uyari.
+              // tg.sendMessage OBJE alir (chat_id: number|string); env string'i dogrudan gecilir.
+              const alertChatId = process.env.ALERT_CHAT_ID;
+              if (alertChatId) {
+                try {
+                  await tg.sendMessage({
+                    chat_id: alertChatId,
+                    text:
+                      `⚠️ DIKKAT: Departman grubuna ulasilamadi (chat not found).\n` +
+                      `Departman: ${targetDept}\n` +
+                      `Hedef chat_id: ${deptChatIdForSla}\n` +
+                      `Misafir talebi iletilEMEDI. Lutfen elle yonlendirin.\n\n` +
+                      `Talep: ${fwdItem.requestText}`,
+                  });
+                  console.log(`[sla-forward] ALERT gonderildi -> ${alertChatId} [item: ${targetDept}]`);
+                } catch (alertErr) {
+                  console.error(`[sla-forward] ALERT gonderilemedi:`, alertErr);
+                }
+              } else {
+                console.warn(`[sla-forward] ALERT_CHAT_ID tanimsiz, uyari atlanIyor [item: ${targetDept}]`);
+              }
             }
           } else {
             // sla_events oluşturulamadı — butonlu olmayan fallback mesaj gönder
