@@ -89,6 +89,40 @@ Sadece tek kelime yaz: EVET (alerji) veya HAYIR (alakasiz).`,
     return true; // hata => alerji say
   }
 }
+
+// F&B siparis edilen urun menude var mi? (deterministik kapi — KALICI KARAR #3)
+// Guvenli taraf: menu bos veya hata/suphe => TRUE (eski akis sursun, urun var say).
+async function isOrderInMenu(orderText: string, supa: SupabaseClient): Promise<boolean> {
+  try {
+    const { data } = await supa
+      .from('menu_items')
+      .select('item_name')
+      .eq('is_active', true);
+    if (!data || data.length === 0) return true; // menu yuklenmemis => engelleme
+    const menuList = data.map((r) => `- ${r.item_name}`).join('\n');
+    const client = new Anthropic();
+    const res = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 5,
+      system: `Asagida bir otel oda-servisi menusu ve bir misafir siparisi var. Misafirin istedigi urun(ler) bu menude VAR MI?
+Kurallar:
+- Menudeki bir kalemle ayni/esanlamli urun => VAR.
+- Menude hic gecmeyen, alakasiz bir urun (ornek: menude yoksa pizza) => YOK.
+- Adet/sayi onemli degil, sadece urun adi eslesmesine bak.
+- EMIN DEGILSEN "EVET" yaz (guvenli taraf: var say).
+Sadece tek kelime yaz: EVET (menude var) veya HAYIR (menude yok).
+
+MENU:
+${menuList}`,
+      messages: [{ role: 'user', content: orderText }],
+    });
+    const block = res.content.find((b) => b.type === 'text');
+    const raw = block && block.type === 'text' ? block.text.trim().toUpperCase() : 'EVET';
+    return !raw.startsWith('HAYIR'); // HAYIR ile baslamiyorsa var say (guvenli taraf)
+  } catch {
+    return true; // hata => var say (engelleme)
+  }
+}
 // ── ALERJEN CEVAP TESPİTİ SONU ─────────────────────────────────────────────────
 
 // ============================================================
@@ -2688,6 +2722,20 @@ async function handleMessage(args: {
         (it) => (it.rawDepartment ?? it.dept ?? '').toLowerCase().trim() === 'fb' && it.createsSlaEvent,
       );
       if (fbOrderItem) {
+        // MENUDE YOK KONTROLU — listede olmayan urun: teyit YOK, kart YOK, nazik red
+        const inMenu = await isOrderInMenu(text, supa);
+        if (!inMenu) {
+          await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
+          await supa.from('bot_messages').insert({
+            conversation_id: conversationId,
+            direction: 'outbound',
+            text: finalResponseText,
+            message_type: 'text',
+          });
+          console.log(`[order-confirm] urun menude YOK, red — teyit/kart atlandi. text="${text.slice(0, 80)}"`);
+          return NextResponse.json({ ok: true });
+        }
+
         // 1) Bayragi ac + orijinal siparis cumlesini sakla
         await supa
           .from('conversations')
