@@ -20,6 +20,7 @@ import { whisperTranscribe } from '@/lib/voice/whisper-transcribe';
 import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
 // Modül 11: SLA imports
 import { handleSlaCallback } from '@/lib/sla/handle-callback';
+import { handleOrderCallback } from '@/lib/sla/handle-order-callback';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
 import { getTurkeyToday } from '@/lib/date/turkeyTime'; // Modül 18: timezone fix
 import { sendForwardWithSlaButtons } from '@/lib/sla/send-forward-with-buttons';
@@ -307,6 +308,27 @@ export async function POST(
           callbackMessageId: cq.message?.message_id ?? 0,
           approverTelegramId: String(cq.from.id),
           approverName: cq.from.username ?? cq.from.first_name ?? null,
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // order: F&B siparis teyit butonlari
+      if (cq.data === 'order:noop') {
+        await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu siparis zaten islendi' }),
+        });
+        return NextResponse.json({ ok: true });
+      }
+      if (cq.data?.startsWith('order:')) {
+        await handleOrderCallback({
+          supa,
+          botToken,
+          callbackQueryId: cq.id,
+          callbackData: cq.data,
+          callbackChatId: cq.message?.chat?.id ?? 0,
+          callbackMessageId: cq.message?.message_id ?? 0,
         });
         return NextResponse.json({ ok: true });
       }
@@ -2659,6 +2681,60 @@ async function handleMessage(args: {
     if (forwardableItems.length === 0) {
       console.log('[forward] No forwardable items, skipping');
     } else {
+      // ── F&B SIPARIS TEYIT KAPISI ──────────────────────────────────────
+      // F&B siparisi forward edilmeden once misafirden onay al. Kart, ancak
+      // misafir "evet" dedikten sonra dusurulur (order:confirm callback'inde).
+      const fbOrderItem = forwardableItems.find(
+        (it) => (it.rawDepartment ?? it.dept ?? '').toLowerCase().trim() === 'fb' && it.createsSlaEvent,
+      );
+      if (fbOrderItem) {
+        // 1) Bayragi ac + orijinal siparis cumlesini sakla
+        await supa
+          .from('conversations')
+          .update({ order_pending: true, order_pending_text: text })
+          .eq('id', conversationId);
+
+        // 2) Botun urettigi guzel cevabi gonder ("Tabii memnuniyetle...")
+        await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
+
+        // 3) Nazik teyit + butonlar (ham fetch — reply_markup gerekiyor)
+        const confirmText =
+          language === 'en'
+            ? 'I am creating your order. To proceed, could you please confirm?'
+            : language === 'de'
+              ? 'Ich erstelle Ihre Bestellung. Bitte bestaetigen Sie zur Fortsetzung.'
+              : 'Siparisinizi olusturuyorum. Onaylarsaniz ilgili ekibe hemen iletecegim. Onayliyor musunuz?';
+        const yesLabel = language === 'en' ? 'Yes, confirm' : language === 'de' ? 'Ja, bestaetigen' : 'Evet, onayliyorum';
+        const noLabel = language === 'en' ? 'Cancel' : language === 'de' ? 'Abbrechen' : 'Vazgectim';
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: confirmText,
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: yesLabel, callback_data: `order:confirm:${conversationId}` }],
+                [{ text: noLabel, callback_data: `order:cancel:${conversationId}` }],
+              ],
+            },
+          }),
+        });
+
+        console.log(`[order-confirm] F&B siparis teyit bekleniyor. conversationId=${conversationId} text="${text.slice(0, 80)}"`);
+
+        // inbound mesaji kaydet (normal akis bu noktadan sonra calismayacak)
+        await supa.from('bot_messages').insert({
+          conversation_id: conversationId,
+          direction: 'outbound',
+          text: finalResponseText,
+          message_type: 'text',
+        });
+
+        return NextResponse.json({ ok: true });
+      }
+      // ── /F&B SIPARIS TEYIT KAPISI ─────────────────────────────────────
+
       for (let itemIndex = 0; itemIndex < forwardableItems.length; itemIndex++) {
         const fwdItem = forwardableItems[itemIndex];
         // ── BEYINCIK: kart metni ham mesaja sabit (tek-intent) ──────────────────────
