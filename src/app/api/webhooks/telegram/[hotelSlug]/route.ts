@@ -1458,6 +1458,25 @@ async function handleMessage(args: {
   if (conversation.allergen_pending) {
     console.log(`[allergen-sc] allergen_pending=true — short-circuit başlıyor. text="${text.slice(0, 80)}"`);
 
+    // YENI KAPI: misafir alerji sorusunu cevaplamadi, alakasiz yeni soru/talep yazdiysa
+    // bayragi kapat ve mesaji handleMessage RE-ENTRY ile normal akisa birak.
+    // NOT: conversation handleMessage'a ARGUMAN DEGIL (1097'de upsertGuestAndConversation'dan
+    // gelir) ve upsertGuestAndConversation conversation'i DB'den TAZE okur (3137-3160).
+    // Bu yuzden DB'de allergen_pending=false yapip handleMessage(args)'i tekrar cagirinca
+    // ikinci giriste bu short-circuit ATLANIR → sonsuz dongu kirilir (_freshConv gereksiz).
+    {
+      const _earlyAns = text.trim().toLowerCase();
+      const _earlyNo = /\b(yok|yoq|hayır|hayir|hayr|alerjim yok|alerjisi yok|alerji yok|no|none|nichts|нет)\b/i;
+      if (_earlyAns.length >= 2 && !_earlyNo.test(_earlyAns) && !(await isAllergenAnswer(text.trim()))) {
+        await supa
+          .from('conversations')
+          .update({ allergen_pending: false, allergen_asked: true })
+          .eq('id', conversationId);
+        console.log(`[allergen-sc] YENI KAPI: alakasiz soru → bayrak kapatildi, handleMessage RE-ENTRY ile normal akisa yonlendiriliyor. text="${text.slice(0, 80)}"`);
+        return await handleMessage(args);
+      }
+    }
+
     // Inbound mesajı kaydet (kayıt mantığı korunuyor)
     await supa.from('bot_messages').insert({
       conversation_id: conversationId,
