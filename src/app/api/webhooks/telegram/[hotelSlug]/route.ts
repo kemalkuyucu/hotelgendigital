@@ -32,6 +32,7 @@ import {
 } from '@/lib/telegram/send-document';
 // Modül 4: Alerjen bildirim yönlendirme
 import { sendAllergenNotifications } from '@/lib/telegram/allergen-notify';
+import Anthropic from '@anthropic-ai/sdk';
 // Modül 16.b (refactor): meeting_rooms artık hotel-context.ts içinde HOTEL CONTEXT'e gömülü gelir.
 // detectMeetingRoomIntent / formatMeetingRoomsBlock gate'i kaldırıldı.
 
@@ -58,6 +59,36 @@ function checkRateLimit(userId: number): boolean {
   return true; // allow
 }
 // ── RATE LIMIT SONU ───────────────────────────────────────────────────────────
+
+// ============================================================
+// Modül 3 — ALERJEN CEVAP TESPİTİ (LLM, güvenli taraf=TRUE)
+// allergen_pending=true iken gelen mesajın gerçekten bir alerji/içerik
+// bildirimi mi yoksa alakasız yeni bir soru/talep mi olduğunu Haiku ile ayırır.
+// Hata/şüphe → TRUE (alerji say) — yaşamsal güvenlik tarafında kalır.
+// ============================================================
+async function isAllergenAnswer(message: string): Promise<boolean> {
+  // Guvenli taraf: hata/suphe durumunda TRUE (alerji say) doner.
+  try {
+    const client = new Anthropic();
+    const res = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 5,
+      system: `Misafire "Gida alerjiniz var mi?" diye soruldu. Misafirin yaniti asagida. Bu yanit bir ALERJI/ICERIK bildirimi mi, yoksa alerjiyle ALAKASIZ yeni bir soru/talep mi?
+Kurallar:
+- Herhangi bir yiyecek/icerik hassasiyeti, "X yiyemiyorum", "X beni rahatsiz ediyor", besin adi + olumsuzluk => ALERJI.
+- Fiyat sorusu, saat sorusu, siparis, baska konu, selamlama => ALAKASIZ.
+- EMIN DEGILSEN "EVET" yaz (guvenli taraf).
+Sadece tek kelime yaz: EVET (alerji) veya HAYIR (alakasiz).`,
+      messages: [{ role: 'user', content: message }],
+    });
+    const block = res.content.find((b) => b.type === 'text');
+    const raw = block && block.type === 'text' ? block.text.trim().toUpperCase() : 'EVET';
+    return !raw.startsWith('HAYIR'); // HAYIR ile baslamiyorsa alerji say (guvenli taraf)
+  } catch {
+    return true; // hata => alerji say
+  }
+}
+// ── ALERJEN CEVAP TESPİTİ SONU ─────────────────────────────────────────────────
 
 // ============================================================
 // KATMAN 3 — URL FİLTRESİ regex (AI/Haiku token harcamadan)
