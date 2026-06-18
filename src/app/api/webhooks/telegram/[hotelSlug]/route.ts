@@ -21,6 +21,7 @@ import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
 // Modül 11: SLA imports
 import { handleSlaCallback } from '@/lib/sla/handle-callback';
 import { handleOrderCallback } from '@/lib/sla/handle-order-callback';
+import { handleMenuOfferCallback } from '@/lib/sla/handle-menu-offer-callback';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
 import { getTurkeyToday } from '@/lib/date/turkeyTime'; // Modül 18: timezone fix
 import { sendForwardWithSlaButtons } from '@/lib/sla/send-forward-with-buttons';
@@ -357,6 +358,19 @@ export async function POST(
       }
       if (cq.data?.startsWith('order:')) {
         await handleOrderCallback({
+          supa,
+          botToken,
+          callbackQueryId: cq.id,
+          callbackData: cq.data,
+          callbackChatId: cq.message?.chat?.id ?? 0,
+          callbackMessageId: cq.message?.message_id ?? 0,
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // menu: F&B kademeli menu onerisi butonlari
+      if (cq.data?.startsWith('menu:')) {
+        await handleMenuOfferCallback({
           supa,
           botToken,
           callbackQueryId: cq.id,
@@ -2725,14 +2739,45 @@ async function handleMessage(args: {
         // MENUDE YOK KONTROLU — listede olmayan urun: teyit YOK, kart YOK, nazik red
         const inMenu = await isOrderInMenu(text, supa);
         if (!inMenu) {
-          await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
+          // KADEMELI MENU ONERISI: tum listeyi hemen dokme. Once nazik red + "bakmak ister misiniz?" + buton.
+          // Beynin urettigi "yok + liste" cevabini (finalResponseText) sakla, misafir EVET derse callback gonderir.
+          const offerText =
+            language === 'en'
+              ? 'Unfortunately this item is not available right now, we are very sorry. Would you like to see our other available items?'
+              : language === 'de'
+              ? 'Dieser Artikel ist derzeit leider nicht verfuegbar, es tut uns sehr leid. Moechten Sie unsere anderen verfuegbaren Artikel sehen?'
+              : 'Bu urun su an mevcut degil, cok uzgunuz. Elimizdeki diger urunlere bakmak ister misiniz?';
+          const offerYes =
+            language === 'en' ? 'Yes, show me' : language === 'de' ? 'Ja, zeigen' : 'Evet, bakmak isterim';
+          const offerNo =
+            language === 'en' ? 'No, thanks' : language === 'de' ? 'Nein, danke' : 'Hayir, tesekkurler';
+
+          await supa
+            .from('conversations')
+            .update({ menu_offer_pending: true, menu_offer_text: finalResponseText })
+            .eq('id', conversationId);
+
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: offerText,
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: offerYes, callback_data: `menu:show:${conversationId}` }],
+                  [{ text: offerNo, callback_data: `menu:no:${conversationId}` }],
+                ],
+              },
+            }),
+          });
           await supa.from('bot_messages').insert({
             conversation_id: conversationId,
             direction: 'outbound',
-            text: finalResponseText,
+            text: offerText,
             message_type: 'text',
           });
-          console.log(`[order-confirm] urun menude YOK, red — teyit/kart atlandi. text="${text.slice(0, 80)}"`);
+          console.log(`[menu-offer] urun menude YOK — kademeli oneri gonderildi. text="${text.slice(0, 80)}"`);
           return NextResponse.json({ ok: true });
         }
 
