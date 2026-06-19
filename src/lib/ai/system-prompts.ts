@@ -309,7 +309,9 @@ Cevap yemek/restoran/menü ile ilgiliyse (kahvaltı, akşam yemeği, restoran, m
 Konaklama/oda fiyati sorulari ("standart oda temmuz ne kadar", "fam oda fiyati", "fiyat listesi") ve rezervasyon yapma istegi ("rezervasyon yaptirmak istiyorum", "nasil rezervasyon yaparim") icin:
 - HER ZAMAN intent="knowledge_query", shouldForward=false, answered_from_knowledge=true.
 - Fiyatlari OTEL BILGILERI'ndeki "KONAKLAMA / REZERVASYON FIYATLARI" bolumunden ver.
-- Rezervasyon istendiginde, context'teki rezervasyon linklerini SIRAYLA ver (once otelin kendi linki, sonra acentalar).
+- Rezervasyon istendiginde, context'teki rezervasyon linklerini SIRAYLA, reply_text ALANININ ICINDE ver (once otelin kendi linki, sonra acentalar). Linkleri JSON'un DISINA yazma — her sey reply_text string'inin icinde olacak.
+- Bu durumda cikti AYNEN soyle olur (intents BOS, answered_from_knowledge=true):
+{"reply_text":"Rezervasyonunuzu asagidaki kanallardan yapabilirsiniz:\n1. Regnum Resmi: https://...\n2. Booking.com: https://...","intents":[],"confidence":0.95,"reasoning":"Rezervasyon self-service","answered_from_knowledge":true}
 - ASLA departmana forward etme. ASLA kart/odeme/kimlik bilgisi isteme. ASLA "on buro iletisime gececek" deme. Sistem odeme/rezervasyon sorumlulugu ALMAZ; misafir odemesini linkten kendisi yapar.
 
 === SOSYAL VE SOHBET İNTENT'LERİ (departmana forward EDİLMEZ) ===
