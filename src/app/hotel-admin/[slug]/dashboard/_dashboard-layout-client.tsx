@@ -22,6 +22,7 @@ type NavItemKey =
   | 'spa-menu'
   | 'fo-history'
   | 'fo-rez-links'
+  | 'fo-fiyat'
   | 'bilgi-otel'
   | 'bilgi-tabani'
   | 'belgeler'
@@ -82,6 +83,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
     { key: 'fo-upload',   label: 'Excel Yükle',           href: `/hotel-admin/${slug}/front-office/upload`,       isSubItem: true },
     { key: 'fo-history',  label: 'Bildirim Geçmişi',      href: `/hotel-admin/${slug}/front-office/history`,      isSubItem: true },
     { key: 'fo-rez-links',label: '🔗 Rezervasyon Linkleri', href: `/hotel-admin/${slug}/dashboard/reservation-links`, isSubItem: true },
+    { key: 'fo-fiyat',    label: '🏷️ Fiyat Yükle',          href: `/hotel-admin/${slug}/fiyat-yukle`,                isSubItem: true },
   ]
 
   const fbMenuItems: NavItem[] = [
