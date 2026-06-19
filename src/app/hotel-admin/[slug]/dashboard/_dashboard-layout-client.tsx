@@ -18,6 +18,7 @@ type NavItemKey =
   | 'dashboard'
   | 'fo-list'
   | 'fo-upload'
+  | 'fo-menu'
   | 'fo-history'
   | 'fo-rez-links'
   | 'bilgi-otel'
@@ -76,6 +77,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
   const frontOfficeItems: NavItem[] = [
     { key: 'fo-list',      label: 'In-House Listesi',     href: `/hotel-admin/${slug}/front-office`,              isSubItem: true },
     { key: 'fo-upload',   label: 'Excel Yükle',           href: `/hotel-admin/${slug}/front-office/upload`,       isSubItem: true },
+    { key: 'fo-menu',     label: '🍽️ Menü Yükle',         href: `/hotel-admin/${slug}/menu-yukle`,                isSubItem: true },
     { key: 'fo-history',  label: 'Bildirim Geçmişi',      href: `/hotel-admin/${slug}/front-office/history`,      isSubItem: true },
     { key: 'fo-rez-links',label: '🔗 Rezervasyon Linkleri', href: `/hotel-admin/${slug}/dashboard/reservation-links`, isSubItem: true },
   ]
