@@ -249,17 +249,28 @@ async function fetchSpaServices(supabase: SupabaseClient): Promise<string> {
 async function fetchRoomRates(supabase: any): Promise<string> {
   const { data: rates } = await supabase
     .from('room_rates')
-    .select('room_type, capacity, period_start, period_end, price, currency, board_type')
+    .select('room_type, capacity, period_start, period_end, price, currency, board_type, rate_kind')
     .eq('is_active', true)
     .order('display_order', { ascending: true });
 
   if (!rates || rates.length === 0) return '';
 
-  const lines = rates.map((r: any) => {
+  const fmt = (r: any) => {
     const cap = r.capacity ? ' (' + r.capacity + ')' : '';
     const board = r.board_type ? ', ' + r.board_type : '';
     return '- ' + r.room_type + cap + ' | ' + r.period_start + ' -> ' + r.period_end + ': ' + r.price + ' ' + r.currency + board;
-  }).join('\n');
+  };
+
+  const konaklama = rates.filter((r: any) => (r.rate_kind || 'konaklama') === 'konaklama');
+  const gunubirlik = rates.filter((r: any) => r.rate_kind === 'gunubirlik');
+
+  let lines = '';
+  if (konaklama.length > 0) {
+    lines += 'KONAKLAMA / TATIL FIYATLARI:\n' + konaklama.map(fmt).join('\n');
+  }
+  if (gunubirlik.length > 0) {
+    lines += (lines ? '\n\n' : '') + 'GUNUBIRLIK FIYATLARI:\n' + gunubirlik.map(fmt).join('\n');
+  }
 
   const { data: links } = await supabase
     .from('reservation_links')
