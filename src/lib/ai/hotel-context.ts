@@ -122,6 +122,7 @@ export async function buildHotelContext(
     safetyRules,
     menuItems,
     spaServices,
+    roomRates,
   ] = await Promise.all([
     fetchKnowledgeFacts(supabase),
     fetchDocuments(supabase, options.departmentHint),
@@ -129,14 +130,18 @@ export async function buildHotelContext(
     fetchSafetyRules(),
     fetchMenuItems(supabase),
     fetchSpaServices(supabase),
+    fetchRoomRates(supabase),
   ]);
 
   const withMenu = menuItems
     ? (knowledgeFactsRaw ? `${knowledgeFactsRaw}\n\n${menuItems}` : menuItems)
     : knowledgeFactsRaw;
-  const knowledgeFacts = spaServices
+  const withSpa = spaServices
     ? (withMenu ? `${withMenu}\n\n${spaServices}` : spaServices)
     : withMenu;
+  const knowledgeFacts = roomRates
+    ? (withSpa ? `${withSpa}\n\n${roomRates}` : roomRates)
+    : withSpa;
 
   return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo, safetyRules };
 }
@@ -239,6 +244,37 @@ async function fetchSpaServices(supabase: SupabaseClient): Promise<string> {
   });
 
   return `SPA & WELLNESS HIZMETLERI (mevcut hizmetler, sure ve fiyatlar):\n${lines.join('\n')}`;
+}
+
+async function fetchRoomRates(supabase: any): Promise<string> {
+  const { data: rates } = await supabase
+    .from('room_rates')
+    .select('room_type, capacity, period_start, period_end, price, currency, board_type')
+    .eq('is_active', true)
+    .order('display_order', { ascending: true });
+
+  if (!rates || rates.length === 0) return '';
+
+  const lines = rates.map((r: any) => {
+    const cap = r.capacity ? ' (' + r.capacity + ')' : '';
+    const board = r.board_type ? ', ' + r.board_type : '';
+    return '- ' + r.room_type + cap + ' | ' + r.period_start + ' -> ' + r.period_end + ': ' + r.price + ' ' + r.currency + board;
+  }).join('\n');
+
+  const { data: links } = await supabase
+    .from('reservation_links')
+    .select('label, url')
+    .eq('is_official', true)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+    .limit(1);
+
+  const link = links && links.length > 0 ? links[0].url : null;
+  const linkLine = link
+    ? '\n\nRezervasyon yaptirmak isteyen misafire su rezervasyon linkini ver: ' + link
+    : '';
+
+  return '=== KONAKLAMA / REZERVASYON FIYATLARI ===\n' + lines + linkLine;
 }
 
 /**
