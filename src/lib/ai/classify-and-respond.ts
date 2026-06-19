@@ -233,9 +233,18 @@ export async function classifyAndRespond(
   try {
     parsed = JSON.parse(cleaned) as typeof parsed;
   } catch (err) {
-    throw new Error(
-      `Anthropic JSON parse hatası: ${err instanceof Error ? err.message : 'unknown'}. Raw: ${rawText.slice(0, 200)}`
+    // FALLBACK: Model JSON yerine duz metin dondurduyse (uzun fiyat/rezervasyon cevaplarinda olur)
+    // patlatma — ham metni misafire cevap yap, HICBIR departmana forward etme.
+    console.warn(
+      `[classify] JSON parse fallback devrede. Ham metin reply_text yapildi. Hata: ${err instanceof Error ? err.message : 'unknown'}. Raw: ${rawText.slice(0, 120)}`
     );
+    parsed = {
+      reply_text: rawText,
+      intents: [],
+      confidence: 0.5,
+      reasoning: 'JSON parse fallback - ham metin misafire iletildi, forward yok',
+      answered_from_knowledge: true,
+    };
   }
 
   // Yeni format öncelikli, legacy fallback
