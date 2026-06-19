@@ -263,16 +263,20 @@ async function fetchRoomRates(supabase: any): Promise<string> {
 
   const { data: links } = await supabase
     .from('reservation_links')
-    .select('label, url')
-    .eq('is_official', true)
+    .select('label, url, is_official, sort_order')
     .eq('is_active', true)
-    .order('sort_order', { ascending: true })
-    .limit(1);
+    .order('is_official', { ascending: false })
+    .order('sort_order', { ascending: true });
 
-  const link = links && links.length > 0 ? links[0].url : null;
-  const linkLine = link
-    ? '\n\nRezervasyon yaptirmak isteyen misafire su rezervasyon linkini ver: ' + link
-    : '';
+  let linkLine = '';
+  if (links && links.length > 0) {
+    const linkList = links
+      .map((l: any) => '- ' + (l.label || 'Rezervasyon') + ': ' + l.url)
+      .join('\n');
+    linkLine =
+      '\n\nREZERVASYON KURALI (SELF-SERVICE): Misafir rezervasyon yapmak isterse asagidaki linkleri SIRAYLA ver (once otelin kendi linki, sonra acentalar). ASLA kart/odeme bilgisi isteme, ASLA "on buro iletisime gececek" deme. Misafir odemesini linkten kendisi yapar:\n' +
+      linkList;
+  }
 
   return '=== KONAKLAMA / REZERVASYON FIYATLARI ===\n' + lines + linkLine;
 }
