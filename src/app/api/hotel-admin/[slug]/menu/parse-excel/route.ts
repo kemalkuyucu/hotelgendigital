@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { getHotelAdminFromCookie } from '@/lib/hotel-admin/auth';
 
-const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager'];
+const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager', 'fb_manager'];
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {

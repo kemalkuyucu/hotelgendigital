@@ -73,13 +73,17 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
 
   // Ön Büro alt menü (sadece hotel_owner ve front_office_manager)
   const showFrontOffice = FRONT_OFFICE_ROLES.includes(adminRole)
+  const showFbMenu = adminRole === 'hotel_owner' || adminRole === 'fb_manager'
   const showPersonel = PERSONEL_ROLES.includes(adminRole)
   const frontOfficeItems: NavItem[] = [
     { key: 'fo-list',      label: 'In-House Listesi',     href: `/hotel-admin/${slug}/front-office`,              isSubItem: true },
     { key: 'fo-upload',   label: 'Excel Yükle',           href: `/hotel-admin/${slug}/front-office/upload`,       isSubItem: true },
-    { key: 'fo-menu',     label: '🍽️ Menü Yükle',         href: `/hotel-admin/${slug}/menu-yukle`,                isSubItem: true },
     { key: 'fo-history',  label: 'Bildirim Geçmişi',      href: `/hotel-admin/${slug}/front-office/history`,      isSubItem: true },
     { key: 'fo-rez-links',label: '🔗 Rezervasyon Linkleri', href: `/hotel-admin/${slug}/dashboard/reservation-links`, isSubItem: true },
+  ]
+
+  const fbMenuItems: NavItem[] = [
+    { key: 'fo-menu', label: '🍽️ Menü Yükle', href: `/hotel-admin/${slug}/menu-yukle`, isSubItem: true },
   ]
 
   // Bilgi Yönetimi alt menü (sadece hotel_owner)
@@ -204,6 +208,21 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
             <>
               {sectionLabel('🏨', 'Ön Büro')}
               {frontOfficeItems.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                return (
+                  <Link key={item.key} href={item.href} style={linkStyle(isActive, true)}>
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </>
+          )}
+
+          {/* 🍽️ F&B Bölümü — sadece hotel_owner ve fb_manager */}
+          {showFbMenu && (
+            <>
+              {sectionLabel('🍽️', 'F&B')}
+              {fbMenuItems.map((item) => {
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                 return (
                   <Link key={item.key} href={item.href} style={linkStyle(isActive, true)}>

@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { getHotelAdminFromCookie } from '@/lib/hotel-admin/auth';
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant';
 
-const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager'];
+const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager', 'fb_manager'];
 
 interface MenuColumnMapping {
   item_name_col: string;
