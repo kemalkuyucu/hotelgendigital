@@ -227,9 +227,11 @@ async function fetchSpaServices(supabase: SupabaseClient): Promise<string> {
   if (!data || data.length === 0) return '';
 
   const lines = data.map((row) => {
-    const ucret = row.is_paid
-      ? `${row.price ?? 0} ${row.currency ?? 'TRY'} (UCRETLI)`
-      : 'UCRETSIZ';
+    const ucret = !row.is_paid
+      ? 'UCRETSIZ'
+      : (row.price && Number(row.price) > 0)
+        ? `${row.price} ${row.currency ?? 'TRY'} (UCRETLI)`
+        : 'Fiyat icin SPA resepsiyonuna danisabilirsiniz (UCRETLI)';
     const sure = row.duration_min ? `, ${row.duration_min} dk` : '';
     const kat = row.category ? ` [${row.category}]` : '';
     const aciklama = row.description ? ` - ${row.description}` : '';
