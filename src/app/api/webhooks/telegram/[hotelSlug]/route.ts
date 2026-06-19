@@ -1525,6 +1525,91 @@ async function handleMessage(args: {
   }
   // ── Stale TTL temizliği SONU ───────────────────────────────────────────────
 
+  // SPA iletisim toplama kapisi — spa_contact_pending acikken gelen telefon/mail'i yakala
+  {
+    const { data: spaPendRow } = await supa
+      .from('conversations')
+      .select('spa_contact_pending')
+      .eq('id', conversationId)
+      .maybeSingle();
+    if (spaPendRow?.spa_contact_pending === true) {
+      // Deterministik tespit (KALICI KARAR #3): telefon veya mail regex
+      const phoneRe = /(\+?\d[\d\s().-]{8,}\d)/;
+      const mailRe = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+      const phoneMatch = text.match(phoneRe);
+      const mailMatch = text.match(mailRe);
+      const hasContact = Boolean(phoneMatch || mailMatch);
+
+      // Bayragi her durumda kapat (tek tur sor)
+      await supa
+        .from('conversations')
+        .update({ spa_contact_pending: false })
+        .eq('id', conversationId);
+
+      if (hasContact) {
+        // Inbound kaydet
+        await supa.from('bot_messages').insert({
+          conversation_id: conversationId,
+          direction: 'inbound',
+          text,
+        });
+        // SPA grubuna ek iletisim gonder
+        try {
+          const { data: spaDept2 } = await supa
+            .from('departments')
+            .select('telegram_chat_id')
+            .eq('code', 'spa')
+            .maybeSingle();
+          if (spaDept2?.telegram_chat_id) {
+            // Oda/ad TAZE SELECT — verified*ForAI bu satirda henuz TDZ'de (sat. 2016+)
+            let spaRoomFresh: string | null = null;
+            let spaNameFresh: string | null = null;
+            try {
+              const { data: vgRow2 } = await supa
+                .from('inhouse_guests_v2')
+                .select('guest_name, room_number')
+                .eq('telegram_id', String(userId))
+                .eq('status', 'active')
+                .gte('check_out_date', getTurkeyToday())
+                .limit(1);
+              if (vgRow2 && vgRow2.length > 0) {
+                spaNameFresh = (vgRow2[0].guest_name as string) ?? null;
+                spaRoomFresh = (vgRow2[0].room_number != null ? String(vgRow2[0].room_number) : null);
+              }
+            } catch (vgErr2) {
+              console.error('[spa-contact] guest lookup failed', vgErr2 instanceof Error ? vgErr2.message : vgErr2);
+            }
+            const spaRoomPart2 = spaRoomFresh ? `Oda ${spaRoomFresh}` : 'Oda bilgisi yok';
+            const spaNamePart2 = spaNameFresh ?? 'Misafir';
+            const contactParts: string[] = [];
+            if (phoneMatch) contactParts.push(`Telefon: ${phoneMatch[0].trim()}`);
+            if (mailMatch) contactParts.push(`Mail: ${mailMatch[0].trim()}`);
+            const spaContactText =
+              `Spa rezervasyon - ek iletisim bilgisi\n\n` +
+              `${spaRoomPart2} - ${spaNamePart2}\n` +
+              `${contactParts.join('\n')}`;
+            await tg.sendMessage({ chat_id: Number(spaDept2.telegram_chat_id), text: spaContactText });
+          }
+        } catch (e) {
+          console.error('[spa-contact] forward failed', e instanceof Error ? e.message : e);
+        }
+        // Misafire tesekkur (dile gore)
+        const spaThanks =
+          language === 'en'
+            ? 'Thank you, I have passed your contact details to the spa team. They will reach out to you soon.'
+            : language === 'de'
+            ? 'Vielen Dank, ich habe Ihre Kontaktdaten an das Spa-Team weitergeleitet. Man wird sich bald bei Ihnen melden.'
+            : 'Tesekkurler, iletisim bilgilerinizi spa ekibine ilettim. En kisa surede size donus yapacaklar.';
+        await tg.sendMessage({ chat_id: chatId, text: spaThanks });
+        console.log(`[spa-contact] iletisim alindi ve SPA'ya iletildi. conversationId=${conversationId}`);
+        return;
+      }
+      // Iletisim yok (red/alakasiz) → bayrak kapandi, normal akisa birak (RE-ENTRY)
+      console.log(`[spa-contact] iletisim verilmedi → bayrak kapatildi, RE-ENTRY. text="${text.slice(0, 80)}"`);
+      return await handleMessage(args);
+    }
+  }
+
   if (conversation.allergen_pending) {
     console.log(`[allergen-sc] allergen_pending=true — short-circuit başlıyor. text="${text.slice(0, 80)}"`);
 
@@ -2695,6 +2780,23 @@ async function handleMessage(args: {
             `Mesaj: "${text}"\n\n` +
             `Lutfen misafirle irtibata gecin.`;
           await tg.sendMessage({ chat_id: spaNotifyChatId, text: spaNotifyText });
+
+          // SPA iletisim toplama: kart gitti, simdi opsiyonel telefon/mail iste
+          const spaContactAsk =
+            language === 'en'
+              ? 'The spa team will reach out to you. If you like, share your phone number, email, or both and I will pass them on so they can contact you directly.'
+              : language === 'de'
+              ? 'Das Spa-Team wird sich bei Ihnen melden. Wenn Sie moechten, teilen Sie mir Ihre Telefonnummer, E-Mail oder beides mit, dann leite ich diese weiter, damit man Sie direkt erreichen kann.'
+              : 'Spa ekibi sizinle iletisime gececek. Isterseniz telefon numaranizi, mail adresinizi ya da her ikisini bana iletin; ben kendilerine ulastirayim, size donus yapsinlar.';
+          finalResponseText = spaContactAsk;
+          try {
+            await supa
+              .from('conversations')
+              .update({ spa_contact_pending: true })
+              .eq('id', conversationId);
+          } catch (e) {
+            console.error('[spa-contact] flag set failed', e instanceof Error ? e.message : e);
+          }
         } else {
           console.warn('[spa-notify] spa telegram_chat_id bulunamadi, bildirim atlandi');
         }
