@@ -121,17 +121,22 @@ export async function buildHotelContext(
     nearbyPlaces,
     safetyRules,
     menuItems,
+    spaServices,
   ] = await Promise.all([
     fetchKnowledgeFacts(supabase),
     fetchDocuments(supabase, options.departmentHint),
     fetchNearbyPlaces(supabase, options.perplexityInterestHint),
     fetchSafetyRules(),
     fetchMenuItems(supabase),
+    fetchSpaServices(supabase),
   ]);
 
-  const knowledgeFacts = menuItems
+  const withMenu = menuItems
     ? (knowledgeFactsRaw ? `${knowledgeFactsRaw}\n\n${menuItems}` : menuItems)
     : knowledgeFactsRaw;
+  const knowledgeFacts = spaServices
+    ? (withMenu ? `${withMenu}\n\n${spaServices}` : spaServices)
+    : withMenu;
 
   return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo, safetyRules };
 }
@@ -210,6 +215,28 @@ async function fetchMenuItems(supabase: SupabaseClient): Promise<string> {
   });
 
   return `ROOM-SERVICE MENUSU (oda servisi siparis edilebilir kalemler ve fiyatlari):\n${lines.join('\n')}`;
+}
+
+async function fetchSpaServices(supabase: SupabaseClient): Promise<string> {
+  const { data } = await supabase
+    .from('spa_services')
+    .select('service_name, category, duration_min, price, currency, is_paid, description')
+    .eq('is_active', true)
+    .order('display_order', { ascending: true });
+
+  if (!data || data.length === 0) return '';
+
+  const lines = data.map((row) => {
+    const ucret = row.is_paid
+      ? `${row.price ?? 0} ${row.currency ?? 'TRY'} (UCRETLI)`
+      : 'UCRETSIZ';
+    const sure = row.duration_min ? `, ${row.duration_min} dk` : '';
+    const kat = row.category ? ` [${row.category}]` : '';
+    const aciklama = row.description ? ` - ${row.description}` : '';
+    return `- ${row.service_name}${kat}${sure}: ${ucret}${aciklama}`;
+  });
+
+  return `SPA & WELLNESS HIZMETLERI (mevcut hizmetler, sure ve fiyatlar):\n${lines.join('\n')}`;
 }
 
 /**
