@@ -13,25 +13,36 @@ interface SendForwardParams {
   chatId: string; // Departman grup chat_id
   html: string;   // formatGroupMessage çıktısı
   slaEventId: string; // Yeni oluşturulan sla_events.id
+  variant?: 'normal' | 'overlimit';
 }
 
 export async function sendForwardWithSlaButtons(
   params: SendForwardParams
 ): Promise<{ messageId: number | null; ok: boolean }> {
-  const inlineKeyboard = [
-    [
-      {
-        text: '🟢 Hemen ilgileniyoruz',
-        callback_data: `sla:respond:${params.slaEventId}:immediate`,
-      },
-    ],
-    [
-      {
-        text: '🟡 Biraz sonra ilgileniyoruz',
-        callback_data: `sla:respond:${params.slaEventId}:delayed`,
-      },
-    ],
-  ];
+  const inlineKeyboard =
+    params.variant === 'overlimit'
+      ? [
+          [
+            {
+              text: 'Misafire donuldu',
+              callback_data: `sla:respond:${params.slaEventId}:contacted`,
+            },
+          ],
+        ]
+      : [
+          [
+            {
+              text: '🟢 Hemen ilgileniyoruz',
+              callback_data: `sla:respond:${params.slaEventId}:immediate`,
+            },
+          ],
+          [
+            {
+              text: '🟡 Biraz sonra ilgileniyoruz',
+              callback_data: `sla:respond:${params.slaEventId}:delayed`,
+            },
+          ],
+        ];
 
   const res = await fetch(
     `https://api.telegram.org/bot${params.botToken}/sendMessage`,

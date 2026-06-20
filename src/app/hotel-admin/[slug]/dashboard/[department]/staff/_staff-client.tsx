@@ -192,10 +192,10 @@ export default function StaffPageClient({ slug, department, departmentLabel, ini
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
           <div>
-            <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
+            <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#f1f5f9', margin: '0 0 4px' }}>
               {departmentLabel} › Personel
             </h1>
-            <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>
+            <p style={{ color: '#9ca3af', margin: 0, fontSize: '14px' }}>
               {staff.filter((s) => s.is_active).length} aktif personel
             </p>
           </div>

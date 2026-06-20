@@ -74,8 +74,8 @@ export default function NewGuestPage({ params }: { params: Promise<{ slug: strin
     <div style={{ padding: '40px', fontFamily: "'Inter', system-ui, sans-serif", maxWidth: '700px' }}>
       <div style={{ marginBottom: '28px' }}>
         <a href={`/hotel-admin/${slug}/guests`} style={{ color: '#6366f1', textDecoration: 'none', fontSize: '13px' }}>← Misafir Listesine Dön</a>
-        <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '12px 0 4px' }}>Yeni Misafir Ekle</h1>
-        <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>In-house misafir kaydı oluşturun.</p>
+        <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#f1f5f9', margin: '12px 0 4px' }}>Yeni Misafir Ekle</h1>
+        <p style={{ color: '#9ca3af', margin: 0, fontSize: '14px' }}>In-house misafir kaydı oluşturun.</p>
       </div>
 
       {error && (

@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCentralSupabase } from '../supabase-client';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { isPharmacyDutyTime, buildPharmacyDutyBlock } from '@/lib/perplexity/pharmacy-duty';
 
 export type HotelContextOptions = {
   /** Hangi kategoride çevre bilgisi gerekli? null = hiçbiri (genel sohbet) */
@@ -116,16 +117,32 @@ export async function buildHotelContext(
 
   // --- Paralel: KB facts, belgeler, yakın çevre, güvenlik kuralları ---
   const [
-    knowledgeFacts,
+    knowledgeFactsRaw,
     documents,
     nearbyPlaces,
     safetyRules,
+    menuItems,
+    spaServices,
+    roomRates,
   ] = await Promise.all([
     fetchKnowledgeFacts(supabase),
     fetchDocuments(supabase, options.departmentHint),
-    fetchNearbyPlaces(supabase, options.perplexityInterestHint),
+    fetchNearbyPlaces(supabase, options.perplexityInterestHint, settingsRow?.address),
     fetchSafetyRules(),
+    fetchMenuItems(supabase),
+    fetchSpaServices(supabase),
+    fetchRoomRates(supabase),
   ]);
+
+  const withMenu = menuItems
+    ? (knowledgeFactsRaw ? `${knowledgeFactsRaw}\n\n${menuItems}` : menuItems)
+    : knowledgeFactsRaw;
+  const withSpa = spaServices
+    ? (withMenu ? `${withMenu}\n\n${spaServices}` : spaServices)
+    : withMenu;
+  const knowledgeFacts = roomRates
+    ? (withSpa ? `${withSpa}\n\n${roomRates}` : roomRates)
+    : withSpa;
 
   return { hotelInfo, generalRules, knowledgeFacts, documents, nearbyPlaces, locationInfo, safetyRules };
 }
@@ -184,6 +201,96 @@ async function fetchKnowledgeFacts(supabase: SupabaseClient): Promise<string> {
   }
 
   return `BILGI TABANI:\n${blocks.join('\n\n')}`;
+}
+
+async function fetchMenuItems(supabase: SupabaseClient): Promise<string> {
+  const { data } = await supabase
+    .from('menu_items')
+    .select('item_name, category, price, currency, is_paid')
+    .eq('is_active', true)
+    .order('display_order', { ascending: true });
+
+  if (!data || data.length === 0) return '';
+
+  const lines = data.map((row) => {
+    const ucret = row.is_paid
+      ? `${row.price ?? 0} ${row.currency ?? 'TRY'} (UCRETLI)`
+      : 'UCRETSIZ';
+    const kat = row.category ? ` [${row.category}]` : '';
+    return `- ${row.item_name}${kat}: ${ucret}`;
+  });
+
+  return `ROOM-SERVICE MENUSU (oda servisi siparis edilebilir kalemler ve fiyatlari):\n${lines.join('\n')}`;
+}
+
+async function fetchSpaServices(supabase: SupabaseClient): Promise<string> {
+  const { data } = await supabase
+    .from('spa_services')
+    .select('service_name, category, duration_min, price, currency, is_paid, description')
+    .eq('is_active', true)
+    .order('display_order', { ascending: true });
+
+  if (!data || data.length === 0) return '';
+
+  const lines = data.map((row) => {
+    const ucret = !row.is_paid
+      ? 'UCRETSIZ'
+      : (row.price && Number(row.price) > 0)
+        ? `${row.price} ${row.currency ?? 'TRY'} (UCRETLI)`
+        : 'Fiyat icin SPA resepsiyonuna danisabilirsiniz (UCRETLI)';
+    const sure = row.duration_min ? `, ${row.duration_min} dk` : '';
+    const kat = row.category ? ` [${row.category}]` : '';
+    const aciklama = row.description ? ` - ${row.description}` : '';
+    return `- ${row.service_name}${kat}${sure}: ${ucret}${aciklama}`;
+  });
+
+  return `SPA & WELLNESS HIZMETLERI (mevcut hizmetler, sure ve fiyatlar):\n${lines.join('\n')}`;
+}
+
+async function fetchRoomRates(supabase: any): Promise<string> {
+  const { data: rates } = await supabase
+    .from('room_rates')
+    .select('room_type, capacity, period_start, period_end, price, currency, board_type, rate_kind')
+    .eq('is_active', true)
+    .order('display_order', { ascending: true });
+
+  if (!rates || rates.length === 0) return '';
+
+  const fmt = (r: any) => {
+    const cap = r.capacity ? ' (' + r.capacity + ')' : '';
+    const board = r.board_type ? ', ' + r.board_type : '';
+    return '- ' + r.room_type + cap + ' | ' + r.period_start + ' -> ' + r.period_end + ': ' + r.price + ' ' + r.currency + board;
+  };
+
+  const konaklama = rates.filter((r: any) => (r.rate_kind || 'konaklama') === 'konaklama');
+  const gunubirlik = rates.filter((r: any) => r.rate_kind === 'gunubirlik');
+
+  let lines = '';
+  if (konaklama.length > 0) {
+    lines += 'KONAKLAMA / TATIL FIYATLARI:\n' + konaklama.map(fmt).join('\n');
+  }
+  if (gunubirlik.length > 0) {
+    lines += (lines ? '\n\n' : '') + 'GUNUBIRLIK FIYATLARI:\n' + gunubirlik.map(fmt).join('\n');
+  }
+
+  const { data: links } = await supabase
+    .from('reservation_links')
+    .select('label, url, is_official, sort_order')
+    .eq('is_active', true)
+    .order('is_official', { ascending: false })
+    .order('sort_order', { ascending: true });
+
+  let linkLine = '';
+  if (links && links.length > 0) {
+    const linkList = links
+      .map((l: any) => '- ' + (l.label || 'Rezervasyon') + ': ' + l.url)
+      .join('\n');
+    linkLine =
+      '\n\nREZERVASYON KURALI (SELF-SERVICE): Misafir rezervasyon yapmak isterse asagidaki linkleri SIRAYLA ver (once otelin kendi linki, sonra acentalar). ASLA kart/odeme bilgisi isteme, ASLA "on buro iletisime gececek" deme. Misafir odemesini linkten kendisi yapar:\n' +
+      linkList;
+  }
+
+  return '=== KONAKLAMA / REZERVASYON FIYATLARI ===\n' + lines + linkLine;
 }
 
 /**
@@ -269,8 +376,14 @@ async function fetchDocuments(
 async function fetchNearbyPlaces(
   supabase: SupabaseClient,
   interestHint?: string | null,
+  hotelAddress?: string | null,
 ): Promise<string> {
   if (!interestHint) return '';
+
+  // NOBETCI ECZANE OVERRIDE (deterministik): eczane + nobet saati ise cache yerine guncel link
+  if (interestHint === 'pharmacy' && isPharmacyDutyTime()) {
+    return buildPharmacyDutyBlock(hotelAddress);
+  }
 
   const { data } = await supabase
     .from('perplexity_discoveries')

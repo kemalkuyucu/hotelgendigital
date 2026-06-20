@@ -12,6 +12,7 @@ import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
 import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/verification/verify-guest';
+import { createReceptionApproval, receptionNotifiedMsg, receptionWaitMsg, handlePendingMatchCallback } from '@/lib/verification/reception-approval';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { formatGuestAddress } from '@/lib/utils/salutation';
 import { downloadTelegramAudio } from '@/lib/voice/download-telegram-audio';
@@ -19,9 +20,12 @@ import { whisperTranscribe } from '@/lib/voice/whisper-transcribe';
 import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
 // Modül 11: SLA imports
 import { handleSlaCallback } from '@/lib/sla/handle-callback';
+import { handleOrderCallback } from '@/lib/sla/handle-order-callback';
+import { handleMenuOfferCallback } from '@/lib/sla/handle-menu-offer-callback';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
 import { getTurkeyToday } from '@/lib/date/turkeyTime'; // Modül 18: timezone fix
 import { sendForwardWithSlaButtons } from '@/lib/sla/send-forward-with-buttons';
+import { getActiveStaffNow } from '@/lib/hotel-admin/staff-client';
 // Modül 15.4: Auto-file belge gönderme
 import {
   sendTelegramDocument,
@@ -30,6 +34,7 @@ import {
 } from '@/lib/telegram/send-document';
 // Modül 4: Alerjen bildirim yönlendirme
 import { sendAllergenNotifications } from '@/lib/telegram/allergen-notify';
+import Anthropic from '@anthropic-ai/sdk';
 // Modül 16.b (refactor): meeting_rooms artık hotel-context.ts içinde HOTEL CONTEXT'e gömülü gelir.
 // detectMeetingRoomIntent / formatMeetingRoomsBlock gate'i kaldırıldı.
 
@@ -56,6 +61,70 @@ function checkRateLimit(userId: number): boolean {
   return true; // allow
 }
 // ── RATE LIMIT SONU ───────────────────────────────────────────────────────────
+
+// ============================================================
+// Modül 3 — ALERJEN CEVAP TESPİTİ (LLM, güvenli taraf=TRUE)
+// allergen_pending=true iken gelen mesajın gerçekten bir alerji/içerik
+// bildirimi mi yoksa alakasız yeni bir soru/talep mi olduğunu Haiku ile ayırır.
+// Hata/şüphe → TRUE (alerji say) — yaşamsal güvenlik tarafında kalır.
+// ============================================================
+async function isAllergenAnswer(message: string): Promise<boolean> {
+  // Guvenli taraf: hata/suphe durumunda TRUE (alerji say) doner.
+  try {
+    const client = new Anthropic();
+    const res = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 5,
+      system: `Misafire "Gida alerjiniz var mi?" diye soruldu. Misafirin yaniti asagida. Bu yanit bir ALERJI/ICERIK bildirimi mi, yoksa alerjiyle ALAKASIZ yeni bir soru/talep mi?
+Kurallar:
+- Herhangi bir yiyecek/icerik hassasiyeti, "X yiyemiyorum", "X beni rahatsiz ediyor", besin adi + olumsuzluk => ALERJI.
+- Fiyat sorusu, saat sorusu, siparis, baska konu, selamlama => ALAKASIZ.
+- EMIN DEGILSEN "EVET" yaz (guvenli taraf).
+Sadece tek kelime yaz: EVET (alerji) veya HAYIR (alakasiz).`,
+      messages: [{ role: 'user', content: message }],
+    });
+    const block = res.content.find((b) => b.type === 'text');
+    const raw = block && block.type === 'text' ? block.text.trim().toUpperCase() : 'EVET';
+    return !raw.startsWith('HAYIR'); // HAYIR ile baslamiyorsa alerji say (guvenli taraf)
+  } catch {
+    return true; // hata => alerji say
+  }
+}
+
+// F&B siparis edilen urun menude var mi? (deterministik kapi — KALICI KARAR #3)
+// Guvenli taraf: menu bos veya hata/suphe => TRUE (eski akis sursun, urun var say).
+async function isOrderInMenu(orderText: string, supa: SupabaseClient): Promise<boolean> {
+  try {
+    const { data } = await supa
+      .from('menu_items')
+      .select('item_name')
+      .eq('is_active', true);
+    if (!data || data.length === 0) return true; // menu yuklenmemis => engelleme
+    const menuList = data.map((r) => `- ${r.item_name}`).join('\n');
+    const client = new Anthropic();
+    const res = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 5,
+      system: `Asagida bir otel oda-servisi menusu ve bir misafir siparisi var. Misafirin istedigi urun(ler) bu menude VAR MI?
+Kurallar:
+- Menudeki bir kalemle ayni/esanlamli urun => VAR.
+- Menude hic gecmeyen, alakasiz bir urun (ornek: menude yoksa pizza) => YOK.
+- Adet/sayi onemli degil, sadece urun adi eslesmesine bak.
+- EMIN DEGILSEN "EVET" yaz (guvenli taraf: var say).
+Sadece tek kelime yaz: EVET (menude var) veya HAYIR (menude yok).
+
+MENU:
+${menuList}`,
+      messages: [{ role: 'user', content: orderText }],
+    });
+    const block = res.content.find((b) => b.type === 'text');
+    const raw = block && block.type === 'text' ? block.text.trim().toUpperCase() : 'EVET';
+    return !raw.startsWith('HAYIR'); // HAYIR ile baslamiyorsa var say (guvenli taraf)
+  } catch {
+    return true; // hata => var say (engelleme)
+  }
+}
+// ── ALERJEN CEVAP TESPİTİ SONU ─────────────────────────────────────────────────
 
 // ============================================================
 // KATMAN 3 — URL FİLTRESİ regex (AI/Haiku token harcamadan)
@@ -123,7 +192,16 @@ function buildForwardableItems(
     // mesajını taşır → reqText dolu → etkilenmez.)
     const reqText = (item.requestText ?? '').trim();
     if (!reqText) continue;
-    const resolved = resolveTargetDepartment(item.department, departments);
+    // ANIMATION ROUTING (B1.1): Rezervasyon/aksiyon talepleri Guest Relations'a duser.
+    // Bilgi sorulari classify-and-respond.ts'te zaten shouldForward=false ile elenir;
+    // buraya ulasan her animation item rezervasyon talebidir. Animasyon ekibi sahada,
+    // telefon tasimaz -> GR daha saglikli kanal. (Otel-bazli ayar: backlog, default GR.)
+    let routedDepartment = item.department;
+    if ((item.department ?? '').toLowerCase().trim() === 'animation') {
+      console.log(`[animation-routing] Rezervasyon talebi GR'a yonlendiriliyor. raw=${item.department}`);
+      routedDepartment = 'guest_relation';
+    }
+    const resolved = resolveTargetDepartment(routedDepartment, departments);
     if (!resolved || !resolved.targetChatId) continue;
     items.push({
       dept: resolved.targetDept ?? item.department,
@@ -246,6 +324,63 @@ export async function POST(
         return NextResponse.json({ ok: true });
       }
 
+      // pgm: inhouse eslesmeme resepsiyon onay butonlari
+      if (cq.data?.startsWith('pgm:')) {
+        if (cq.data === 'pgm:noop') {
+          await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu kayit zaten islendi' }),
+          });
+          return NextResponse.json({ ok: true });
+        }
+        await handlePendingMatchCallback({
+          supa,
+          botToken,
+          callbackQueryId: cq.id,
+          callbackData: cq.data,
+          callbackChatId: cq.message?.chat?.id ?? 0,
+          callbackMessageId: cq.message?.message_id ?? 0,
+          approverTelegramId: String(cq.from.id),
+          approverName: cq.from.username ?? cq.from.first_name ?? null,
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // order: F&B siparis teyit butonlari
+      if (cq.data === 'order:noop') {
+        await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu siparis zaten islendi' }),
+        });
+        return NextResponse.json({ ok: true });
+      }
+      if (cq.data?.startsWith('order:')) {
+        await handleOrderCallback({
+          supa,
+          botToken,
+          callbackQueryId: cq.id,
+          callbackData: cq.data,
+          callbackChatId: cq.message?.chat?.id ?? 0,
+          callbackMessageId: cq.message?.message_id ?? 0,
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // menu: F&B kademeli menu onerisi butonlari
+      if (cq.data?.startsWith('menu:')) {
+        await handleMenuOfferCallback({
+          supa,
+          botToken,
+          callbackQueryId: cq.id,
+          callbackData: cq.data,
+          callbackChatId: cq.message?.chat?.id ?? 0,
+          callbackMessageId: cq.message?.message_id ?? 0,
+        });
+        return NextResponse.json({ ok: true });
+      }
+
       // Diğer callback'ler — şimdilik yoksay
       return NextResponse.json({ ok: true });
     }
@@ -340,15 +475,25 @@ function getVerificationAskMsg(lang: string): string {
   return msgs[lang] ?? msgs['tr'];
 }
 
-function getVerificationFailMsg(lang: string): string {
-  const msgs: Record<string, string> = {
-    tr: 'Bilgilerinizi doğrulayamadım. Oda numarası ve soyadınızı kontrol edip tekrar deneyebilir misiniz? Örnek: 312 Kuyucu',
-    en: 'I could not verify your details. Could you double-check your room number and last name and try again? Example: 312 Smith',
-    de: 'Ihre Angaben konnten nicht bestätigt werden. Bitte prüfen Sie Zimmernummer und Nachname. Beispiel: 312 Müller',
-    ru: 'Не удалось подтвердить данные. Проверьте номер комнаты и фамилию и попробуйте снова. Пример: 312 Иванов',
-    ar: 'تعذّر التحقق من بياناتك. يرجى التحقق من رقم الغرفة واسم العائلة والمحاولة مجدداً. مثال: 312 علي',
+function getVerificationFailMsg(lang: string, attempt: number): string {
+  // attempt 1 = yumusak ("dogru yazdigindan emin misin")
+  // attempt 2+ = uyari ("hala eslesmedi, bir sorun olabilir")
+  const soft: Record<string, string> = {
+    tr: 'Bilgilerinizi doğrulayamadım. Oda numarası ve soyadınızı doğru yazdığınızdan emin misiniz? Örnek: 312 Kuyucu',
+    en: 'I could not verify your details. Are you sure your room number and last name are correct? Example: 312 Smith',
+    de: 'Ihre Angaben konnten nicht bestätigt werden. Sind Zimmernummer und Nachname korrekt? Beispiel: 312 Müller',
+    ru: 'Не удалось подтвердить данные. Вы уверены, что номер комнаты и фамилия указаны верно? Пример: 312 Иванов',
+    ar: 'يلع 312 :لاثم .ةحيحص ةلئاعلا مساو ةفرغلا مقر نأ نم دكأتم له .كتانايب نم ققحتلا رذّعت',
   };
-  return msgs[lang] ?? msgs['tr'];
+  const warn: Record<string, string> = {
+    tr: 'Bilgileriniz hâlâ eşleşmedi. Bir sorun olabilir; gerekirse resepsiyona kontrol ettirmemiz gerekebilir. Bir kez daha deneyelim: oda numarası ve soyadınız. Örnek: 312 Kuyucu',
+    en: 'Your details still did not match. There may be an issue; we may need to check with reception. Let us try once more: room number and last name. Example: 312 Smith',
+    de: 'Ihre Angaben stimmen weiterhin nicht überein. Möglicherweise liegt ein Problem vor; eventuell müssen wir es an der Rezeption prüfen. Versuchen wir es noch einmal: Zimmernummer und Nachname. Beispiel: 312 Müller',
+    ru: 'Данные снова не совпали. Возможна ошибка; может потребоваться проверка на ресепшене. Попробуем ещё раз: номер комнаты и фамилия. Пример: 312 Иванов',
+    ar: 'يلع 312 :لاثم .ةلئاعلا مساو ةفرغلا مقر :ىرخأ ةرم لواحنل .لابقتسالا يف ققحتلا ىلإ جاتحن دق ؛ةلكشم كانه نوكت دق .ىرخأ ةرم كتانايب قباطتت مل',
+  };
+  const table = attempt >= 2 ? warn : soft;
+  return table[lang] ?? table['tr'];
 }
 
 function getVerificationLockedMsg(lang: string): string {
@@ -628,7 +773,7 @@ async function handleVerificationFlow(args: {
   aiReplyText: string;
   language: string;
 }): Promise<VerificationFlowResult> {
-  const { supa, tg, botToken, conversationId, conversation, guestMessageText, aiIntent, language } = args;
+  const { supa, botToken, conversationId, conversation, guestMessageText, aiIntent, language } = args;
 
   // 0. telegram_id damgasi varsa zaten dogrulanmis say (inhouse_guests_v2)
   try {
@@ -665,13 +810,12 @@ async function handleVerificationFlow(args: {
     };
   }
 
-  // 2. Kilitlenmiş mi? (attempts >= MAX ve hâlâ doğrulanmamış)
+  // 2. Resepsiyon onayi bekleniyor mu? (attempts >= MAX, kart zaten gonderildi)
   if (conversation.verification_attempts >= MAX_VERIFICATION_ATTEMPTS) {
-    console.log(`[verification] Kilitli — attempts=${conversation.verification_attempts}`);
-    const lockedMsg = getVerificationLockedMsg(language);
+    console.log(`[verification] Resepsiyon onayi bekleniyor — attempts=${conversation.verification_attempts}`);
     return {
       shouldShortCircuit: true,
-      replyText: lockedMsg,
+      replyText: receptionWaitMsg(language),
       verifiedGuestId: null,
       effectiveIntent: 'front_office',
     };
@@ -823,34 +967,29 @@ async function handleVerificationFlow(args: {
       .eq('id', conversationId);
 
     if (newAttempts >= MAX_VERIFICATION_ATTEMPTS) {
-      // Kilitlendi → ön büroya bildirim gönder
-      console.log(`[verification] Kilitlendi — attempts=${newAttempts}`);
+      // Inhouse eslesmeme → resepsiyon onay akisi (Master 6.1)
+      console.log(`[verification] Inhouse eslesmeme — resepsiyon onay karti, attempts=${newAttempts}`);
 
-      // Bildirim — void (hata olsa bile kilidi uygula)
-      void notifyFrontDeskUnverified({
-        hotelSupabase: supa,
+      await createReceptionApproval({
+        supa,
         botToken,
-        tg,
-        conversationId,
         guestTelegramId: args.guestTelegramId,
         guestTelegramUsername: args.guestTelegramUsername,
-        pendingIntent: conversation.verification_pending_intent ?? aiIntent,
-        attemptedRoomNumber: roomNumber,
-        attemptedLastName: lastName,
-        originalMessage: guestMessageText,
+        attemptedRoomNumber: roomNumber!,
+        attemptedGuestName: `${firstName ?? ''} ${lastName ?? ''}`.trim(),
+        messageExcerpt: guestMessageText,
         language,
       });
 
-      const lockedMsg = getVerificationLockedMsg(language);
       return {
         shouldShortCircuit: true,
-        replyText: lockedMsg,
+        replyText: receptionNotifiedMsg(language),
         verifiedGuestId: null,
         effectiveIntent: 'front_office',
       };
     }
 
-    const failMsg = getVerificationFailMsg(language);
+    const failMsg = getVerificationFailMsg(language, newAttempts);
     return {
       shouldShortCircuit: true,
       replyText: failMsg,
@@ -1386,8 +1525,112 @@ async function handleMessage(args: {
   }
   // ── Stale TTL temizliği SONU ───────────────────────────────────────────────
 
+  // SPA iletisim toplama kapisi — spa_contact_pending acikken gelen telefon/mail'i yakala
+  {
+    const { data: spaPendRow } = await supa
+      .from('conversations')
+      .select('spa_contact_pending')
+      .eq('id', conversationId)
+      .maybeSingle();
+    if (spaPendRow?.spa_contact_pending === true) {
+      // Deterministik tespit (KALICI KARAR #3): telefon veya mail regex
+      const phoneRe = /(\+?\d[\d\s().-]{8,}\d)/;
+      const mailRe = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+      const phoneMatch = text.match(phoneRe);
+      const mailMatch = text.match(mailRe);
+      const hasContact = Boolean(phoneMatch || mailMatch);
+
+      // Bayragi her durumda kapat (tek tur sor)
+      await supa
+        .from('conversations')
+        .update({ spa_contact_pending: false })
+        .eq('id', conversationId);
+
+      if (hasContact) {
+        // Inbound kaydet
+        await supa.from('bot_messages').insert({
+          conversation_id: conversationId,
+          direction: 'inbound',
+          text,
+        });
+        // SPA grubuna ek iletisim gonder
+        try {
+          const { data: spaDept2 } = await supa
+            .from('departments')
+            .select('telegram_chat_id')
+            .eq('code', 'spa')
+            .maybeSingle();
+          if (spaDept2?.telegram_chat_id) {
+            // Oda/ad TAZE SELECT — verified*ForAI bu satirda henuz TDZ'de (sat. 2016+)
+            let spaRoomFresh: string | null = null;
+            let spaNameFresh: string | null = null;
+            try {
+              const { data: vgRow2 } = await supa
+                .from('inhouse_guests_v2')
+                .select('guest_name, room_number')
+                .eq('telegram_id', String(userId))
+                .eq('status', 'active')
+                .gte('check_out_date', getTurkeyToday())
+                .limit(1);
+              if (vgRow2 && vgRow2.length > 0) {
+                spaNameFresh = (vgRow2[0].guest_name as string) ?? null;
+                spaRoomFresh = (vgRow2[0].room_number != null ? String(vgRow2[0].room_number) : null);
+              }
+            } catch (vgErr2) {
+              console.error('[spa-contact] guest lookup failed', vgErr2 instanceof Error ? vgErr2.message : vgErr2);
+            }
+            const spaRoomPart2 = spaRoomFresh ? `Oda ${spaRoomFresh}` : 'Oda bilgisi yok';
+            const spaNamePart2 = spaNameFresh ?? 'Misafir';
+            const contactParts: string[] = [];
+            if (phoneMatch) contactParts.push(`Telefon: ${phoneMatch[0].trim()}`);
+            if (mailMatch) contactParts.push(`Mail: ${mailMatch[0].trim()}`);
+            const spaContactText =
+              `Spa rezervasyon - ek iletisim bilgisi\n\n` +
+              `${spaRoomPart2} - ${spaNamePart2}\n` +
+              `${contactParts.join('\n')}`;
+            await tg.sendMessage({ chat_id: Number(spaDept2.telegram_chat_id), text: spaContactText });
+          }
+        } catch (e) {
+          console.error('[spa-contact] forward failed', e instanceof Error ? e.message : e);
+        }
+        // Misafire tesekkur (dile gore)
+        const spaThanks =
+          language === 'en'
+            ? 'Thank you, I have passed your contact details to the spa team. They will reach out to you soon.'
+            : language === 'de'
+            ? 'Vielen Dank, ich habe Ihre Kontaktdaten an das Spa-Team weitergeleitet. Man wird sich bald bei Ihnen melden.'
+            : 'Tesekkurler, iletisim bilgilerinizi spa ekibine ilettim. En kisa surede size donus yapacaklar.';
+        await tg.sendMessage({ chat_id: chatId, text: spaThanks });
+        console.log(`[spa-contact] iletisim alindi ve SPA'ya iletildi. conversationId=${conversationId}`);
+        return;
+      }
+      // Iletisim yok (red/alakasiz) → bayrak kapandi, normal akisa birak (RE-ENTRY)
+      console.log(`[spa-contact] iletisim verilmedi → bayrak kapatildi, RE-ENTRY. text="${text.slice(0, 80)}"`);
+      return await handleMessage(args);
+    }
+  }
+
   if (conversation.allergen_pending) {
     console.log(`[allergen-sc] allergen_pending=true — short-circuit başlıyor. text="${text.slice(0, 80)}"`);
+
+    // YENI KAPI: misafir alerji sorusunu cevaplamadi, alakasiz yeni soru/talep yazdiysa
+    // bayragi kapat ve mesaji handleMessage RE-ENTRY ile normal akisa birak.
+    // NOT: conversation handleMessage'a ARGUMAN DEGIL (1097'de upsertGuestAndConversation'dan
+    // gelir) ve upsertGuestAndConversation conversation'i DB'den TAZE okur (3137-3160).
+    // Bu yuzden DB'de allergen_pending=false yapip handleMessage(args)'i tekrar cagirinca
+    // ikinci giriste bu short-circuit ATLANIR → sonsuz dongu kirilir (_freshConv gereksiz).
+    {
+      const _earlyAns = text.trim().toLowerCase();
+      const _earlyNo = /\b(yok|yoq|hayır|hayir|hayr|alerjim yok|alerjisi yok|alerji yok|no|none|nichts|нет)\b/i;
+      if (_earlyAns.length >= 2 && !_earlyNo.test(_earlyAns) && !(await isAllergenAnswer(text.trim()))) {
+        await supa
+          .from('conversations')
+          .update({ allergen_pending: false, allergen_asked: true })
+          .eq('id', conversationId);
+        console.log(`[allergen-sc] YENI KAPI: alakasiz soru → bayrak kapatildi, handleMessage RE-ENTRY ile normal akisa yonlendiriliyor. text="${text.slice(0, 80)}"`);
+        return await handleMessage(args);
+      }
+    }
 
     // Inbound mesajı kaydet (kayıt mantığı korunuyor)
     await supa.from('bot_messages').insert({
@@ -2179,12 +2422,13 @@ async function handleMessage(args: {
   if (currentVerifiedGuest && aiShouldForward) {
     const reParsed = parseVerificationInput(text);
     if (
+      !reParsed.hasEmbeddedRequest &&  // BEYINCIK: mesajda talep varsa re-verify YOK; dogrulanmis misafir "eslesme bulamadim" duymaz, talep normal akar (dedup ikinci karti keser)
       reParsed.roomNumber !== null &&
       reParsed.firstName !== null &&
       reParsed.lastName !== null &&
       (
-        reParsed.roomNumber !== currentVerifiedGuest.room_number ||
-        reParsed.lastName.toLowerCase() !== (currentVerifiedGuest.last_name ?? '').toLowerCase()
+        normalizeTr(reParsed.roomNumber) !== normalizeTr(currentVerifiedGuest.room_number) ||
+        normalizeTr(reParsed.lastName) !== normalizeTr(currentVerifiedGuest.last_name ?? '')
       )
     ) {
       // Misafir yeni kimlik bilgisi yazmış → re-verify
@@ -2337,7 +2581,6 @@ async function handleMessage(args: {
     // Modül 10: Normal doğrulama gate
     // NOT: allergen_room_verify artık buraya GELMİYOR — allergen_verify_pending kendi gate'inde işlendi (yukarıda).
     // NOT: isInfoOnlyQuery=true ise gate'e GIRME — bilgi soruları doğrulama gerektirmez, AI'a düşsün.
-    aiShouldForward &&
     !canAskAllergen && // ← Modül 3: alerji önce sorulacak turda oda no sorusu ÇIKMASIN
     !isInfoOnlyQuery(text) && // ← Modül 10 Fix 2: bilgi soruları verification gate'ini bypass eder
     (requiresVerification(aiRawIntent) || (conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at)))
@@ -2519,6 +2762,48 @@ async function handleMessage(args: {
   // ── KB cevabı veya doğrulama short-circuit → forward yapma ───────────────
   if (skipForward) {
     console.log(`[telegram] Forward atlandı (KB veya verification gate). intent=${finalIntent}`);
+    // B1.1 spa Adim 2 (skipForward yolu): rezervasyon niyeti -> spa sorumlusuna bildirim
+    if (aiResult?.reservationNotify) {
+      try {
+        const { data: spaDept } = await supa
+          .from('departments')
+          .select('telegram_chat_id')
+          .eq('code', 'spa')
+          .maybeSingle();
+        if (spaDept?.telegram_chat_id) {
+          const spaNotifyChatId = Number(spaDept.telegram_chat_id);
+          const spaRoomPart = verifiedRoomNumberForAI ? `Oda ${verifiedRoomNumberForAI}` : 'Oda bilgisi yok';
+          const spaNamePart = verifiedGuestNameForAI ?? 'Misafir';
+          const spaNotifyText =
+            `Spa rezervasyon talebi\n\n` +
+            `${spaRoomPart} - ${spaNamePart}\n` +
+            `Mesaj: "${text}"\n\n` +
+            `Lutfen misafirle irtibata gecin.`;
+          await tg.sendMessage({ chat_id: spaNotifyChatId, text: spaNotifyText });
+
+          // SPA iletisim toplama: kart gitti, simdi opsiyonel telefon/mail iste
+          const spaContactAsk =
+            language === 'en'
+              ? 'The spa team will reach out to you. If you like, share your phone number, email, or both and I will pass them on so they can contact you directly.'
+              : language === 'de'
+              ? 'Das Spa-Team wird sich bei Ihnen melden. Wenn Sie moechten, teilen Sie mir Ihre Telefonnummer, E-Mail oder beides mit, dann leite ich diese weiter, damit man Sie direkt erreichen kann.'
+              : 'Spa ekibi sizinle iletisime gececek. Isterseniz telefon numaranizi, mail adresinizi ya da her ikisini bana iletin; ben kendilerine ulastirayim, size donus yapsinlar.';
+          finalResponseText = spaContactAsk;
+          try {
+            await supa
+              .from('conversations')
+              .update({ spa_contact_pending: true })
+              .eq('id', conversationId);
+          } catch (e) {
+            console.error('[spa-contact] flag set failed', e instanceof Error ? e.message : e);
+          }
+        } else {
+          console.warn('[spa-notify] spa telegram_chat_id bulunamadi, bildirim atlandi');
+        }
+      } catch (e) {
+        console.error('[spa-notify] failed', e instanceof Error ? e.message : e);
+      }
+    }
     if (aiResult?.answered_from_knowledge) {
       await logKnowledgeAnswer(supa, {
         conversationId,
@@ -2546,8 +2831,121 @@ async function handleMessage(args: {
     if (forwardableItems.length === 0) {
       console.log('[forward] No forwardable items, skipping');
     } else {
+      // ── F&B SIPARIS TEYIT KAPISI ──────────────────────────────────────
+      // F&B siparisi forward edilmeden once misafirden onay al. Kart, ancak
+      // misafir "evet" dedikten sonra dusurulur (order:confirm callback'inde).
+      const fbOrderItem = forwardableItems.find(
+        (it) => (it.rawDepartment ?? it.dept ?? '').toLowerCase().trim() === 'fb' && it.createsSlaEvent,
+      );
+      if (fbOrderItem) {
+        // MENUDE YOK KONTROLU — listede olmayan urun: teyit YOK, kart YOK, nazik red
+        const inMenu = await isOrderInMenu(text, supa);
+        if (!inMenu) {
+          // KADEMELI MENU ONERISI: tum listeyi hemen dokme. Once nazik red + "bakmak ister misiniz?" + buton.
+          // Beynin urettigi "yok + liste" cevabini (finalResponseText) sakla, misafir EVET derse callback gonderir.
+          const offerText =
+            language === 'en'
+              ? 'Unfortunately this item is not available right now, we are very sorry. Would you like to see our other available items?'
+              : language === 'de'
+              ? 'Dieser Artikel ist derzeit leider nicht verfuegbar, es tut uns sehr leid. Moechten Sie unsere anderen verfuegbaren Artikel sehen?'
+              : 'Bu urun su an mevcut degil, cok uzgunuz. Elimizdeki diger urunlere bakmak ister misiniz?';
+          const offerYes =
+            language === 'en' ? 'Yes, show me' : language === 'de' ? 'Ja, zeigen' : 'Evet, bakmak isterim';
+          const offerNo =
+            language === 'en' ? 'No, thanks' : language === 'de' ? 'Nein, danke' : 'Hayir, tesekkurler';
+
+          await supa
+            .from('conversations')
+            .update({ menu_offer_pending: true, menu_offer_text: finalResponseText })
+            .eq('id', conversationId);
+
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: offerText,
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: offerYes, callback_data: `menu:show:${conversationId}` }],
+                  [{ text: offerNo, callback_data: `menu:no:${conversationId}` }],
+                ],
+              },
+            }),
+          });
+          await supa.from('bot_messages').insert({
+            conversation_id: conversationId,
+            direction: 'outbound',
+            text: offerText,
+            message_type: 'text',
+          });
+          console.log(`[menu-offer] urun menude YOK — kademeli oneri gonderildi. text="${text.slice(0, 80)}"`);
+          return NextResponse.json({ ok: true });
+        }
+
+        // 1) Bayragi ac + orijinal siparis cumlesini sakla
+        await supa
+          .from('conversations')
+          .update({ order_pending: true, order_pending_text: text })
+          .eq('id', conversationId);
+
+        // 2) Botun urettigi guzel cevabi gonder ("Tabii memnuniyetle...")
+        await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
+
+        // 3) Nazik teyit + butonlar (ham fetch — reply_markup gerekiyor)
+        const confirmText =
+          language === 'en'
+            ? 'I am creating your order. To proceed, could you please confirm?'
+            : language === 'de'
+              ? 'Ich erstelle Ihre Bestellung. Bitte bestaetigen Sie zur Fortsetzung.'
+              : 'Siparisinizi olusturuyorum. Onaylarsaniz ilgili ekibe hemen iletecegim. Onayliyor musunuz?';
+        const yesLabel = language === 'en' ? 'Yes, confirm' : language === 'de' ? 'Ja, bestaetigen' : 'Evet, onayliyorum';
+        const noLabel = language === 'en' ? 'Cancel' : language === 'de' ? 'Abbrechen' : 'Vazgectim';
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: confirmText,
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: yesLabel, callback_data: `order:confirm:${conversationId}` }],
+                [{ text: noLabel, callback_data: `order:cancel:${conversationId}` }],
+              ],
+            },
+          }),
+        });
+
+        console.log(`[order-confirm] F&B siparis teyit bekleniyor. conversationId=${conversationId} text="${text.slice(0, 80)}"`);
+
+        // inbound mesaji kaydet (normal akis bu noktadan sonra calismayacak)
+        await supa.from('bot_messages').insert({
+          conversation_id: conversationId,
+          direction: 'outbound',
+          text: finalResponseText,
+          message_type: 'text',
+        });
+
+        return NextResponse.json({ ok: true });
+      }
+      // ── /F&B SIPARIS TEYIT KAPISI ─────────────────────────────────────
+
       for (let itemIndex = 0; itemIndex < forwardableItems.length; itemIndex++) {
         const fwdItem = forwardableItems[itemIndex];
+        // ── BEYINCIK: kart metni ham mesaja sabit (tek-intent) ──────────────────────
+        // Orchestrator bazen onceki turlarin taleplerini birlestiriyor ("klima ... ve
+        // lavabo ...") -> karta kirli metin dusuyor. Tek talep varsa misafirin O ANKI
+        // ham mesajini kullan (deterministik, personele "ne yazdiysa o" gider). Multi-
+        // intent (>1) ise AI'in departman-bazli ayirdigi metni KORU (gercek ayrim var).
+        if (forwardableItems.length === 1) {
+          // Housekeeping beyni adedi netlestirdiyse temiz ozeti kullan ("2 yuz havlusu"),
+          // aksi halde misafirin o anki ham mesaji (orchestrator birlestirme sizintisina karsi).
+          if (aiResult?.normalizedRequest && aiResult.normalizedRequest.trim()) {
+            fwdItem.requestText = aiResult.normalizedRequest.trim();
+          } else if (text && text.trim()) {
+            fwdItem.requestText = text.trim();
+          }
+        }
         try {
           const targetDept = fwdItem.dept;
           const targetChatId = fwdItem.chatId;
@@ -2560,6 +2958,27 @@ async function handleMessage(args: {
           // late_checkout orchestrator enum'unda YOK → erişilemez). Flag build-site'ta
           // strictly boolean → undefined ASLA bu dala düşemez (Risk 1). Davranış bugünküyle birebir.
           if (!fwdItem.createsSlaEvent) {
+            const isAllergyNotify = (fwdItem.rawDepartment ?? '').toLowerCase().trim() === 'allergy';
+            if (!isAllergyNotify) {
+              // ── BAGAJ / BELLSERVICE BILDIRIMI (SLA yok, buton yok, alerji DEGIL) ──
+              const bgRoom = persistentVerifiedGuest?.room_number ?? null;
+              const bgName = persistentVerifiedGuest
+                ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim()
+                : guestName;
+              const escBg = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const roomTxt = bgRoom ? `${escBg(bgRoom)} numaralı odada konaklayan ` : '';
+              const bagajHtml =
+                `🛎 <b>Bagaj Talebi</b>\n\n` +
+                `${roomTxt}<b>${escBg(bgName)}</b>, valizinin odasına bırakılmasını istiyor.\n\n` +
+                `⚠️ Lütfen oda numarasını sistemden teyit ederek bırakınız.`;
+              await tg.sendMessage({ chat_id: targetChatId, text: bagajHtml, parse_mode: 'HTML' });
+              console.log(`[bagaj-notify] Bagaj bildirimi gönderildi (SLA yok) [chatId=${deptChatIdForSla}]`);
+              await supa
+                .from('conversations')
+                .update({ last_intent: targetDept, last_forwarded_at: new Date().toISOString() })
+                .eq('id', conversationId);
+              continue;
+            }
             console.log(`[allergy-notify] Alerji bildirimi akışı — butonsuz, sla_events YOK [chatId=${deptChatIdForSla}]`);
 
             // (1) guest_allergens tablosuna kaydet (allergen_pending akışındaki mantıkla)
@@ -2690,6 +3109,44 @@ async function handleMessage(args: {
             aiIntentIdForItem,
           });
 
+          // ── BEYINCIK REFLEKS (forward katmani): cift SLA karti onleme ──────────────
+          // Ayni konusma + ayni departmanda HALA ACIK (yanitlanmamis+kapanmamis) talep
+          // varken, misafir ayni seyi tekrar yazinca IKINCI kart acma. Deterministik:
+          // acik event'in request_text'i ile yeni talep Jaccard>=0.5 ortusum -> ayni say,
+          // bu item'i atla. Dusuk ortusum (farkli konu) -> normal kart (talep KAYBOLMAZ).
+          const dedupNorm = (s: string): string[] =>
+            normalizeTr(String(s ?? ''))
+              .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+              .split(/\s+/)
+              .filter((w) => w.length >= 3);
+          const dedupWindowMs = 10 * 60 * 1000; // 10 dk: bu sure icindeki tekrar = ayni olay
+          const dedupSince = new Date(Date.now() - dedupWindowMs).toISOString();
+          const { data: openDupEvents } = await supa
+            .from('sla_events')
+            .select('id, request_text')
+            .eq('conversation_id', conversationId)
+            .eq('department_code', targetDept)
+            .is('responded_at', null)
+            .is('closed_at', null)
+            .gte('created_at', dedupSince)  // BEYINCIK: sadece SON 10 dk; eski terkedilmis kartlar yeni gercek talebi BOGMASIN
+            .order('created_at', { ascending: false })
+            .limit(5);
+          if (openDupEvents && openDupEvents.length > 0) {
+            const newSet = new Set(dedupNorm(fwdItem.requestText));
+            const isDuplicate = openDupEvents.some((ev) => {
+              const oldSet = new Set(dedupNorm(String(ev.request_text ?? '')));
+              if (newSet.size === 0 || oldSet.size === 0) return false;
+              let inter = 0;
+              for (const t of newSet) if (oldSet.has(t)) inter++;
+              const uni = new Set([...newSet, ...oldSet]).size;
+              return uni > 0 && inter / uni >= 0.5;
+            });
+            if (isDuplicate) {
+              console.log(`[dedup] Acik ayni talep var, ikinci kart atlandi [item: ${targetDept}] req="${fwdItem.requestText.slice(0, 60)}"`);
+              continue;
+            }
+          }
+
           const { data: slaEvent, error: slaErr } = await supa
             .from('sla_events')
             .insert({
@@ -2742,12 +3199,37 @@ async function handleMessage(args: {
             `📝 <b>Talep:</b> "${esc(fwdItem.requestText)}"\n` +
             `🕐 <b>Saat:</b> ${esc(trDateStr)}`;
 
+          // ── B1.1 overlimit: standart disi talepte vardiyadaki sorumlu adi ──
+          let overlimitStaffName = '';
+          if (aiResult?.overLimit) {
+            try {
+              const activeStaff = await getActiveStaffNow(supa, targetDept as any);
+              overlimitStaffName = activeStaff[0]?.full_name ?? '';
+            } catch (e) {
+              console.error('[overlimit] staff lookup failed', e instanceof Error ? e.message : e);
+            }
+          }
+
+          const greeting = overlimitStaffName ? `Sn. ${esc(overlimitStaffName)},\n\n` : '';
+          const overlimitHtml =
+            `⚠️ <b>Standart Disi Talep</b>\n\n` +
+            greeting +
+            roomLine +
+            `👤 <b>Misafir:</b> ${esc(guestFullNameForSla)}\n` +
+            `📝 <b>Talep:</b> "${esc(fwdItem.requestText)}"\n\n` +
+            `Standart hak (kisi basi): 1 banyo + 1 yuz + 1 ayak havlusu.\n` +
+            `Lutfen odadaki kisi sayisina gore degerlendirip misafire donus yapin.\n\n` +
+            `🕐 <b>Saat:</b> ${esc(trDateStr)}`;
+
+          const finalGroupHtml = aiResult?.overLimit ? overlimitHtml : groupMsgHtml;
+
           // ── Modül 11: Departman grubuna SLA butonlu mesaj gönder ──
           if (slaEvent) {
             const { messageId: slaMsgId, ok: slaOk } = await sendForwardWithSlaButtons({
               botToken,
               chatId: deptChatIdForSla,
-              html: groupMsgHtml,
+              html: finalGroupHtml,
+              variant: aiResult?.overLimit ? 'overlimit' : 'normal',
               slaEventId: slaEvent.id as string,
             });
             console.log(`[sla-forward] sent [item: ${targetDept}]`, { messageId: slaMsgId, ok: slaOk, deptChatIdForSla });
@@ -2760,6 +3242,39 @@ async function handleMessage(args: {
               console.log(`[sla] department message sent with buttons [item: ${targetDept}]. msgId=${slaMsgId}`);
             } else {
               console.error(`[sla-forward] sendForwardWithSlaButtons FAILED or no messageId [item: ${targetDept}]`, { slaOk, slaMsgId });
+              // BUG-2 FIX: forward basarisiz (ok:false / msgId yok) → oksuz SLA olusmasin.
+              // Az once insert edilen sla_events satirini geri al, yoksa cron 3 dk sonra
+              // "cevapsiz SLA" eskalasyonu tetikler (kart hicbir yere gitmedigi halde).
+              const { error: rollbackErr } = await supa
+                .from('sla_events')
+                .delete()
+                .eq('id', slaEvent.id as string);
+              if (rollbackErr) {
+                console.error(`[sla-forward] ROLLBACK FAILED [item: ${targetDept}] — oksuz SLA acik kalabilir`, { id: slaEvent.id, msg: rollbackErr.message });
+              } else {
+                console.log(`[sla-forward] ROLLBACK OK — oksuz sla_events silindi [item: ${targetDept}] id=${slaEvent.id}`);
+              }
+              // Gecersiz chat_id (chat not found) → yapilandirilabilir ALERT_CHAT_ID'ye uyari.
+              // tg.sendMessage OBJE alir (chat_id: number|string); env string'i dogrudan gecilir.
+              const alertChatId = process.env.ALERT_CHAT_ID;
+              if (alertChatId) {
+                try {
+                  await tg.sendMessage({
+                    chat_id: alertChatId,
+                    text:
+                      `⚠️ DIKKAT: Departman grubuna ulasilamadi (chat not found).\n` +
+                      `Departman: ${targetDept}\n` +
+                      `Hedef chat_id: ${deptChatIdForSla}\n` +
+                      `Misafir talebi iletilEMEDI. Lutfen elle yonlendirin.\n\n` +
+                      `Talep: ${fwdItem.requestText}`,
+                  });
+                  console.log(`[sla-forward] ALERT gonderildi -> ${alertChatId} [item: ${targetDept}]`);
+                } catch (alertErr) {
+                  console.error(`[sla-forward] ALERT gonderilemedi:`, alertErr);
+                }
+              } else {
+                console.warn(`[sla-forward] ALERT_CHAT_ID tanimsiz, uyari atlanIyor [item: ${targetDept}]`);
+              }
             }
           } else {
             // sla_events oluşturulamadı — butonlu olmayan fallback mesaj gönder

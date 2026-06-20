@@ -50,4 +50,8 @@ export class TelegramClient {
   }> {
     return this.call('getWebhookInfo');
   }
+
+  async getChat(params: { chat_id: string | number }) {
+    return this.call<{ id: number; type: string; title?: string }>('getChat', params);
+  }
 }

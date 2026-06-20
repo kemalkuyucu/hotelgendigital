@@ -18,13 +18,17 @@ type NavItemKey =
   | 'dashboard'
   | 'fo-list'
   | 'fo-upload'
+  | 'fo-menu'
+  | 'spa-menu'
   | 'fo-history'
   | 'fo-rez-links'
+  | 'fo-fiyat'
   | 'bilgi-otel'
   | 'bilgi-tabani'
   | 'belgeler'
   | 'cevre-kesfi'
   | 'toplanti-salonlari'
+  | 'eskalasyon'
   | 'departman-personeli'
 
 interface NavItem {
@@ -57,6 +61,19 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
   const router = useRouter()
   const [loggingOut, setLoggingOut] = useState(false)
 
+  // Akordiyon: hangi alt-grup bölümü açık (tek seferde bir tane).
+  // Default: aktif sayfanın ait olduğu bölüm; eşleşme yoksa Ön Büro.
+  const sectionForPath = (p: string): string | null => {
+    if (p.includes('/menu-yukle')) return 'fb'
+    if (p.includes('/spa-yukle')) return 'spa'
+    if (p.includes('/bilgi-yonetimi')) return 'bilgi'
+    if (p.includes('/departman-personeli')) return 'personel'
+    if (p.includes('/front-office') || p.includes('/reservation-links') || p.includes('/fiyat-yukle')) return 'front-office'
+    return null
+  }
+  const [openSection, setOpenSection] = useState<string | null>(() => sectionForPath(pathname) ?? 'front-office')
+  const toggleSection = (id: string) => setOpenSection((prev) => (prev === id ? null : id))
+
   const allowedDepts = getAllowedDepartments(adminRole)
 
   // Ana nav: Dashboard + departmanlar (Misafirler kaldırıldı)
@@ -71,12 +88,23 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
 
   // Ön Büro alt menü (sadece hotel_owner ve front_office_manager)
   const showFrontOffice = FRONT_OFFICE_ROLES.includes(adminRole)
+  const showFbMenu = adminRole === 'hotel_owner' || adminRole === 'fb_manager'
+  const showSpaMenu = adminRole === 'hotel_owner' || adminRole === 'spa_manager'
   const showPersonel = PERSONEL_ROLES.includes(adminRole)
   const frontOfficeItems: NavItem[] = [
     { key: 'fo-list',      label: 'In-House Listesi',     href: `/hotel-admin/${slug}/front-office`,              isSubItem: true },
     { key: 'fo-upload',   label: 'Excel Yükle',           href: `/hotel-admin/${slug}/front-office/upload`,       isSubItem: true },
     { key: 'fo-history',  label: 'Bildirim Geçmişi',      href: `/hotel-admin/${slug}/front-office/history`,      isSubItem: true },
     { key: 'fo-rez-links',label: '🔗 Rezervasyon Linkleri', href: `/hotel-admin/${slug}/dashboard/reservation-links`, isSubItem: true },
+    { key: 'fo-fiyat',    label: '🏷️ Fiyat Yükle',          href: `/hotel-admin/${slug}/fiyat-yukle`,                isSubItem: true },
+  ]
+
+  const fbMenuItems: NavItem[] = [
+    { key: 'fo-menu', label: '🍽️ Menü Yükle', href: `/hotel-admin/${slug}/menu-yukle`, isSubItem: true },
+  ]
+
+  const spaMenuItems: NavItem[] = [
+    { key: 'spa-menu', label: '🧖 Hizmet Listesi', href: `/hotel-admin/${slug}/spa-yukle`, isSubItem: true },
   ]
 
   // Bilgi Yönetimi alt menü (sadece hotel_owner)
@@ -87,6 +115,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
     { key: 'belgeler',           label: 'Belgeler',               href: `/hotel-admin/${slug}/bilgi-yonetimi/belgeler`,             isSubItem: true },
     { key: 'cevre-kesfi',        label: 'Çevre Keşfi',           href: `/hotel-admin/${slug}/bilgi-yonetimi/cevre-kesfi`,          isSubItem: true },
     { key: 'toplanti-salonlari', label: '🏛️ Toplantı Salonları', href: `/hotel-admin/${slug}/bilgi-yonetimi/toplanti-salonlari`,   isSubItem: true },
+    { key: 'eskalasyon', label: 'Eskalasyon', href: `/hotel-admin/${slug}/bilgi-yonetimi/eskalasyon`, isSubItem: true },
   ]
 
   async function handleLogout() {
@@ -112,20 +141,44 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
     transition: 'all 0.15s',
   })
 
-  const sectionLabel = (emoji: string, text: string) => (
-    <div style={{ marginTop: '12px', marginBottom: '4px', padding: '0 6px' }}>
-      <p style={{
-        fontSize: '10px',
-        fontWeight: 700,
-        color: '#64748b',
-        textTransform: 'uppercase',
-        letterSpacing: '0.08em',
-        margin: 0,
-      }}>
-        {emoji} {text}
-      </p>
-    </div>
-  )
+  // Tıklanabilir akordiyon başlığı: emoji + text + chevron (▶ kapalı / ▼ açık)
+  const sectionHeader = (emoji: string, text: string, id: string) => {
+    const isOpen = openSection === id
+    return (
+      <button
+        onClick={() => toggleSection(id)}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+        style={{
+          marginTop: '12px',
+          marginBottom: '4px',
+          padding: '6px 8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          background: 'transparent',
+          border: 'none',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          transition: 'background 0.15s',
+        }}
+      >
+        <span style={{
+          fontSize: '10px',
+          fontWeight: 700,
+          color: '#64748b',
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+        }}>
+          {emoji} {text}
+        </span>
+        <span style={{ fontSize: '9px', color: '#64748b', lineHeight: 1 }}>
+          {isOpen ? '▼' : '▶'}
+        </span>
+      </button>
+    )
+  }
 
   return (
     <div
@@ -198,8 +251,38 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
           {/* 🏨 Ön Büro Bölümü — sadece hotel_owner ve front_office_manager */}
           {showFrontOffice && (
             <>
-              {sectionLabel('🏨', 'Ön Büro')}
-              {frontOfficeItems.map((item) => {
+              {sectionHeader('🏨', 'Ön Büro', 'front-office')}
+              {openSection === 'front-office' && frontOfficeItems.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                return (
+                  <Link key={item.key} href={item.href} style={linkStyle(isActive, true)}>
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </>
+          )}
+
+          {/* 🍽️ F&B Bölümü — sadece hotel_owner ve fb_manager */}
+          {showFbMenu && (
+            <>
+              {sectionHeader('🍽️', 'F&B', 'fb')}
+              {openSection === 'fb' && fbMenuItems.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                return (
+                  <Link key={item.key} href={item.href} style={linkStyle(isActive, true)}>
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </>
+          )}
+
+          {/* 🧖 SPA Bölümü — sadece hotel_owner ve spa_manager */}
+          {showSpaMenu && (
+            <>
+              {sectionHeader('🧖', 'SPA', 'spa')}
+              {openSection === 'spa' && spaMenuItems.map((item) => {
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                 return (
                   <Link key={item.key} href={item.href} style={linkStyle(isActive, true)}>
@@ -213,24 +296,26 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
           {/* 👥 Personel Yönetimi — hotel_owner + tüm departman müdürleri */}
           {showPersonel && (
             <>
-              {sectionLabel('👥', 'Personel')}
-              <Link
-                href={`/hotel-admin/${slug}/dashboard/departman-personeli`}
-                style={linkStyle(
-                  pathname.startsWith(`/hotel-admin/${slug}/dashboard/departman-personeli`),
-                  true
-                )}
-              >
-                {adminRole === 'hotel_owner' ? '👁️ Departman Çalışanları' : '👥 Departman Çalışanları'}
-              </Link>
+              {sectionHeader('👥', 'Personel', 'personel')}
+              {openSection === 'personel' && (
+                <Link
+                  href={`/hotel-admin/${slug}/dashboard/departman-personeli`}
+                  style={linkStyle(
+                    pathname.startsWith(`/hotel-admin/${slug}/dashboard/departman-personeli`),
+                    true
+                  )}
+                >
+                  {adminRole === 'hotel_owner' ? '👁️ Departman Çalışanları' : '👥 Departman Çalışanları'}
+                </Link>
+              )}
             </>
           )}
 
           {/* 📚 Bilgi Yönetimi — sadece hotel_owner */}
           {showBilgiYonetimi && (
             <>
-              {sectionLabel('📚', 'Bilgi Yönetimi')}
-              {bilgiItems.map((item) => {
+              {sectionHeader('📚', 'Bilgi Yönetimi', 'bilgi')}
+              {openSection === 'bilgi' && bilgiItems.map((item) => {
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                 return (
                   <Link key={item.key} href={item.href} style={linkStyle(isActive, true)}>

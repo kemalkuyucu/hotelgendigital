@@ -21,6 +21,7 @@ import {
 } from './message-types';
 // Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
 import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { dispatchToDepartmentBrain } from '@/lib/ai/department-brains';
 
 export interface ConversationContextMessage {
   direction: 'inbound' | 'outbound';
@@ -66,6 +67,9 @@ export interface ClassifyAndRespondOutput {
   prompt_tokens: number;
   completion_tokens: number;
   latency_ms: number;
+  overLimit?: boolean;
+  reservationNotify?: boolean;
+  normalizedRequest?: string;
   raw_response: string;
 }
 
@@ -103,9 +107,19 @@ export async function classifyAndRespond(
   if (safetyResult.matched && !allergyOverridesHealthMedical) {
     // Safety kural tetiklendi — hafif, odakli bir AI cagrisi yap
     const safetySystemPrompt =
-      `Sen ${input.hotelName} otelinin asistanisin. Asagidaki kurali AYNEN uygula, asla saptirma:\n\n` +
+      `=== DIL KURALI — EN ONCELIKLI ===\n` +
+      `ADIM 0: Misafirin mesajinin dilini tespit et. Sonra TUM CEVABINI o dilde yaz. Bu kural diger her seyin ustundedir.\n` +
+      `Diller ve ornek ton:\n` +
+      `- Turkce: "Maalesef bu konuda yardimci olamiyorum."\n` +
+      `- English: "I'm sorry, but I can't help with that."\n` +
+      `- Deutsch: "Es tut mir leid, dabei kann ich nicht helfen."\n` +
+      `- Русский: "К сожалению, я не могу помочь с этим."\n` +
+      `- العربية: "آسف، لا أستطيع المساعدة في ذلك."\n` +
+      `- Français: "Desole, je ne peux pas vous aider avec cela."\n` +
+      `Misafir hangi dilde yazdiysa CEVAP O DILDE olacak. Otel adi disinda asla baska dile gecme.\n\n` +
+      `Sen ${input.hotelName} otelinin asistanisin. Asagidaki kurali uygula:\n\n` +
       `${safetyResult.aiInstruction}\n\n` +
-      `DIL KURALI: Sadece Turkce alfabesi kullan.`;
+      `HATIRLATMA: Cevabini misafirin yazdigi dilde yaz. Yukaridaki kural Turkce yazili olsa bile, cevabin misafirin dilinde olmali.`;
 
     const safetyStartedAt = Date.now();
     const safetyResponse = await client.messages.create({
@@ -219,9 +233,18 @@ export async function classifyAndRespond(
   try {
     parsed = JSON.parse(cleaned) as typeof parsed;
   } catch (err) {
-    throw new Error(
-      `Anthropic JSON parse hatası: ${err instanceof Error ? err.message : 'unknown'}. Raw: ${rawText.slice(0, 200)}`
+    // FALLBACK: Model JSON yerine duz metin dondurduyse (uzun fiyat/rezervasyon cevaplarinda olur)
+    // patlatma — ham metni misafire cevap yap, HICBIR departmana forward etme.
+    console.warn(
+      `[classify] JSON parse fallback devrede. Ham metin reply_text yapildi. Hata: ${err instanceof Error ? err.message : 'unknown'}. Raw: ${rawText.slice(0, 120)}`
     );
+    parsed = {
+      reply_text: rawText,
+      intents: [],
+      confidence: 0.5,
+      reasoning: 'JSON parse fallback - ham metin misafire iletildi, forward yok',
+      answered_from_knowledge: true,
+    };
   }
 
   // Yeni format öncelikli, legacy fallback
@@ -285,6 +308,88 @@ export async function classifyAndRespond(
       `[allergy-safety-net] Keyword override → allergy intent eklendi (LLM kaçırdı). msg="${input.guestMessage.slice(0, 60)}"`,
     );
   }
+
+    // ── BAGAJ / BELLSERVICE ON BURO OVERRIDE (deterministik) ────────────────────
+    // Bagaj/valiz/bavul tasima talebi islevsel olarak ON BURO (bellservice) isidir;
+    // LLM bunu bazen housekeeping etiketliyor → yanlis departman beynine dusuyordu.
+    // Yonlendirme karari LLM'e tek basina birakilmaz (havlu/alerji dersi). Ham metinde
+    // bagaj anahtar kelimesi varsa, ilgili intent'in DEPARTMANI front_office'e zorlanir;
+    // shouldForward + requestText korunur. Yeni intent EKLENMEZ (cift kart olmasin) —
+    // mevcut intent yerinde guncellenir. Allergy intent'lerine DOKUNULMAZ.
+    const BAGGAGE_KEYWORDS = ['bagaj', 'valiz', 'bavul', 'baggage', 'luggage'];
+    const hasBaggageKeyword = BAGGAGE_KEYWORDS.some((kw) => normalizedGuestMsg.includes(kw));
+    if (hasBaggageKeyword) {
+      const foRouting = routeIntentToDepartment('front_office');
+      let redirected = false;
+      for (const it of classifiedIntents) {
+        const rd = (it.rawDepartment ?? '').toLowerCase().trim();
+        if (rd === 'allergy') continue;
+        if (it.department !== 'front_office' || it.createsSlaEvent) {
+          it.department = 'front_office';
+          it.shouldForward = true;
+          it.messageType = 'BILDIRIM';
+          it.withButtons = false;
+          it.createsSlaEvent = false;
+          redirected = true;
+        }
+      }
+      if (redirected) {
+        console.log(
+          `[baggage-override] Bagaj talebi front_office'e yonlendirildi. msg="${input.guestMessage.slice(0, 60)}"`,
+        );
+      }
+    }
+
+    // ── B1.1 KANCA (bayrak kapali — davranis degismez) ──────────────────────────
+    // DEPARTMENT_BRAINS_ENABLED=false oldugu surece dispatchToDepartmentBrain her
+    // zaman { handled: false } doner; akis asagidaki return'e devam eder.
+    // Bayrak acildiginda buradan per-dept beyin devreye girer.
+    const primaryIntent = classifiedIntents[0];
+    if (primaryIntent) {
+      const brainResult = await dispatchToDepartmentBrain({
+        department: primaryIntent.department,
+        requestText: primaryIntent.requestText,
+        guestMessage: input.guestMessage,
+        hotelName: input.hotelName,
+        hotelContext: hotelContext as Record<string, unknown> | null,
+        conversationContext: (input.context ?? []).map((m) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.text ?? '' })),
+      });
+      if (brainResult.handled && brainResult.replyText) {
+        return {
+          classifiedIntents,
+          department: primaryIntent.department,
+          shouldForward:
+            primaryIntent.department === 'spa'
+              ? false
+              : primaryIntent.department === 'housekeeping' &&
+                brainResult.hasQuantity === false &&
+                brainResult.overLimit !== true
+              ? false
+              : primaryIntent.department === 'fb' &&
+                brainResult.isInfoOnly === true
+              ? false
+              : primaryIntent.department === 'animation' &&
+                brainResult.isInfoOnly === true
+              ? false
+              : primaryIntent.shouldForward,
+          confidence: 1,
+          reasoning: 'department_brain',
+          response_to_guest: brainResult.replyText,
+          answered_from_knowledge: false,
+          safetyTriggered: false,
+          safetyCategory: null,
+          model: 'department-brain',
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          latency_ms: 0,
+          overLimit: brainResult.overLimit ?? false,
+          reservationNotify: brainResult.reservationNotify ?? false,
+          normalizedRequest: brainResult.normalizedRequest,
+          raw_response: brainResult.replyText,
+        };
+      }
+    }
+    // ── B1.1 KANCA SONU ─────────────────────────────────────────────────────────
 
   // Validasyon
   if (typeof responseToGuest !== 'string' || responseToGuest.length === 0) {

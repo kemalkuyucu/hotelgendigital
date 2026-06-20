@@ -135,8 +135,8 @@ export default function PerplexityDiscoverySubTab() {
 
   return (
     <div className="form-card form-card--wide perplexity-subtab">
-      <h2 className="subtab-title">Çevre Keşfi</h2>
-      <p className="subtab-description">
+      <h2 className="subtab-title" style={{ color: '#f1f5f9' }}>Çevre Keşfi</h2>
+      <p className="subtab-description" style={{ color: '#9ca3af' }}>
         Otel adresine göre çevredeki mekanları otomatik bul. Sonuçlar 7 gün
         önbelleklenir; gerektiğinde sabitleyebilir veya yeniden sorgulayabilirsin.
       </p>

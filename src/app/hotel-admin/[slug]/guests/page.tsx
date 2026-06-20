@@ -68,7 +68,7 @@ export default async function GuestsPage({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
         <div>
-          <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>🛎️ Misafirler</h1>
+          <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#f1f5f9', margin: '0 0 4px' }}>🛎️ Misafirler</h1>
           <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>In-house misafir listesi ve doğrulama yönetimi</p>
         </div>
         <Link

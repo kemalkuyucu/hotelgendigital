@@ -4,6 +4,8 @@ import { testBridge } from '@/lib/tenant/test-bridge'
 import { getDemoHotelSupabase } from '@/lib/supabase-client'
 import { runSlaCheck } from '@/lib/sla/check-runner'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { runDeptChatHealthCheck } from '@/lib/telegram/dept-chat-health';
+import { runWebhookHealthCheck } from '@/lib/telegram/webhook-health';
 
 export async function GET(req: NextRequest) {
   // Cron secret kontrolü
@@ -40,6 +42,8 @@ export async function GET(req: NextRequest) {
   // Demo hotel için doğrudan getDemoHotelSupabase; diğerleri için bridge.
   // Bu yaklaşım Vercel Hobby plan cron limitini (2) aşmadan SLA scan yapar.
   let slaResults: { hotelSlug: string; eventId: string; action: string }[] = []
+  let deptChatResults = { checked: 0, invalid: 0, details: [] as Array<{ hotel: string; code: string; chatId: string }> }
+  let webhookResults = { checked: 0, repaired: 0, failed: 0, details: [] as Array<{ hotel: string; action: string; reason: string }> }
   try {
     const hotelEntries = hotels.map((h) => ({
       id: h.id as string,
@@ -62,6 +66,30 @@ export async function GET(req: NextRequest) {
     }
 
     slaResults = await runSlaCheck(hotelEntries, getHotelSupabase)
+
+    // Dept chat_id sağlık kontrolü — getHotelSupabase aynı scope'ta yeniden kullanılır.
+    try {
+      const deptHotelEntries = hotels.map((h) => ({
+        id: h.id as string,
+        name: h.name as string,
+        slug: (h.slug ?? h.name) as string,
+      }))
+      deptChatResults = await runDeptChatHealthCheck(deptHotelEntries, getHotelSupabase)
+    } catch (deptErr) {
+      console.error('[health-check] dept chat_id check error:', deptErr)
+    }
+
+    // Webhook saglik kontrolu + otomatik onarim
+    try {
+      const webhookHotelEntries = hotels.map((h) => ({
+        id: h.id as string,
+        name: h.name as string,
+        slug: (h.slug ?? h.name) as string,
+      }))
+      webhookResults = await runWebhookHealthCheck(webhookHotelEntries)
+    } catch (whErr) {
+      console.error('[health-check] webhook check error:', whErr)
+    }
   } catch (slaErr) {
     console.error('[health-check] SLA check error:', slaErr)
   }
@@ -77,5 +105,7 @@ export async function GET(req: NextRequest) {
       processed: slaResults.length,
       results: slaResults,
     },
+    deptChat: deptChatResults,
+    webhook: webhookResults,
   })
 }

@@ -71,7 +71,7 @@ export default function EditGuestPage({ params }: { params: Promise<{ slug: stri
     <div style={{ padding: '40px', fontFamily: "'Inter', system-ui, sans-serif", maxWidth: '700px' }}>
       <div style={{ marginBottom: '28px' }}>
         <a href={`/hotel-admin/${slug}/guests`} style={{ color: '#6366f1', textDecoration: 'none', fontSize: '13px' }}>← Misafir Listesine Dön</a>
-        <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '12px 0 4px' }}>Misafir Düzenle</h1>
+        <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#f1f5f9', margin: '12px 0 4px' }}>Misafir Düzenle</h1>
         <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Oda {guest.room_number} — {guest.last_name}</p>
       </div>
 
