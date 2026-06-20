@@ -1118,7 +1118,7 @@ export default function DepartmanPersonelClient({
                       <p style={{ color: '#475569', fontSize: '15px', fontWeight: 600, margin: '0 0 6px' }}>
                         {staff.length === 0 ? 'Henüz personel eklenmemiş' : 'Filtreye uyan personel yok'}
                       </p>
-                      <p style={{ color: '#334155', fontSize: '13px', margin: 0 }}>
+                      <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>
                         {staff.length === 0
                           ? (isOwner ? 'Departman müdürleri personel ekleyebilir.' : '"+ Personel Ekle" butonunu kullanarak başlayın.')
                           : 'Filtreleri değiştirerek tekrar deneyin.'}
@@ -1210,7 +1210,7 @@ export default function DepartmanPersonelClient({
                           {formatDate(row.created_at)}
                         </span>
                         {row.created_by && (
-                          <span style={{ display: 'block', color: '#334155', fontSize: '11px', marginTop: '2px' }}>
+                          <span style={{ display: 'block', color: '#94a3b8', fontSize: '11px', marginTop: '2px' }}>
                             {row.created_by}
                           </span>
                         )}
