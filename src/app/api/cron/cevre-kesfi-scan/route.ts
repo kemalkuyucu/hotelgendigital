@@ -6,6 +6,9 @@ import { queryPerplexity } from '@/lib/perplexity/client'
 import { PERPLEXITY_CATEGORIES, getCategoryByTag } from '@/lib/perplexity/categories'
 import type { InterestTag } from '@/lib/perplexity/types'
 
+// Fluid compute (Hobby) ile 300sn'ye kadar calisabilir — 3 otel x 10 kategori Perplexity icin gerekli
+export const maxDuration = 300
+
 /**
  * Cevre Kesfi otomatik tarama cron'u — ADIM A2 (TAM tarama + insert)
  * cron-job.org Mon+Fri tetikler. force-refresh: her calismada 10 kategoriyi yeniden tarar.
