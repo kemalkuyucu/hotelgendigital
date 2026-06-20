@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCentralSupabase } from '../supabase-client';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { isPharmacyDutyTime, buildPharmacyDutyBlock } from '@/lib/perplexity/pharmacy-duty';
 
 export type HotelContextOptions = {
   /** Hangi kategoride çevre bilgisi gerekli? null = hiçbiri (genel sohbet) */
@@ -126,7 +127,7 @@ export async function buildHotelContext(
   ] = await Promise.all([
     fetchKnowledgeFacts(supabase),
     fetchDocuments(supabase, options.departmentHint),
-    fetchNearbyPlaces(supabase, options.perplexityInterestHint),
+    fetchNearbyPlaces(supabase, options.perplexityInterestHint, settingsRow?.address),
     fetchSafetyRules(),
     fetchMenuItems(supabase),
     fetchSpaServices(supabase),
@@ -375,8 +376,14 @@ async function fetchDocuments(
 async function fetchNearbyPlaces(
   supabase: SupabaseClient,
   interestHint?: string | null,
+  hotelAddress?: string | null,
 ): Promise<string> {
   if (!interestHint) return '';
+
+  // NOBETCI ECZANE OVERRIDE (deterministik): eczane + nobet saati ise cache yerine guncel link
+  if (interestHint === 'pharmacy' && isPharmacyDutyTime()) {
+    return buildPharmacyDutyBlock(hotelAddress);
+  }
 
   const { data } = await supabase
     .from('perplexity_discoveries')
