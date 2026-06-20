@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
+import MenuManager from './_menu-manager';
 
 interface ParseResult {
   headers: string[];
@@ -254,6 +255,9 @@ export default function MenuUploadPage() {
           <button onClick={reset} style={ghostBtn}>Tekrar Dene</button>
         </div>
       )}
+
+      {/* Mevcut menü yönetimi (akordiyon + CRUD) */}
+      <MenuManager slug={slug} />
     </div>
   );
 }

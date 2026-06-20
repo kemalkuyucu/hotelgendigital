@@ -63,3 +63,5 @@ scripts/
 .env*.local
 __*
 scratch_*
+
+.env.test.ps1

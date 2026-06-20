@@ -1,0 +1,149 @@
+[33m1b16ff4[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mhotelgen-v4[m[33m, [m[1;31morigin/hotelgen-v4[m[33m)[m feat: webhook health check with auto-repair in daily cron
+[33m04d4669[m fix: JSON parse fallback - raw text to guest, no forward, no crash
+[33m5a47820[m feat: room_rates excel upload panel in front office
+[33m73d70ca[m feat: split room_rates into konaklama and gunubirlik sections
+[33m2b52cdb[m fix: reservation links inside reply_text to prevent JSON parse crash
+[33m708a4d9[m feat: reservation self-service - no forward, ordered links, no card request
+[33m447e4c8[m feat: room_rates fetch + reservation link injection (Yol B)
+[33ma7dcf7a[m feat: spa services excel upload panel with sidebar link and missing-price reception fallback
+[33mc60a7dc[m feat: menu upload moved to F&B section with sidebar layout, fb_manager access and redesigned dark-theme page
+[33m08c2857[m feat: add room-service menu upload link to front-office sidebar
+[33m723cb24[m feat: spa reservation optional contact collection (phone/mail) forwarded to spa group
+[33m6e73e98[m feat: spa_services fetch injected into knowledgeFacts (Way B twin of menu)
+[33m22e1594[m feat: menu offer callback handler show/no
+[33maeb0f42[m feat: graduated menu offer instead of full list dump
+[33m2c80130[m feat: reject fb order when item not in menu
+[33m67d5263[m feat: fb order confirmation flow with confirm/cancel callback
+[33m34cfcaf[m[33m ([m[1;33mtag: [m[1;33mv4-faz2-before-order-confirm[m[33m)[m feat: menu excel upload - parse, import, upload page
+[33m4d31dde[m[33m ([m[1;33mtag: [m[1;33mv4-faz2-fb-menu-working[m[33m, [m[1;33mtag: [m[1;33mv4-faz2-before-menu-excel[m[33m)[m fix: allergen pending - skip short-circuit for unrelated questions
+[33m3978218[m[33m ([m[1;33mtag: [m[1;33mv4-faz2-before-allergen-fix[m[33m)[m wip: add Anthropic import and allergen helper before allergen fix
+[33md63cf15[m feat: fetchMenuItems - room-service menu into knowledgeFacts
+[33m7635c22[m feat: add dept chat_id health check to daily cron with ALERT notification
+[33m7e1db1b[m feat: add getChat method to TelegramClient for chat_id validation
+[33m9800ae2[m redeploy for alert env preview
+[33md6a253d[m BUG-1: alert to ALERT_CHAT_ID when dept chat not found
+[33m502b47a[m fix(sla): rollback orphan sla_events when forward send fails
+[33m5450207[m feat(animation): route reservation requests to guest_relation in buildForwardableItems
+[33ma2a54fb[m feat: animation brain info-only questions do not forward, only actions notify
+[33mbf34cff[m chore: remove temporary fb debug log
+[33mcfb0d66[m debug: temporary fb brain output log
+[33m47d03b6[m fix: re-verify gate uses normalizeTr so turkish char diff does not retrigger verification
+[33m9541cb2[m feat: fb brain info-only questions do not forward, only actions and orders notify
+[33m05a8529[m feat: spa brain warm reservation message with one-on-one guidance and closing
+[33ma5c35ee[m feat: spa brain must never confirm reservation times, forwards to spa team
+[33m0e98b9e[m feat: embed conversation history and anti-hallucination guard in 5 department brains
+[33m18a553b[m remove diag2 log
+[33m5502313[m verification gate must not depend on shouldForward for unverified guests
+[33m85c4663[m add diag2 log for talep path recognition
+[33mae87a4e[m housekeeping brain must not mimic reception approval phrasing from history
+[33m5a98438[m graduated verification fail tone soft on first attempt warning on second
+[33mdd857ac[m remove temporary diag log and diag script
+[33m00c75c2[m add temporary diag log in part c recognition
+[33m2c45257[m guard inhouse approve against duplicate telegram stamp and warn on room name conflict
+[33mba8f5cf[m fix conversation context never reaching brains and embed history in housekeeping
+[33m6573c6e[m orchestrator keeps housekeeping context across multi-turn towel requests
+[33m80f400a[m housekeeping card shows normalized quantity request not raw last message
+[33m52df158[m wire reception approval into verification no-match and pgm callback
+[33m257187b[m add reception approval flow for unverified inhouse guests
+[33m9f02aeb[m fix: suppress housekeeping forward until quantity is known (no premature SLA card)
+[33mf16e369[m feat: add no-greeting rule to remaining 5 department brains (tone consistency)
+[33m827bb9a[m feat: align front_office brain tone with technical (no identity ask, no greeting, natural tone)
+[33m909f6cf[m[33m ([m[1;33mtag: [m[1;33mv4-beyincik-dedup-tone-stable[m[33m)[m fix: dedup only within 10min window so old abandoned cards do not suppress new requests
+[33ma4a6fd7[m fix: technical brain natural tone, no advice or fake phrases (no sahiplen/ziyaret/instructions)
+[33me5d3c9c[m fix: pin single-intent SLA card text to raw guest message (no orchestrator merge leak)
+[33mad7bbbc[m fix: technical brain no greeting repeat and no asking room/phone (guest already verified)
+[33m4daeded[m[33m ([m[1;33mtag: [m[1;33mv4-beyincik-dedup-reverify-stable[m[33m)[m fix: skip re-verify when message contains embedded request (verified guests not bounced)
+[33m629ca9d[m fix: dedup open SLA cards per conversation and department (deterministic)
+[33mbbbc1dc[m feat: add beyincik reflex skeleton (pass-through, no behavior change)
+[33m57da996[m align safety language with orchestrator few-shot pattern
+[33m1950cec[m force safety reply language detection
+[33m252f801[m safety reply mirrors guest language
+[33m056a89b[m fix: add foreign-language examples to force Turkish request_text
+[33mbb5e9be[m chore: trigger redeploy
+[33m2df5cf9[m fix: force request_text to Turkish for staff cards (guest reply stays in guest language)
+[33m836ae9a[m fix: language mirror for 5 brains (reply in guest language, not always Turkish)
+[33ma5ef199[m feat: add fb department brain (Sonnet, allergen-safe, info-only plus room service forward)
+[33m82fff56[m feat: add guest_relation department brain (Sonnet, empathy, no-compensation guard, language mirror)
+[33mc3a00cb[m feat(v4): add technical department brain (haiku medium, operational)
+[33m8fcc2c9[m chore(fo): remove temp debug logs
+[33m25df2eb[m debug(fo): log persistentVerifiedGuest state
+[33m623e393[m debug(fo): temp log on re-verify branch
+[33ma9aeee7[m fix(fo): few-shot example to stop redundant confirm question
+[33m128db8d[m fix(fo): identity-based front office prompt, drop regex strip
+[33m509519e[m chore: trigger redeploy
+[33m6446085[m fix(fo): strip redundant forward-confirm question
+[33meab6d59[m chore: trigger redeploy
+[33m5be0fae[m feat(fo): baggage as notification not sla, soft closing
+[33mf1943ce[m chore: trigger redeploy
+[33ma3c2202[m feat(brains): upgrade front office to sonnet for reasoning
+[33m24c43f2[m chore: trigger redeploy
+[33m089e613[m fix(brains): front office close after id confirm no extra question
+[33m3f2cec7[m chore: trigger redeploy
+[33mc7fc192[m feat(routing): deterministic baggage to front office override
+[33m43e7a2f[m chore: trigger redeploy
+[33md2d974d[m chore: trigger redeploy
+[33m42ceed8[m fix(brains): front office history as plain text not message array
+[33m5ce266d[m feat(brains): pass conversation history to front office brain
+[33m11b7d59[m chore: trigger redeploy
+[33m4760ee9[m fix(brains): front office welcome and confirm flow
+[33mb3ff00a[m fix(sla): polite guest salutation on slastate confirm
+[33mbc6b43d[m fix(brains): front office operational tone no mail deflection
+[33m3a4b300[m feat(brains): front office department brain
+[33m02ee5b8[m feat: explanation column, reception-resolved badge, CSV export
+[33m51d9bd6[m feat: include reception explanation in escalation API
+[33m9ca6a6c[m feat: auto system note when reception misses SLA deadline
+[33md597ffb[m style: lighten escalation page title for dark theme
+[33m649f5b3[m chore: trigger redeploy for escalation dark theme
+[33m75b34ab[m style: dark theme colors for escalation panel readability
+[33m8562bd0[m feat: add escalation tab to bilgi-yonetimi nav
+[33m24fcfaa[m feat: escalation panel page and client subtab
+[33m0562ea1[m feat: escalation report API route (hotel-admin, sla_events problem-only)
+[33m320cb00[m DEVIR_NOTU: B1.1 spa Adim 2 CANLI + webhook secret dersi + bot handle duzeltmesi
+[33mb52e09b[m B1.1 spa Adim 2 - spa bildirimini DM yerine spa grubuna gonder
+[33me5ef8c7[m B1.1 spa Adim 2 - cift spa bildirimini kaldir (skipForward kolu kaliyor)
+[33m7aebb30[m spa Adim 2 - debug satirlari temizlendi
+[33mb682b3b[m B1.1 spa Adim 2 - bildirimi skipForward yoluna tasi
+[33m6cdc53d[m debug spa notify diagnosis
+[33m4c7ded2[m B1.1 spa Adim 2 - rezervasyon niyeti spa sorumlusuna bildirim
+[33md7336a5[m B1.1: spa is information-only - never forward to SLA channel
+[33m7573e7f[m B-8: spa brain - haiku loose low reasoning template no overlimit
+[33mcaf4bc9[m B-7c: HK overlimit deterministic in code - 1-2 normal 3plus overlimit
+[33m255491e[m B-7b: HK towel threshold - 1-2 per type normal only clearly high overlimit
+[33mcbe0f1c[m B-7: HK brain closing rule - no emoji short warm filled close
+[33m8ae0d0f[m B1.1 route overlimit forwards to standart disi card single button remove debug
+[33ma72ac80[m B1.1 add overlimit variant single contacted button
+[33mfce6723[m B1.1 add contacted response branch for over-request cards
+[33m2ac1a88[m B1.1 propagate overLimit to output add temp debug log
+[33m9f4d30c[m B1.1 HK brain prioritize over-request gate before clarification
+[33m1bac705[m B1.1 HK brain emit overLimit signal via sentinel
+[33m388b928[m B1.1 HK brain towel entitlement rule and over-request polite reply guest side
+[33ma44c9ea[m B1.1 brain handled keeps intent forward decision, remove duplicate dispatch
+[33m8c9d812[m B1.1 brain reply does not override forward decision
+[33m961f5e2[m B1.1 dispatch department brain in persistentVerifiedGuest branch
+[33m329fbdd[m B1.1 housekeeping brain added to registry and dispatcher
+[33m841aea6[m B1.1 animation brain: narrow hotelContext to relevant text fields
+[33mcce1b1c[m B1.1 cleanup: remove temporary debug logs (animation brain verified live)
+[33m8fa7e50[m tmp debug: log dispatch entry
+[33m2135e8f[m tmp debug: log primaryIntent department
+[33m8e0fce5[m tmp debug: log hotelContext keys
+[33mcbbd831[m B1.1 animation brain: pass hotelContext for phone/address access
+[33m2f733ef[m B1.1 flag: enable department brains (animation live)
+[33m92f1a43[m B1.1 hook: return brain reply when handled=true (flag still off)
+[33m48b43c1[m B1.1 animation brain: add runAnimationBrain with Haiku (flag still off)
+[33ma388978[m B1.1 registry: add animation brain config (flag still off)
+[33mfb57a57[m B1.1 hook: wire department-brains scaffold into classify-and-respond (flag off)
+[33mddd1c6d[m feat: add department brain scaffold flag off behavior neutral
+[33me03600b[m feat: manager bot resolves tenant db client for non-demo hotels
+[33m78c69cc[m docs: add allergen module rules spec
+[33mbf86275[m chore: ignore local env and throwaway diag scripts
+[33m08bc2d6[m chore: remove temp diag decrypt-check route
+[33m6b511ab[m fix: preview webhook uses stable branch alias
+[33m09643f6[m chore: rename diag route remove leading underscore
+[33m2f13a6a[m diag: temp decrypt check route
+[33mb71ca79[m fix: preview webhook uses preview url with bypass token
+[33maef29f2[m chore: remove temporary clone route
+[33m98c690f[m chore: rename clone route remove leading underscore
+[33m94955bf[m chore: add temporary secret bypass to clone route
+[33m49d389b[m chore: add temporary clone-tenant-config route for v4 test
+[33m0c4d464[m chore: rebuild v4 preview with preview env vars
+[33m79a3139[m chore: trigger v4 preview deploy
