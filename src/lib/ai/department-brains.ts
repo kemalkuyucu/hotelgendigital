@@ -302,7 +302,7 @@ async function runFrontOfficeBrain(input: DepartmentBrainInput): Promise<Departm
   const client = new Anthropic();
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
-    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.locationInfo].filter(
         (p) => typeof p === 'string' && p.trim().length > 0,
       )
     : [];

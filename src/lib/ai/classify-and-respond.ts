@@ -380,6 +380,7 @@ export async function classifyAndRespond(
           reasoning: 'department_brain',
           response_to_guest: brainResult.replyText,
           answered_from_knowledge: false,
+          mapsLink: mapsLink ?? undefined,
           safetyTriggered: false,
           safetyCategory: null,
           model: 'department-brain',
