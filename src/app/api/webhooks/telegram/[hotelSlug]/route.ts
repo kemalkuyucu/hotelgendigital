@@ -2183,6 +2183,7 @@ async function handleMessage(args: {
   const t10loc = normalizeTr(text);
   const isLocationQ = ['adres', 'konum', 'nerede', 'nasil gel', 'yol tarif', 'harita', 'maps', 'ulasim']
     .some((p) => t10loc.includes(p));
+  console.log('[maps-inject] mapsLink=', aiResult?.mapsLink ?? 'YOK', '| isLocationQ=', isLocationQ, '| zatenVar=', aiResult?.mapsLink ? finalResponseText.includes(aiResult.mapsLink) : 'n/a');
   if (aiResult?.mapsLink && isLocationQ && !finalResponseText.includes(aiResult.mapsLink)) {
     finalResponseText = `${finalResponseText}\n\nGoogle Maps: ${aiResult.mapsLink}`;
   }
