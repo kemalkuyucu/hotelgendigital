@@ -361,6 +361,7 @@ function formatLocationDocument(
   if (structured['maps_link']) {
     sections.push(`Google Maps: ${String(structured['maps_link'])}`);
   }
+  console.log('[location-debug] maps_link=', structured['maps_link'] ?? 'YOK', '| locationInfo uzunluk=', sections.join('').length);
 
   if (hotelName) {
     sections.push(`\n— ${hotelName}`);
