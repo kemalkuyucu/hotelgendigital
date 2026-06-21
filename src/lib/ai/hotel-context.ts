@@ -668,7 +668,7 @@ export function formatContextForPrompt(ctx: HotelContext): string {
       `- Once genel adres/mesafe paragrafi\n` +
       `- Her yon detayini AYRI PARAGRAF olarak, basinda "<Yon adi>'ndan/dan geliyorsaniz:" baslik cumlesi\n` +
       `- Yol tarifini ve dikkat notunu ayri satirlarda yaz\n` +
-      `- En altta "Google Maps:" satiri\n` +
+      `- En altta MUTLAKA "Google Maps:" satirini ve TAM linki oldugu gibi (kisaltmadan, parantezsiz) ekle. Konum sorularinda bu link ASLA atlanmaz; yon tarifi uzun olsa bile en sona link konur.\n` +
       `- Paragraflar arasinda BIR BOS SATIR birak\n` +
       `- En sonda otel adi imzasini koru (--- <otel adi> formatinda)\n\n` +
       ctx.locationInfo
