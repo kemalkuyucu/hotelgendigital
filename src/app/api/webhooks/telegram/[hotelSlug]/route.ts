@@ -2178,6 +2178,14 @@ async function handleMessage(args: {
 
   // ── Modül 10: Doğrulama Gate ────────────────────────────────────
   let finalResponseText = aiReplyText;
+  // Konum sorusu + yapisal maps linki varsa ve cevapta link yoksa → sona ekle (garanti).
+  // isInfoOnlyQuery DEGIL — o cok genis; konuma ozel kelime kapisi kullaniliyor.
+  const t10loc = normalizeTr(text);
+  const isLocationQ = ['adres', 'konum', 'nerede', 'nasil gel', 'yol tarif', 'harita', 'maps', 'ulasim']
+    .some((p) => t10loc.includes(p));
+  if (aiResult?.mapsLink && isLocationQ && !finalResponseText.includes(aiResult.mapsLink)) {
+    finalResponseText = `${finalResponseText}\n\nGoogle Maps: ${aiResult.mapsLink}`;
+  }
   let finalIntent = aiRawIntent;
   // Mod\u00fcl 10.6/10.7: shouldForward=false (sosyal) VEYA KB cevab\u0131 \u2192 forward yok
   // FIX 2a: isInfoOnlyQuery=true ise de skip \u2014 bilgi sorusu ASLA departmana forward edilmez
