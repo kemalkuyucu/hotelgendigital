@@ -624,6 +624,11 @@ function isInfoOnlyQuery(text: string): boolean {
     // Pet / genel
     'pet', 'hayvan', 'evcil',
     'sigara', 'smoking',
+    // Döviz — yüz yüze işlem; asla "talep" olamaz, bilgi sorusu güvenli
+    'doviz', 'doviz kur', 'kur ne', 'para bozdur', 'para bozma', 'exchange', 'change money',
+    // NOT: doktor/hemsire/revir BİLEREK eklenmedi — gerçek tıbbi aciliyet
+    // ("doktor çağırın, fenalaştım") forward'a düşebilmeli. Doktor ofisi BİLGİSİ
+    // zaten doctor_office sistem-default fact'inden cevaplanıyor (forward gerektirmez).
     // Bilgi sorusu kalıpları — GENİŞLETİLDİ
     'var mi', 'var mi?', 'hizmet veriyor', 'sunuluyor',
     'saatler', 'calisma saati', 'acilis', 'kapanis',
@@ -2176,7 +2181,7 @@ async function handleMessage(args: {
   let finalIntent = aiRawIntent;
   // Mod\u00fcl 10.6/10.7: shouldForward=false (sosyal) VEYA KB cevab\u0131 \u2192 forward yok
   // FIX 2a: isInfoOnlyQuery=true ise de skip \u2014 bilgi sorusu ASLA departmana forward edilmez
-  let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false) || (!aiShouldForward && isInfoOnlyQuery(text));
+  let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false) || isInfoOnlyQuery(text);
   // Modül 3: Bu turda oda no (doğrulama) sorusu sorulduysa true — alerji sorusu ASLA aynı turda çıkmasın
   let verificationAskedThisRound = false;
 
@@ -2560,7 +2565,7 @@ async function handleMessage(args: {
     // "ilettim" diyor ama talep düşmüyordu). Doğrulanmış misafirde answered_from_knowledge
     // suppressor'ını KALDIR; forward yalnız gerçekten forward-edilebilir intent varsa ve
     // saf bilgi sorusu değilse olur (non-forwardable/social/KB hâlâ korunur).
-    skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
+    skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false) || isInfoOnlyQuery(text);
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent} skipForward=${skipForward}`);
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
