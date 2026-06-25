@@ -70,6 +70,7 @@ export interface ClassifyAndRespondOutput {
   overLimit?: boolean;
   reservationNotify?: boolean;
   normalizedRequest?: string;
+  mapsLink?: string;        // konum cevabına garanti link enjeksiyonu icin
   raw_response: string;
 }
 
@@ -83,6 +84,9 @@ export async function classifyAndRespond(
   const hotelSupabase = await getHotelClient(input.hotelId);
   const hotelContext = hotelSupabase
     ? await buildHotelContext(hotelSupabase, { perplexityInterestHint: interestTag })
+    : null;
+  const mapsLink = hotelContext?.locationInfo
+    ? (hotelContext.locationInfo.match(/Google Maps:\s*(\S+)/)?.[1] ?? null)
     : null;
 
   // ── Mikro Adım 5: Safety Pre-Classifier ──────────────────────────────────
@@ -376,6 +380,7 @@ export async function classifyAndRespond(
           reasoning: 'department_brain',
           response_to_guest: brainResult.replyText,
           answered_from_knowledge: false,
+          mapsLink: mapsLink ?? undefined,
           safetyTriggered: false,
           safetyCategory: null,
           model: 'department-brain',
@@ -416,6 +421,7 @@ export async function classifyAndRespond(
     prompt_tokens: response.usage.input_tokens,
     completion_tokens: response.usage.output_tokens,
     latency_ms,
+    mapsLink: mapsLink ?? undefined,
     raw_response: rawText,
   };
 }

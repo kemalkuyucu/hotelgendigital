@@ -8,26 +8,37 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;');
 }
 
-export async function handleRapor(hotelClient: SupabaseClient): Promise<string> {
+export async function handleRapor(
+  hotelClient: SupabaseClient,
+  range?: { startIso: string; endIso: string; label: string }
+): Promise<string> {
   // Son 24 saat — UTC güvenli (setHours lokal saat bazlıydı, UTC'de hatalıydı)
-  const isoStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // range verilmişse start/end penceresi kullanılır; verilmemişse ESKI son-24-saat davranışı.
+  const isoStart = range ? range.startIso : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const isoEnd = range ? range.endIso : null;
 
-  const { count: inboundCount } = await hotelClient
+  let inboundQ = hotelClient
     .from('bot_messages')
     .select('id', { count: 'exact', head: true })
     .eq('direction', 'inbound')
     .gte('created_at', isoStart);
+  if (isoEnd) inboundQ = inboundQ.lte('created_at', isoEnd);
+  const { count: inboundCount } = await inboundQ;
 
-  const { count: outboundCount } = await hotelClient
+  let outboundQ = hotelClient
     .from('bot_messages')
     .select('id', { count: 'exact', head: true })
     .eq('direction', 'outbound')
     .gte('created_at', isoStart);
+  if (isoEnd) outboundQ = outboundQ.lte('created_at', isoEnd);
+  const { count: outboundCount } = await outboundQ;
 
-  const { data: intentDist } = await hotelClient
+  let intentQ = hotelClient
     .from('ai_intents')
     .select('classified_department')
     .gte('created_at', isoStart);
+  if (isoEnd) intentQ = intentQ.lte('created_at', isoEnd);
+  const { data: intentDist } = await intentQ;
 
   const distMap = new Map<string, number>();
   for (const row of intentDist ?? []) {
@@ -45,31 +56,43 @@ export async function handleRapor(hotelClient: SupabaseClient): Promise<string> 
           .join('\n');
 
   // Forward özeti (Modül 6.1)
-  const { count: fwdSentCount } = await hotelClient
+  let fwdSentQ = hotelClient
     .from('forwarded_messages')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'sent')
     .gte('created_at', isoStart);
+  if (isoEnd) fwdSentQ = fwdSentQ.lte('created_at', isoEnd);
+  const { count: fwdSentCount } = await fwdSentQ;
 
-  const { count: fwdOffHoursCount } = await hotelClient
+  let fwdOffHoursQ = hotelClient
     .from('forwarded_messages')
     .select('id', { count: 'exact', head: true })
     .eq('is_off_hours', true)
     .gte('created_at', isoStart);
+  if (isoEnd) fwdOffHoursQ = fwdOffHoursQ.lte('created_at', isoEnd);
+  const { count: fwdOffHoursCount } = await fwdOffHoursQ;
 
-  const { count: fwdFailedCount } = await hotelClient
+  let fwdFailedQ = hotelClient
     .from('forwarded_messages')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'failed')
     .gte('created_at', isoStart);
+  if (isoEnd) fwdFailedQ = fwdFailedQ.lte('created_at', isoEnd);
+  const { count: fwdFailedCount } = await fwdFailedQ;
 
   // Modül 7.1: KB'den cevaplanan soru sayısı
-  const { count: kbAnsweredCount } = await hotelClient
+  let kbQ = hotelClient
     .from('knowledge_answers')
     .select('id', { count: 'exact', head: true })
     .gte('created_at', isoStart);
+  if (isoEnd) kbQ = kbQ.lte('created_at', isoEnd);
+  const { count: kbAnsweredCount } = await kbQ;
 
-  return `📊 <b>Son 24 Saat Raporu</b>
+  const baslik = range
+    ? `📊 <b>Rapor (${escapeHtml(range.label)})</b>`
+    : '📊 <b>Son 24 Saat Raporu</b>';
+
+  return `${baslik}
 
 📥 Gelen mesaj: <b>${inboundCount ?? 0}</b>
 📤 Giden mesaj: <b>${outboundCount ?? 0}</b>

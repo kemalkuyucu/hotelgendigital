@@ -117,7 +117,7 @@ export async function buildHotelContext(
 
   // --- Paralel: KB facts, belgeler, yakın çevre, güvenlik kuralları ---
   const [
-    knowledgeFactsRaw,
+    factsResult,
     documents,
     nearbyPlaces,
     safetyRules,
@@ -133,6 +133,14 @@ export async function buildHotelContext(
     fetchSpaServices(supabase),
     fetchRoomRates(supabase),
   ]);
+
+  // Sistem-default bilgileri ekle (otel ilgili fact_key'i girmediyse bastırılmaz).
+  const systemDefaults = buildSystemDefaultFacts(factsResult.keys);
+  const knowledgeFactsRaw = systemDefaults
+    ? (factsResult.text
+        ? `${factsResult.text}\n\n${systemDefaults}`
+        : `BILGI TABANI:\n${systemDefaults}`)
+    : factsResult.text;
 
   const withMenu = menuItems
     ? (knowledgeFactsRaw ? `${knowledgeFactsRaw}\n\n${menuItems}` : menuItems)
@@ -178,18 +186,22 @@ async function fetchSafetyRules(): Promise<SafetyRule[]> {
 /**
  * hotel_facts tablosundaki aktif fact'leri kategoriye göre derler.
  */
-async function fetchKnowledgeFacts(supabase: SupabaseClient): Promise<string> {
+async function fetchKnowledgeFacts(
+  supabase: SupabaseClient,
+): Promise<{ text: string; keys: Set<string> }> {
   const { data } = await supabase
     .from('hotel_facts')
     .select('category, fact_key, fact_value')
     .eq('is_active', true)
     .order('category', { ascending: true });
 
-  if (!data || data.length === 0) return '';
+  if (!data || data.length === 0) return { text: '', keys: new Set() };
 
+  const keys = new Set<string>();
   // Kategori bazında grupla
   const grouped: Record<string, string[]> = {};
   for (const row of data) {
+    if (row.fact_key) keys.add(row.fact_key);
     const cat = row.category ?? 'genel';
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(`- ${row.fact_key}: ${row.fact_value}`);
@@ -200,7 +212,33 @@ async function fetchKnowledgeFacts(supabase: SupabaseClient): Promise<string> {
     blocks.push(`[${cat.toUpperCase()}]\n${facts.join('\n')}`);
   }
 
-  return `BILGI TABANI:\n${blocks.join('\n\n')}`;
+  return { text: `BILGI TABANI:\n${blocks.join('\n\n')}`, keys };
+}
+
+/**
+ * Sistem-default bilgi blokları (demo/onboarding kolaylığı için).
+ * Otel kendi hotel_facts kaydını ilgili fact_key ile girerse default BASTIRILIR.
+ * Misafire bu metinlerin "default" olduğu SÖYLENMEZ — sadece otel yönetimi için not.
+ */
+function buildSystemDefaultFacts(existingKeys: Set<string>): string {
+  const blocks: string[] = [];
+
+  // Doktor ofisi / revir — otel 'doctor_office' fact'i girerse bastırılır
+  if (!existingKeys.has('doctor_office')) {
+    blocks.push(
+      '- doctor_office: Otelimizde doktor ofisi/revir bulunmaktadir. Acil durumlar icin gun boyu hemsire mevcuttur; doktor ihtiyacinda hemsire acilen doktoru cagirabilir. Ucretlendirme konusunu hemsire ile gorusebilirsiniz.',
+    );
+  }
+
+  // Doviz — otel 'currency_exchange' fact'i girerse bastırılır
+  if (!existingKeys.has('currency_exchange')) {
+    blocks.push(
+      '- currency_exchange: Guncel Merkez Bankasi doviz kurlari icin: https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+page+site+area/bugun — Doviz bozdurma dusunceniz olursa lutfen resepsiyon ile gorusun; otelimizin doviz bozma politikasi Merkez Bankasi kurundan farkli olabilir.',
+    );
+  }
+
+  if (blocks.length === 0) return '';
+  return `[GENEL BILGI]\n${blocks.join('\n')}`;
 }
 
 async function fetchMenuItems(supabase: SupabaseClient): Promise<string> {
@@ -630,7 +668,7 @@ export function formatContextForPrompt(ctx: HotelContext): string {
       `- Once genel adres/mesafe paragrafi\n` +
       `- Her yon detayini AYRI PARAGRAF olarak, basinda "<Yon adi>'ndan/dan geliyorsaniz:" baslik cumlesi\n` +
       `- Yol tarifini ve dikkat notunu ayri satirlarda yaz\n` +
-      `- En altta "Google Maps:" satiri\n` +
+      `- En altta MUTLAKA "Google Maps:" satirini ve TAM linki oldugu gibi (kisaltmadan, parantezsiz) ekle. Konum sorularinda bu link ASLA atlanmaz; yon tarifi uzun olsa bile en sona link konur.\n` +
       `- Paragraflar arasinda BIR BOS SATIR birak\n` +
       `- En sonda otel adi imzasini koru (--- <otel adi> formatinda)\n\n` +
       ctx.locationInfo
