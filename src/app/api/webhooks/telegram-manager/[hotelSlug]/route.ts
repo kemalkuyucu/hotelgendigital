@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendManagerMessage } from '@/lib/telegram/manager-bot-client';
+import { sendManagerMessage, sendManagerDocument } from '@/lib/telegram/manager-bot-client';
 import { handleHelp } from '@/lib/telegram/commands/handle-help';
 import { handleRapor } from '@/lib/telegram/commands/handle-rapor';
+import { buildRaporExcel } from '@/lib/telegram/commands/build-rapor-excel';
 import { handleDurum } from '@/lib/telegram/commands/handle-durum';
 import { handleAktifKonusmalar } from '@/lib/telegram/commands/handle-aktif-konusmalar';
 import { handleSonMesajlar } from '@/lib/telegram/commands/handle-son-mesajlar';
@@ -168,7 +169,24 @@ export async function POST(
           response = raporRange
             ? await handleRapor(hotelClient, raporRange)
             : await handleRapor(hotelClient);
+          // Özet metin önce gider (mevcut davranış aynen korunur)
           await sendManagerMessage({ chatId: incomingChatId, text: response, parseMode: 'HTML' });
+
+          // Detaylı departman Excel'i — özet mesajı ETKİLEMEZ (izole try/catch).
+          // range null dalında handleRapor'un iç son-24-saat hesabını taklit et:
+          //   start = now-24h, end = now (handleRapor'da end=null = üst sınırsız → şimdi).
+          const excelRange = raporRange ?? {
+            startIso: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+            endIso: new Date().toISOString(),
+            label: 'Son 24 Saat',
+          };
+          try {
+            const buf = await buildRaporExcel(hotelClient, excelRange);
+            const fname = `rapor_${excelRange.label.replace(/[^0-9A-Za-z.]/g, '_')}.xlsx`;
+            await sendManagerDocument(incomingChatId, buf, fname, 'Detayli departman raporu');
+          } catch (e) {
+            console.error('[rapor-excel] failed', e);
+          }
           return NextResponse.json({ ok: true });
         }
         case '/durum':
