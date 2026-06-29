@@ -114,8 +114,19 @@ export async function POST(
 
   const hotelRow = hotel as HotelManagerRow;
 
-  // 4) chat_id kontrolü — yetkisiz mesajları sessizce yut
-  if (Number(hotelRow.telegram_manager_chat_id) !== incomingChatId) {
+  // 4) Yetki — report_recipients (telegram) VEYA eski telegram_manager_chat_id fallback
+  const { data: recipients } = await central
+    .from('report_recipients')
+    .select('platform_id')
+    .eq('hotel_id', hotelRow.id)
+    .eq('platform', 'telegram');
+
+  const authorized =
+    (recipients ?? []).some((r) => String(r.platform_id) === String(incomingChatId)) ||
+    Number(hotelRow.telegram_manager_chat_id) === incomingChatId;
+
+  // yetkisiz mesajları sessizce yut
+  if (!authorized) {
     // 200 OK dön — ama gönderene cevap verme
     console.warn(
       `[manager-webhook] unauthorized chat_id: ${incomingChatId} for hotel ${hotelSlug}`
