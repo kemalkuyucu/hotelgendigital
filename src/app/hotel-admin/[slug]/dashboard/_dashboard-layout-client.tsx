@@ -30,6 +30,7 @@ type NavItemKey =
   | 'toplanti-salonlari'
   | 'eskalasyon'
   | 'departman-personeli'
+  | 'raporlama'
 
 interface NavItem {
   key: NavItemKey
@@ -84,6 +85,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
       label: deptLabel(dept),
       href: `/hotel-admin/${slug}/dashboard/${dept}`,
     })),
+    { key: 'raporlama', label: 'Raporlama', href: `/hotel-admin/${slug}/raporlama` },
   ]
 
   // Ön Büro alt menü (sadece hotel_owner ve front_office_manager)
