@@ -10,11 +10,18 @@ import { sendEmail } from './client'
 // Telegram ozet metnindeki basit isaretleri (HTML <b> vb. + emoji) koru ama
 // satir sonlarini <br> yap ki mail govdesinde okunakli dursun.
 function summaryToHtml(summary: string): string {
+  // Once tum HTML'i guvenli sekilde escape et,
   const escaped = summary
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-  return escaped.replace(/\n/g, '<br>')
+  // sonra SADECE Telegram'in kullandigi basit bicim etiketlerini (<b>,<i>) geri ac.
+  const unescaped = escaped
+    .replace(/&lt;b&gt;/g, '<b>')
+    .replace(/&lt;\/b&gt;/g, '</b>')
+    .replace(/&lt;i&gt;/g, '<i>')
+    .replace(/&lt;\/i&gt;/g, '</i>')
+  return unescaped.replace(/\n/g, '<br>')
 }
 
 export async function sendRaporEmail(opts: {
