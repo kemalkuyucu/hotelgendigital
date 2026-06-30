@@ -74,6 +74,32 @@ function parseRaporRange(
   };
 }
 
+const TR_MONTHS: Record<string, number> = {
+  ocak: 1, subat: 2, mart: 3, nisan: 4, mayis: 5, haziran: 6,
+  temmuz: 7, agustos: 8, eylul: 9, ekim: 10, kasim: 11, aralik: 12,
+};
+
+/**
+ * Sesli rapor tarih aralığı: "20 haziran 26 haziran" → "20.06 26.06".
+ * normalizeTr ile ASCII'ye indirilmiş transcript üzerinde (gün + ay-adı) çiftlerini yakalar.
+ * En az 2 çift bulunursa ilk ikisi başlangıç/bitiş; aksi halde null (→ son 24 saat).
+ * KALICI #3: tamamen deterministik regex + sabit ay haritası; LLM'e tarih kararı YOK.
+ */
+function parseVoiceDateRange(transcribed: string): string | null {
+  const norm = normalizeTr(transcribed);
+  const monthNames = Object.keys(TR_MONTHS).join('|');
+  const re = new RegExp(`(\\d{1,2})\\s+(${monthNames})`, 'g');
+  const pairs: { day: number; month: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(norm)) !== null) {
+    pairs.push({ day: Number(m[1]), month: TR_MONTHS[m[2]] });
+  }
+  if (pairs.length < 2) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const [a, b] = pairs;
+  return `${pad(a.day)}.${pad(a.month)} ${pad(b.day)}.${pad(b.month)}`;
+}
+
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ hotelSlug: string }> }
@@ -207,10 +233,11 @@ export async function POST(
       }
 
       // Deterministik komut eşleme (şimdilik sadece "rapor").
-      // Tarih çıkarımı sesle RİSKLİ (konuşma dili → GG.AA) → argümansız: son 24 saat.
-      // Tarih aralığı sesle Aşama 2'ye bırakıldı (şimdilik kapsam dışı).
+      // Tarih aralığı parseVoiceDateRange ile sesten çıkarılır ("20 haziran 26 haziran"
+      // → "20.06 26.06"); bulunamazsa argümansız /rapor = son 24 saat. LLM'e tarih kararı YOK.
       if (normalizeTr(transcribed).includes('rapor')) {
-        text = '/rapor';
+        const voiceRange = parseVoiceDateRange(transcribed);
+        text = voiceRange ? `/rapor ${voiceRange}` : '/rapor';
       } else {
         await sendManagerMessage({
           chatId: incomingChatId,
