@@ -9,6 +9,9 @@ import { handleAktifKonusmalar } from '@/lib/telegram/commands/handle-aktif-konu
 import { handleSonMesajlar } from '@/lib/telegram/commands/handle-son-mesajlar';
 import { verifyTelegramSecret } from '@/lib/telegram/verify';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
+import { downloadTelegramAudio } from '@/lib/voice/download-telegram-audio';
+import { whisperTranscribe } from '@/lib/voice/whisper-transcribe';
+import { normalizeTr } from '@/lib/utils/normalize-tr';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -99,7 +102,8 @@ export async function POST(
 
   const chatObj = message.chat as Record<string, unknown>;
   const incomingChatId = Number(chatObj.id);
-  const text = (message.text as string | undefined) ?? '';
+  // let — sesli "rapor" komutu aşağıda text'i '/rapor' olarak yeniden kurabilir.
+  let text = (message.text as string | undefined) ?? '';
 
   // 3) Hotel'i Central'dan resolve et
   const central = getCentralClient();
@@ -144,6 +148,77 @@ export async function POST(
   if (!hotelClient) {
     console.error(`[manager-webhook] hotel client alınamadı: ${hotelSlug}`);
     return NextResponse.json({ ok: true, info: 'no db client' });
+  }
+
+  // 5.5) SESLİ KOMUT → text (Modül 10.5 ikizi, manager bot token ile)
+  // message.text BOŞSA ve voice/audio VARSA: Whisper ile yazıya çevir; "rapor"
+  // geçiyorsa text'i '/rapor' olarak kur ki aşağıdaki MEVCUT dispatch aynen çalışsın.
+  // message.text DOLU geldiğinde bu blok HİÇ çalışmaz → mevcut text akışı birebir korunur.
+  {
+    const voiceObj = (message.voice || message.audio) as
+      | { file_id: string; duration?: number }
+      | undefined;
+
+    if (!text && voiceObj) {
+      // Süre limiti: 5 dakika (300 sn) — guest tarafıyla aynı
+      if (voiceObj.duration && voiceObj.duration > 300) {
+        await sendManagerMessage({
+          chatId: incomingChatId,
+          text: '⏳ Ses mesajınız çok uzun (5 dakikadan fazla). Lütfen daha kısa bir kayıt gönderin ya da komutu yazılı paylaşın.',
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      const botToken = process.env.TELEGRAM_MANAGER_BOT_TOKEN_DEMO;
+      if (!botToken) {
+        console.error('[manager-webhook] TELEGRAM_MANAGER_BOT_TOKEN_DEMO yok — voice atlandı');
+        return NextResponse.json({ ok: true });
+      }
+
+      let transcribed = '';
+      try {
+        const dl = await downloadTelegramAudio({
+          botToken,
+          fileId: voiceObj.file_id,
+          durationSeconds: voiceObj.duration,
+        });
+        const tr = await whisperTranscribe({
+          audioBuffer: dl.buffer,
+          filename: dl.filename,
+          mimeType: dl.mimeType,
+          promptHint: 'otel yönetici rapor komutu',
+        });
+        transcribed = (tr.text || '').trim();
+      } catch (err) {
+        console.error('[manager-webhook] voice işleme hatası:', err);
+        await sendManagerMessage({
+          chatId: incomingChatId,
+          text: '🎤 Ses mesajınızı işlerken bir sorun oluştu. Lütfen tekrar deneyin ya da komutu yazılı gönderin.',
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      if (!transcribed || transcribed.length < 2) {
+        await sendManagerMessage({
+          chatId: incomingChatId,
+          text: '🎤 Sesinizi anlayamadım. Lütfen tekrar deneyin ya da komutu yazılı gönderin.',
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // Deterministik komut eşleme (şimdilik sadece "rapor").
+      // Tarih çıkarımı sesle RİSKLİ (konuşma dili → GG.AA) → argümansız: son 24 saat.
+      // Tarih aralığı sesle Aşama 2'ye bırakıldı (şimdilik kapsam dışı).
+      if (normalizeTr(transcribed).includes('rapor')) {
+        text = '/rapor';
+      } else {
+        await sendManagerMessage({
+          chatId: incomingChatId,
+          text: `Anlaşılan: "${transcribed}". Şu an sadece sesli "rapor" komutu destekleniyor.`,
+        });
+        return NextResponse.json({ ok: true });
+      }
+    }
   }
 
   // 6) Komut parse + dispatch
