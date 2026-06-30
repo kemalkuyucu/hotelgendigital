@@ -4,6 +4,7 @@ import { sendManagerMessage, sendManagerDocument } from '@/lib/telegram/manager-
 import { handleHelp } from '@/lib/telegram/commands/handle-help';
 import { handleRapor } from '@/lib/telegram/commands/handle-rapor';
 import { buildRaporExcel } from '@/lib/telegram/commands/build-rapor-excel';
+import { sendRaporEmail } from '@/lib/email/rapor-email';
 import { handleDurum } from '@/lib/telegram/commands/handle-durum';
 import { handleAktifKonusmalar } from '@/lib/telegram/commands/handle-aktif-konusmalar';
 import { handleSonMesajlar } from '@/lib/telegram/commands/handle-son-mesajlar';
@@ -282,12 +283,46 @@ export async function POST(
             endIso: new Date().toISOString(),
             label: 'Son 24 Saat',
           };
+          let raporBuf: Buffer | null = null;
+          let raporFname = '';
           try {
-            const buf = await buildRaporExcel(hotelClient, excelRange);
-            const fname = `rapor_${excelRange.label.replace(/[^0-9A-Za-z.]/g, '_')}.xlsx`;
-            await sendManagerDocument(incomingChatId, buf, fname, 'Detayli departman raporu');
+            raporBuf = await buildRaporExcel(hotelClient, excelRange);
+            raporFname = `rapor_${excelRange.label.replace(/[^0-9A-Za-z.]/g, '_')}.xlsx`;
+            await sendManagerDocument(incomingChatId, raporBuf, raporFname, 'Detayli departman raporu');
           } catch (e) {
             console.error('[rapor-excel] failed', e);
+          }
+
+          // E-posta teslimi — izole; Telegram akışını ETKİLEMEZ.
+          // email'i dolu olan TÜM rapor alıcılarına (platform farketmez) HTML özet + Excel eki.
+          try {
+            if (raporBuf) {
+              const { data: emailRecipients } = await central
+                .from('report_recipients')
+                .select('email')
+                .eq('hotel_id', hotelRow.id)
+                .not('email', 'is', null);
+              const emails = Array.from(
+                new Set(
+                  (emailRecipients ?? [])
+                    .map((r) => (typeof r.email === 'string' ? r.email.trim() : ''))
+                    .filter((e) => e.length > 0)
+                )
+              );
+              if (emails.length > 0) {
+                const mailRes = await sendRaporEmail({
+                  to: emails,
+                  hotelName: hotelRow.name,
+                  rangeLabel: excelRange.label,
+                  summaryText: response,
+                  excelBuffer: raporBuf,
+                  excelFilename: raporFname,
+                });
+                console.log(`[rapor-email] sent=${mailRes.sent} failed=${mailRes.failed}`);
+              }
+            }
+          } catch (e) {
+            console.error('[rapor-email] failed', e);
           }
           return NextResponse.json({ ok: true });
         }

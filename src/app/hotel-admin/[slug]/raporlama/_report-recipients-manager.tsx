@@ -8,6 +8,7 @@ interface Recipient {
   last_name: string;
   platform: 'telegram' | 'whatsapp';
   platform_id: string;
+  email: string | null;
   created_at: string;
 }
 
@@ -72,6 +73,7 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
   const [addLastName, setAddLastName] = useState('');
   const [addPlatform, setAddPlatform] = useState<'telegram' | 'whatsapp'>('telegram');
   const [addPlatformId, setAddPlatformId] = useState('');
+  const [addEmail, setAddEmail] = useState('');
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -125,6 +127,7 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
           last_name: addLastName.trim(),
           platform: addPlatform,
           platform_id: addPlatformId.trim(),
+          email: addEmail.trim(),
         }),
       });
       const data = await res.json();
@@ -138,6 +141,7 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
       setAddLastName('');
       setAddPlatform('telegram');
       setAddPlatformId('');
+      setAddEmail('');
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -213,6 +217,11 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
             <span style={{ color: '#94a3b8', fontSize: 12 }}>Platform ID</span>
             <input value={addPlatformId} onChange={(e) => setAddPlatformId(e.target.value)} style={inputStyle} placeholder="Örn. 123456789" />
           </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: '1 1 220px' }}>
+            <span style={{ color: '#94a3b8', fontSize: 12 }}>E-posta (opsiyonel)</span>
+            <input value={addEmail} onChange={(e) => setAddEmail(e.target.value)} style={inputStyle} placeholder="Örn. mudur@otel.com" />
+          </label>
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
           <button onClick={addRecipient} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>
@@ -245,6 +254,11 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
                   <div style={{ color: '#94a3b8', fontSize: 13, wordBreak: 'break-all' }}>
                     ID: {r.platform_id}
                   </div>
+                  {r.email && (
+                    <div style={{ color: '#94a3b8', fontSize: 13, wordBreak: 'break-all', marginTop: 4 }}>
+                      ✉️ {r.email}
+                    </div>
+                  )}
                 </div>
                 <button onClick={() => removeRecipient(r.id)} disabled={busy} style={{ ...dangerBtn, flexShrink: 0 }}>Sil</button>
               </div>
@@ -260,6 +274,7 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
                   <th style={{ padding: '13px 18px', background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>Ad Soyad</th>
                   <th style={{ padding: '13px 18px', background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>Platform</th>
                   <th style={{ padding: '13px 18px', background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>ID</th>
+                  <th style={{ padding: '13px 18px', background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>E-posta</th>
                   <th style={{ padding: '13px 18px', background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', textAlign: 'right', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>İşlem</th>
                 </tr>
               </thead>
@@ -275,6 +290,7 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
                       </span>
                     </td>
                     <td style={{ padding: '12px 18px', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{r.platform_id}</td>
+                    <td style={{ padding: '12px 18px', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{r.email || '—'}</td>
                     <td style={{ padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)', textAlign: 'right' }}>
                       <button onClick={() => removeRecipient(r.id)} disabled={busy} style={dangerBtn}>Sil</button>
                     </td>

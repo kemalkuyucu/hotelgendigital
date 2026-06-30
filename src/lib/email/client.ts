@@ -15,6 +15,7 @@ export async function sendEmail(opts: {
   subject: string
   html: string
   text?: string
+  attachments?: { filename: string; content: Buffer }[]
 }): Promise<{ ok: boolean; id: string | null; error: string | null }> {
   const from = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'
   try {
@@ -24,6 +25,9 @@ export async function sendEmail(opts: {
       subject: opts.subject,
       html: opts.html,
       text: opts.text,
+      ...(opts.attachments && opts.attachments.length > 0
+        ? { attachments: opts.attachments }
+        : {}),
     })
     return { ok: true, id: result.data?.id ?? null, error: null }
   } catch (e) {

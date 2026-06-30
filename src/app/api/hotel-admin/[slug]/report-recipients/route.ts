@@ -56,7 +56,7 @@ export async function GET(
 
     const { data, error } = await central
       .from('report_recipients')
-      .select('id, first_name, last_name, platform, platform_id, created_at')
+      .select('id, first_name, last_name, platform, platform_id, email, created_at')
       .eq('hotel_id', hotelId)
       .order('created_at', { ascending: true });
 
@@ -96,6 +96,7 @@ export async function POST(
     const lastName = typeof body.last_name === 'string' ? body.last_name.trim() : '';
     const platform = typeof body.platform === 'string' ? body.platform.trim() : '';
     const platformId = typeof body.platform_id === 'string' ? body.platform_id.trim() : '';
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
 
     if (!firstName) return NextResponse.json({ error: 'first_name boş olamaz' }, { status: 400 });
     if (!lastName) return NextResponse.json({ error: 'last_name boş olamaz' }, { status: 400 });
@@ -119,8 +120,9 @@ export async function POST(
         last_name: lastName,
         platform,
         platform_id: platformId,
+        email: email || null,
       })
-      .select('id, first_name, last_name, platform, platform_id, created_at')
+      .select('id, first_name, last_name, platform, platform_id, email, created_at')
       .single();
 
     if (error) {
