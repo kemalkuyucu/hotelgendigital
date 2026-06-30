@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { HotelAdminRole, DepartmentKey } from '@/lib/hotel-admin/types'
 import { getAllowedDepartments, deptLabel, roleLabel } from '@/lib/hotel-admin/types'
 
@@ -61,6 +61,18 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
   const pathname = usePathname()
   const router = useRouter()
   const [loggingOut, setLoggingOut] = useState(false)
+
+  // mobil sidebar (dar ekranda gizli + hamburger overlay)
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    const apply = () => setIsMobile(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+  useEffect(() => { setMobileOpen(false) }, [pathname])
 
   // Akordiyon: hangi alt-grup bölümü açık (tek seferde bir tane).
   // Default: aktif sayfanın ait olduğu bölüm; eşleşme yoksa Ön Büro.
@@ -192,6 +204,48 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
         width: '100%',
       }}
     >
+      {/* Mobil hamburger butonu */}
+      {isMobile && (
+        <button
+          onClick={() => setMobileOpen((v) => !v)}
+          aria-label="Menü"
+          style={{
+            position: 'fixed',
+            top: 14,
+            left: 14,
+            zIndex: 60,
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            background: 'rgba(10,15,30,0.92)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: '#f1f5f9',
+            fontSize: 20,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+          }}
+        >
+          {mobileOpen ? '✕' : '☰'}
+        </button>
+      )}
+
+      {/* Mobil overlay (arka plan karartma) */}
+      {isMobile && mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.55)',
+            zIndex: 45,
+          }}
+        />
+      )}
+
       {/* Sidebar */}
       <aside
         style={{
@@ -204,6 +258,17 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
           display: 'flex',
           flexDirection: 'column',
           flexShrink: 0,
+          ...(isMobile
+            ? {
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                height: '100vh',
+                zIndex: 50,
+                transform: mobileOpen ? 'translateX(0)' : 'translateX(-100%)',
+                transition: 'transform 0.25s ease',
+              }
+            : {}),
         }}
       >
         {/* Logo */}
@@ -370,7 +435,7 @@ export default function DashboardLayoutClient({ slug, adminName, adminRole, chil
       </aside>
 
       {/* Main */}
-      <main style={{ flex: 1, overflow: 'auto', background: 'transparent' }}>{children}</main>
+      <main style={{ flex: 1, overflow: 'auto', background: 'transparent', paddingTop: isMobile ? 64 : 0 }}>{children}</main>
     </div>
   )
 }

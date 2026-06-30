@@ -73,6 +73,15 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
   const [addPlatform, setAddPlatform] = useState<'telegram' | 'whatsapp'>('telegram');
   const [addPlatformId, setAddPlatformId] = useState('');
 
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -157,7 +166,7 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
   }
 
   return (
-    <div style={{ maxWidth: 820, margin: '0 auto', padding: '40px 24px', width: '100%' }}>
+    <div style={{ maxWidth: 820, margin: '0 auto', padding: isMobile ? '22px 14px' : '40px 24px', width: '100%' }}>
       {/* Baslik */}
       <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
         <span style={{ fontSize: 30 }}>📨</span>
@@ -180,7 +189,7 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
 
       {/* Ekleme Formu */}
       <div style={{ ...card, padding: 22, marginBottom: 24 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: 12, alignItems: isMobile ? 'stretch' : 'flex-end' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: '1 1 160px' }}>
             <span style={{ color: '#94a3b8', fontSize: 12 }}>Ad</span>
             <input value={addFirstName} onChange={(e) => setAddFirstName(e.target.value)} style={inputStyle} placeholder="Örn. Ahmet" />
@@ -218,6 +227,29 @@ export default function ReportRecipientsManager({ slug }: { slug: string }) {
       ) : items.length === 0 ? (
         <div style={{ ...card, padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
           Henüz kişi eklenmemiş. Yukarıdaki formdan rapor alıcısı ekleyebilirsiniz.
+        </div>
+      ) : isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {items.map((r) => (
+            <div key={r.id} style={{ ...card, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 15, marginBottom: 6 }}>
+                    {r.first_name} {r.last_name}
+                  </div>
+                  <div style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, color: '#a5b4fc', background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', padding: '3px 11px', borderRadius: 999, fontWeight: 500 }}>
+                      {PLATFORM_LABEL[r.platform] || r.platform}
+                    </span>
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: 13, wordBreak: 'break-all' }}>
+                    ID: {r.platform_id}
+                  </div>
+                </div>
+                <button onClick={() => removeRecipient(r.id)} disabled={busy} style={{ ...dangerBtn, flexShrink: 0 }}>Sil</button>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div style={{ ...card, overflow: 'hidden' }}>
