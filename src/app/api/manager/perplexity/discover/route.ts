@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth';
+import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant';
 import { getDemoHotelSupabase } from '@/lib/supabase-client';
 import { queryPerplexity } from '@/lib/perplexity/client';
 import { getCategoryByTag, PERPLEXITY_CATEGORIES } from '@/lib/perplexity/categories';
@@ -16,7 +17,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const tag = searchParams.get('tag');
 
-  const supabase = getDemoHotelSupabase();
+  const supabase = session.hotel_slug
+    ? (await resolveTenantBySlug(session.hotel_slug)).hotelSupabase
+    : getDemoHotelSupabase();
   let query = supabase
     .from('perplexity_discoveries')
     .select('*')
@@ -65,7 +68,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = getDemoHotelSupabase();
+  const supabase = session.hotel_slug
+    ? (await resolveTenantBySlug(session.hotel_slug)).hotelSupabase
+    : getDemoHotelSupabase();
 
   // 1. Cache kontrol (force_refresh değilse)
   if (!forceRefresh) {

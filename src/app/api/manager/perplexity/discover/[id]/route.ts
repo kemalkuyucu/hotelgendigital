@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getSessionManager } from '@/lib/auth/manager-session';
+import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth';
+import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant';
 import { getDemoHotelSupabase } from '@/lib/supabase-client';
 
 /**
@@ -9,11 +10,13 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSessionManager();
+  const session = await getManagerOrHotelAdmin();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  const supabase = getDemoHotelSupabase();
+  const supabase = session.hotel_slug
+    ? (await resolveTenantBySlug(session.hotel_slug)).hotelSupabase
+    : getDemoHotelSupabase();
 
   const { error } = await supabase
     .from('perplexity_discoveries')
@@ -32,7 +35,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSessionManager();
+  const session = await getManagerOrHotelAdmin();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
@@ -51,7 +54,9 @@ export async function PATCH(
     );
   }
 
-  const supabase = getDemoHotelSupabase();
+  const supabase = session.hotel_slug
+    ? (await resolveTenantBySlug(session.hotel_slug)).hotelSupabase
+    : getDemoHotelSupabase();
   const { data, error } = await supabase
     .from('perplexity_discoveries')
     .update({ is_pinned: body.is_pinned })
