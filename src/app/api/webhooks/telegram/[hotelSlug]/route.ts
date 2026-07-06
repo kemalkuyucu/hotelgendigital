@@ -3427,8 +3427,6 @@ async function upsertGuestAndConversation(args: {
         full_name: fullName,
         telegram_user_id: userId,
         telegram_username: username,
-        first_name: firstName || null,
-        last_name: lastName || null,
       })
       .select('id')
       .single();
