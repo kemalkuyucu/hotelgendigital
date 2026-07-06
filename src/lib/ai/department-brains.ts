@@ -192,7 +192,6 @@ KAPANIS KURALI:
 }
 
 async function runAnimationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
-  const client = new Anthropic();
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
     ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
@@ -224,15 +223,14 @@ infoOnly=false: SADECE misafir somut bir aksiyon/ozel istek/sikayet iletiyorsa (
   const userContent = recent
     ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
     : input.guestMessage;
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
+  const response = await callAI({
+    tier: 'standard',
+    maxTokens: 400,
     system,
     messages: [{ role: 'user', content: userContent }],
   });
 
-  const block = response.content.find((b) => b.type === 'text');
-  const raw = block && block.type === 'text' ? block.text.trim() : '';
+  const raw = response.text;
   // FB beyniyle ayni kalip: brain JSON dondurur { reply, infoOnly }.
   // infoOnly=true => saf bilgi/sohbet (kart dusmez). Parse basarisizsa duz metin + infoOnly=false (guvenli taraf).
   let replyText = raw;
