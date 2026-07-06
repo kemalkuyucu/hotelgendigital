@@ -1,4 +1,4 @@
-import { getAnthropicClient, DEFAULT_MODEL, DEFAULT_MAX_TOKENS } from './anthropic-client';
+import { callAI, DEFAULT_MAX_TOKENS } from './anthropic-client';
 import { buildOrchestratorSystemPrompt, DepartmentInfo } from './system-prompts';
 import { getCachedSummary } from '@/lib/knowledge/cache';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
@@ -77,8 +77,6 @@ export interface ClassifyAndRespondOutput {
 export async function classifyAndRespond(
   input: ClassifyAndRespondInput
 ): Promise<ClassifyAndRespondOutput> {
-  const client = getAnthropicClient();
-
   // Modül 15.3 — Hotel context ekle (safety pre-classifier icin de gerekli)
   const interestTag = detectInterestTag(input.guestMessage);
   const hotelSupabase = await getHotelClient(input.hotelId);
@@ -126,16 +124,16 @@ export async function classifyAndRespond(
       `HATIRLATMA: Cevabini misafirin yazdigi dilde yaz. Yukaridaki kural Turkce yazili olsa bile, cevabin misafirin dilinde olmali.`;
 
     const safetyStartedAt = Date.now();
-    const safetyResponse = await client.messages.create({
-      model: DEFAULT_MODEL,
-      max_tokens: DEFAULT_MAX_TOKENS,
+    const safetyResponse = await callAI({
+      tier: 'advanced',
+      maxTokens: DEFAULT_MAX_TOKENS,
+      temperature: 1.0,
       system: safetySystemPrompt,
       messages: [{ role: 'user', content: input.guestMessage }],
     });
     const safetyLatency = Date.now() - safetyStartedAt;
 
-    const safetyTextBlock = safetyResponse.content.find((b) => b.type === 'text');
-    const safetyText = safetyTextBlock?.type === 'text' ? safetyTextBlock.text.trim() : '';
+    const safetyText = safetyResponse.text;
 
     return {
       classifiedIntents: [],
@@ -148,8 +146,8 @@ export async function classifyAndRespond(
       safetyTriggered: true,
       safetyCategory: safetyResult.category,
       model: safetyResponse.model,
-      prompt_tokens: safetyResponse.usage.input_tokens,
-      completion_tokens: safetyResponse.usage.output_tokens,
+      prompt_tokens: safetyResponse.inputTokens,
+      completion_tokens: safetyResponse.outputTokens,
       latency_ms: safetyLatency,
       raw_response: safetyText,
     };
@@ -199,9 +197,9 @@ export async function classifyAndRespond(
 
   // temperature: 0.3 — önceki: yok (SDK default 1.0)
   // 0.3 → deterministik kalır, ama natural dil varyasyonlarını kabul eder
-  const response = await client.messages.create({
-    model: DEFAULT_MODEL,
-    max_tokens: DEFAULT_MAX_TOKENS,
+  const response = await callAI({
+    tier: 'standard',
+    maxTokens: DEFAULT_MAX_TOKENS,
     temperature: 0.3,
     system: finalSystemPrompt,
     messages,
@@ -209,14 +207,11 @@ export async function classifyAndRespond(
 
   const latency_ms = Date.now() - startedAt;
 
-  // İlk text bloğunu al
-  const textBlock = response.content.find((b) => b.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('Anthropic response içinde text block bulunamadı');
-  }
-
   // Mikro Adım 5: Safety artık pre-classifier'da ele aliniyor; burada sadece ham metin al
-  const rawText = textBlock.text.trim();
+  const rawText = response.text;
+  if (!rawText) {
+    throw new Error('AI response içinde text bulunamadı');
+  }
 
   // JSON parse — Claude bazen ```json fence ekler, temizle
   const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
@@ -418,8 +413,8 @@ export async function classifyAndRespond(
     safetyTriggered: false,   // Normal akis: safety pre-classifier'da eslesme yoktu
     safetyCategory: null,
     model: response.model,
-    prompt_tokens: response.usage.input_tokens,
-    completion_tokens: response.usage.output_tokens,
+    prompt_tokens: response.inputTokens,
+    completion_tokens: response.outputTokens,
     latency_ms,
     mapsLink: mapsLink ?? undefined,
     raw_response: rawText,
