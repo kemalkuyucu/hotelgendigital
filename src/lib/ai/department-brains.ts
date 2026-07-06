@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { callAI } from './anthropic-client';
 // B1.1 — Departman beyni iskeleti (davranis-notr).
 // Bayrak KAPALI iken dispatcher hep handled=false doner; monolit orkestrator
 // aynen calisir. Departman beyinleri tek tek eklenecek (7.4 kalibrasyonu).
@@ -125,7 +126,6 @@ function extractMaxItemQuantity(text: string): number | null {
 }
 
 async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
-  const client = new Anthropic();
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
     ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
@@ -172,14 +172,13 @@ KAPANIS KURALI:
   const userContent = recent
     ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
     : input.guestMessage;
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
+  const response = await callAI({
+    tier: 'standard',
+    maxTokens: 300,
     system,
     messages: [{ role: 'user', content: userContent }],
   });
-  const block = response.content.find((b) => b.type === 'text');
-  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  const replyText = response.text;
   // Adet netleştiyse kart metnini deterministik uret (ham son mesaj yerine "2 yuz havlusu").
   // Tum konusma + son mesaj birlesik taranir; tur kelimesi + adet eslestirilir.
   const convForSummary = [
