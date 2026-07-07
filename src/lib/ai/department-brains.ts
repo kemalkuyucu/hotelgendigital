@@ -250,7 +250,6 @@ infoOnly=false: SADECE misafir somut bir aksiyon/ozel istek/sikayet iletiyorsa (
 }
 
 async function runSpaBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
-  const client = new Anthropic();
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
     ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
@@ -279,15 +278,14 @@ Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
   const userContent = recent
     ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
     : input.guestMessage;
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
+  const response = await callAI({
+    tier: 'standard',
+    maxTokens: 300,
     system,
     messages: [{ role: 'user', content: userContent }],
   });
 
-  const block = response.content.find((b) => b.type === 'text');
-  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  const replyText = response.text;
   const lowerMsg = input.guestMessage.toLowerCase();
   const reservationNotify = ['rezervasyon', 'randevu', 'rezerve'].some((k) =>
     lowerMsg.includes(k),
@@ -354,7 +352,6 @@ Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.`;
 }
 
 async function runTechnicalBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
-  const client = new Anthropic();
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
     ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
@@ -393,14 +390,13 @@ Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.`;
   const userContent = recent
     ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
     : input.guestMessage;
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
+  const response = await callAI({
+    tier: 'standard',
+    maxTokens: 300,
     system,
     messages: [{ role: 'user', content: userContent }],
   });
-  const block = response.content.find((b) => b.type === 'text');
-  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  const replyText = response.text;
   return { handled: true, replyText };
 }
 
