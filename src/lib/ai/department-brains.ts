@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { callAI } from './anthropic-client';
 // B1.1 — Departman beyni iskeleti (davranis-notr).
 // Bayrak KAPALI iken dispatcher hep handled=false doner; monolit orkestrator
@@ -294,7 +293,6 @@ Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
 }
 
 async function runFrontOfficeBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
-  const client = new Anthropic();
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
     ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.locationInfo].filter(
@@ -329,25 +327,24 @@ Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.`;
   const userContent = recent
     ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
     : input.guestMessage;
-  let response;
+  let replyText: string;
   try {
-    response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 300,
+    const response = await callAI({
+      tier: 'advanced',
+      maxTokens: 300,
       system,
       messages: [{ role: 'user' as const, content: userContent }],
     });
+    replyText = response.text;
   } catch {
-    response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 300,
+    const response = await callAI({
+      tier: 'advanced',
+      maxTokens: 300,
       system,
       messages: [{ role: 'user' as const, content: input.guestMessage }],
     });
+    replyText = response.text;
   }
-
-  const block = response.content.find((b) => b.type === 'text');
-  let replyText = block && block.type === 'text' ? block.text.trim() : '';
   return { handled: true, replyText };
 }
 
