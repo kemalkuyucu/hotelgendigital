@@ -401,7 +401,6 @@ Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.`;
 }
 
 async function runGuestRelationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
-  const client = new Anthropic();
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
     ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
@@ -439,19 +438,17 @@ KAPANIS:
   const userContent = recent
     ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
     : input.guestMessage;
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 400,
+  const response = await callAI({
+    tier: 'advanced',
+    maxTokens: 400,
     system,
     messages: [{ role: 'user', content: userContent }],
   });
-  const block = response.content.find((b) => b.type === 'text');
-  const replyText = block && block.type === 'text' ? block.text.trim() : '';
+  const replyText = response.text;
   return { handled: true, replyText };
 }
 
 async function runFbBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
-  const client = new Anthropic();
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
     ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
@@ -499,14 +496,13 @@ CIKTI BICIMI (COK ONEMLI):
   const userContent = recent
     ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
     : input.guestMessage;
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 400,
+  const response = await callAI({
+    tier: 'advanced',
+    maxTokens: 400,
     system,
     messages: [{ role: 'user', content: userContent }],
   });
-  const block = response.content.find((b) => b.type === 'text');
-  const raw = block && block.type === 'text' ? block.text.trim() : '';
+  const raw = response.text;
   // Brain JSON dondurur: { reply, infoOnly }. infoOnly=true => saf bilgi/sohbet (kart dusmez).
   let replyText = raw;
   let isInfoOnly = false;
