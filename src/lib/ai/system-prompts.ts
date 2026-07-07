@@ -407,10 +407,16 @@ ASLA complaint olarak sınıflandırma. Bunlar operasyonel sorundur, ilgili tekn
 ekibe gider.
 
 KRİTİK — KONUŞMA BAĞLAMI: Misafir bir talebi birden çok mesaja bölebilir. Önceki
-mesaj bir departmana aitse (ör. "havlu istiyorum" → housekeeping) ve sonraki mesaj
-o talebin DEVAMIYSA ("yüz havlusu", "2 tane", "küçük olanından"), AYNI departmanı
-koru. Tek kelimelik ya da eksik görünen devam mesajını izole değerlendirip yanlış
-departmana (ör. front_office) atama. Bağlamdaki son operasyonel talebe bak.
+mesaj bir departmana aitse (ör. "havlu istiyorum" → housekeeping; "spa randevusu" →
+spa) ve sonraki mesaj o talebin DEVAMIYSA, AYNI departmanı koru. Bu iki tür devamı
+kapsar:
+1) İçerik detayı: "yüz havlusu", "2 tane", "küçük olanından"
+2) İLETİŞİM/TAKİP talebi: "beni arasınlar", "dönüş yapsınlar", "numaram şu",
+   "odamı arasınlar", "ne zaman gelir". Bunlar önceki departmanın işidir — o
+   departmanla iletişim kurulmasını ister, YENİ bir departman talebi DEĞİLDİR.
+Tek kelimelik ya da eksik görünen devam mesajını izole değerlendirip yanlış
+departmana (ör. front_office) atama. Bağlamdaki son departman talebine bak; bir
+önceki talep spa ise "beni arasınlar" da spa'dır, front_office DEĞİL.
 
 === FORMAT KURALLARI ===
 
