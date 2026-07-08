@@ -1,5 +1,35 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
+import { AsyncLocalStorage } from 'async_hooks';
+import { getCentralSupabase } from '@/lib/supabase-client';
+
+export interface AiUsageContext {
+  hotelId: string | null;
+  tier?: string;
+}
+export const aiUsageStore = new AsyncLocalStorage<AiUsageContext>();
+
+async function logAiUsage(
+  provider: string,
+  model: string,
+  inputTokens: number,
+  outputTokens: number
+): Promise<void> {
+  try {
+    const ctx = aiUsageStore.getStore();
+    const supabase = getCentralSupabase();
+    await supabase.from('ai_usage_log').insert({
+      hotel_id: ctx?.hotelId ?? null,
+      provider,
+      model,
+      tier: ctx?.tier ?? null,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+    });
+  } catch {
+    // log hatasi misafir akisini ASLA bozmaz
+  }
+}
 
 export type AIProvider = 'anthropic' | 'openai';
 export type AITier = 'standard' | 'advanced';
@@ -71,11 +101,14 @@ export async function callAI(params: CallAIParams): Promise<CallAIResult> {
         ...params.messages,
       ],
     });
+    const usageInput = resp.usage?.prompt_tokens ?? 0;
+    const usageOutput = resp.usage?.completion_tokens ?? 0;
+    await logAiUsage(provider, resp.model, usageInput, usageOutput);
     return {
       text: (resp.choices[0]?.message?.content ?? '').trim(),
       model: resp.model,
-      inputTokens: resp.usage?.prompt_tokens ?? 0,
-      outputTokens: resp.usage?.completion_tokens ?? 0,
+      inputTokens: usageInput,
+      outputTokens: usageOutput,
     };
   }
 
@@ -89,6 +122,7 @@ export async function callAI(params: CallAIParams): Promise<CallAIResult> {
     messages: params.messages,
   });
   const textBlock = resp.content.find((b) => b.type === 'text');
+  await logAiUsage(provider, resp.model, resp.usage.input_tokens, resp.usage.output_tokens);
   return {
     text: textBlock?.type === 'text' ? textBlock.text.trim() : '',
     model: resp.model,
