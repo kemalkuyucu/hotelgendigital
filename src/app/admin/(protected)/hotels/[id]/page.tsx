@@ -50,7 +50,7 @@ export default async function EditHotelPage({ params }: { params: Promise<{ id: 
   return (
     <div className="p-8">
       <div className="max-w-2xl">
-        <h1 className="text-3xl font-bold text-gray-900 mb-1">Otel Düzenle</h1>
+        <h1 className="text-3xl font-bold text-gray-100 mb-1">Otel Düzenle</h1>
         <p className="text-gray-500 mb-8 text-sm font-mono text-xs">{id}</p>
 
         <form action={updateAction} className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 space-y-5">
@@ -161,7 +161,7 @@ export default async function EditHotelPage({ params }: { params: Promise<{ id: 
 
       <div className="mt-8 max-w-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-800">Hızlı Erişim</h2>
+          <h2 className="text-lg font-semibold text-gray-100">Hızlı Erişim</h2>
         </div>
         <div className="flex gap-3 flex-wrap">
           <a

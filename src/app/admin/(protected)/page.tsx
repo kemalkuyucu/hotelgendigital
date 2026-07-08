@@ -14,14 +14,27 @@ interface AuditLogRow {
 export default async function DashboardPage() {
   const supabase = getCentralSupabase()
 
-  const [{ count: hotelCount }, { data: recentLogs }] = await Promise.all([
+  const [{ count: hotelCount }, { data: recentLogs }, { data: hotelRows }] = await Promise.all([
     supabase.from('hotels').select('*', { count: 'exact', head: true }),
     supabase
       .from('audit_log')
       .select('action, actor_username, created_at, resource_type')
       .order('created_at', { ascending: false })
       .limit(10),
+    supabase
+      .from('hotels')
+      .select('name, version, status')
+      .neq('status', 'deleted')
+      .order('version', { ascending: false }),
   ])
+
+  const versionGroups: Record<string, string[]> = {}
+  for (const h of (hotelRows ?? []) as { name: string; version: string | null }[]) {
+    const v = h.version ?? 'v4'
+    if (!versionGroups[v]) versionGroups[v] = []
+    versionGroups[v].push(h.name)
+  }
+  const sortedVersions = Object.keys(versionGroups).sort().reverse()
 
   return (
     <div className="p-8 space-y-8">
@@ -69,7 +82,39 @@ export default async function DashboardPage() {
           }}
         >
           <div className="text-sm mb-1" style={{ color: '#94a3b8' }}>Versiyon</div>
-          <div className="text-2xl font-bold" style={{ color: '#e2e8f0' }}>v2.0</div>
+          <div className="text-2xl font-bold" style={{ color: '#e2e8f0' }}>v5.0</div>
+        </div>
+      </div>
+
+      {/* Versiyon Dagilimi */}
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{
+          background: 'rgba(255,255,255,0.06)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+        }}
+      >
+        <div className="p-6" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <h2 className="text-lg font-semibold" style={{ color: '#f1f5f9' }}>Versiyon Dağılımı</h2>
+        </div>
+        <div className="p-6 space-y-5">
+          {sortedVersions.length > 0 ? (
+            sortedVersions.map((v) => (
+              <div key={v}>
+                <div className="text-sm font-bold mb-2" style={{ color: '#60a5fa' }}>{v}</div>
+                <div className="flex flex-col gap-1">
+                  {versionGroups[v].map((hn, i) => (
+                    <div key={i} className="text-sm pl-3" style={{ color: '#cbd5e1' }}>• {hn}</div>
+                  ))}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-sm" style={{ color: '#64748b' }}>Otel yok.</div>
+          )}
         </div>
       </div>
 

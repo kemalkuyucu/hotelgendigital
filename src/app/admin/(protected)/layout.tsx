@@ -98,6 +98,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 <span>💰</span> Maliyet Hesapları
               </Link>
             )}
+            {allowCost && (
+              <Link
+                href="/admin/ozgur-kemal"
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/10 text-sm transition-colors"
+                style={{ color: '#cbd5e1' }}
+              >
+                <span>🤝</span> Ozgur&Kemal
+              </Link>
+            )}
           </nav>
 
           <div className="p-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
