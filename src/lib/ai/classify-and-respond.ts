@@ -1,4 +1,4 @@
-import { callAI, DEFAULT_MAX_TOKENS } from './anthropic-client';
+import { callAI, DEFAULT_MAX_TOKENS, aiUsageStore } from './anthropic-client';
 import { buildOrchestratorSystemPrompt, DepartmentInfo } from './system-prompts';
 import { getCachedSummary } from '@/lib/knowledge/cache';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
@@ -74,7 +74,7 @@ export interface ClassifyAndRespondOutput {
   raw_response: string;
 }
 
-export async function classifyAndRespond(
+async function _classifyAndRespondImpl(
   input: ClassifyAndRespondInput
 ): Promise<ClassifyAndRespondOutput> {
   // Modül 15.3 — Hotel context ekle (safety pre-classifier icin de gerekli)
@@ -419,6 +419,14 @@ export async function classifyAndRespond(
     mapsLink: mapsLink ?? undefined,
     raw_response: rawText,
   };
+}
+
+export async function classifyAndRespond(
+  input: ClassifyAndRespondInput
+): Promise<ClassifyAndRespondOutput> {
+  return aiUsageStore.run({ hotelId: input.hotelId ?? null }, () =>
+    _classifyAndRespondImpl(input)
+  );
 }
 
 // ── Modül 10.2 + 10.6: Intent → Departman hiyerarşik routing ──────────────────
