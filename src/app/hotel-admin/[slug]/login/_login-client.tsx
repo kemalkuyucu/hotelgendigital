@@ -201,7 +201,7 @@ export default function LoginClient({ slug }: Props) {
             style={modeTabStyle(mode === 'staff', '#3b82f6')}
           >
             <span style={{ fontSize: '22px' }}>🔵</span>
-            <span>Personel Girişi</span>
+            <span>Departman Müdürü</span>
           </button>
         </div>
 
