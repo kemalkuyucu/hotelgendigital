@@ -36,7 +36,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         >
           <div className="p-6" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             <h2 className="text-xl font-bold text-white">HotelGen</h2>
-            <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>Admin Panel v2</p>
+            <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>Admin Panel v5</p>
           </div>
 
           <nav className="flex-1 p-4 space-y-1">
