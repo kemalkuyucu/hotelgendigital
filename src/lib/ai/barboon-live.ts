@@ -1,9 +1,16 @@
-// Barboon (Protel) rezervasyon motorundan canli oda + fiyat + gorsel ceker.
+// Barboon (Protel) rezervasyon motorundan canli oda + fiyat + gorsel + ozellik ceker.
 // Rez sitesi olan oteller icin. Giris/sifre yok, tek POST + tek GET.
+// TUM veri otelin kendi sisteminden gelir; hicbir bilgi uydurulmaz.
 
 type BarboonRoom = {
   code: string;
   name: string;
+  description: string; // otelin kendi metni (TR)
+  squareMeter: number;
+  maxAdult: number;
+  maxChild: number;
+  maxPax: number;
+  facilities: string[]; // yatak, balkon, manzara vb. - siteden
   totalPrice: number;
   nightlyFirst: number;
   currency: string;
@@ -12,16 +19,25 @@ type BarboonRoom = {
   images: string[];
 };
 
+type CatalogEntry = {
+  images: string[];
+  description: string;
+  squareMeter: number;
+  maxAdult: number;
+  maxChild: number;
+  maxPax: number;
+  facilities: string[];
+};
+
 type BarboonResult = { ok: true; rooms: BarboonRoom[] } | { ok: false; error: string };
 
-// Katalog (oda kodu -> gorsel listesi) ilk sayfadan gelir; fiyat POST'tan gelir.
-async function fetchCatalogImages(ibeDomain: string): Promise<Record<string, string[]>> {
+async function fetchCatalog(ibeDomain: string): Promise<Record<string, CatalogEntry>> {
   const res = await fetch(`https://${ibeDomain}/`, {
     headers: { "User-Agent": "Mozilla/5.0" },
   });
   const html = await res.text();
   const m = html.match(/window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\})\s*<\/script>/);
-  const out: Record<string, string[]> = {};
+  const out: Record<string, CatalogEntry> = {};
   if (!m) return out;
   try {
     const state = JSON.parse(m[1]);
@@ -32,10 +48,24 @@ async function fetchCatalogImages(ibeDomain: string): Promise<Record<string, str
     for (const key of Object.keys(payloads)) {
       const p = payloads[key];
       const code: string | undefined = p?.roomType?.code;
-      const imgs: string[] = (p?.multimedia?.imageList || [])
-        .map((i: any) => i?.imageUrl)
+      if (!code) continue;
+      const fs = p?.factsheet || {};
+      const occ = p?.roomType?.roomOccupancy || {};
+      const facilities: string[] = (fs?.roomFacilityList || [])
+        .map((f: any) => f?.name)
         .filter(Boolean);
-      if (code) out[code] = imgs;
+      out[code] = {
+        images: (p?.multimedia?.imageList || [])
+          .map((i: any) => i?.imageUrl)
+          .filter(Boolean),
+        description:
+          fs?.descriptions?.TR || fs?.descriptions?.EN || fs?.description || "",
+        squareMeter: Number(fs?.squareMeter || 0),
+        maxAdult: Number(occ?.maxAdult || 0),
+        maxChild: Number(occ?.maxChild || 0),
+        maxPax: Number(occ?.maxPax || 0),
+        facilities,
+      };
     }
   } catch {
     return out;
@@ -46,8 +76,8 @@ async function fetchCatalogImages(ibeDomain: string): Promise<Record<string, str
 export async function fetchBarboonLive(params: {
   ibeDomain: string;
   hotelId: string;
-  begin: string; // "2026-08-01"
-  end: string;   // "2026-08-04"
+  begin: string;
+  end: string;
   adultCount: number;
   childCount?: number;
   currency?: string;
@@ -93,12 +123,24 @@ export async function fetchBarboonLive(params: {
     }
 
     const json: any = await priceRes.json();
-    const options: any[] = json?.data?.roomList?.[0]?.accommodationOptionList || [];
-    const images = await fetchCatalogImages(ibeDomain);
+    const options: any[] =
+      json?.data?.roomList?.[0]?.accommodationOptionList || [];
+    const catalog = await fetchCatalog(ibeDomain);
+
+    const empty: CatalogEntry = {
+      images: [],
+      description: "",
+      squareMeter: 0,
+      maxAdult: 0,
+      maxChild: 0,
+      maxPax: 0,
+      facilities: [],
+    };
 
     const rooms: BarboonRoom[] = options.map((opt) => {
       const rt = opt?.roomType || {};
       const code: string = rt?.code || "";
+      const cat = catalog[code] || empty;
       const name: string =
         rt?.names?.descriptions?.TR ||
         rt?.names?.descriptions?.EN ||
@@ -111,6 +153,12 @@ export async function fetchBarboonLive(params: {
       return {
         code,
         name,
+        description: cat.description,
+        squareMeter: cat.squareMeter,
+        maxAdult: cat.maxAdult,
+        maxChild: cat.maxChild,
+        maxPax: cat.maxPax,
+        facilities: cat.facilities,
         totalPrice: Number(rate?.price || 0),
         nightlyFirst,
         currency: rate?.currency || currency,
@@ -119,7 +167,7 @@ export async function fetchBarboonLive(params: {
           rate?.rateType?.names?.description ||
           "",
         availableRooms: Number(opt?.availableRoomCount || 0),
-        images: images[code] || [],
+        images: cat.images,
       };
     });
 
