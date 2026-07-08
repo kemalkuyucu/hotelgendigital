@@ -8,6 +8,8 @@ import { getHotelClient } from '@/lib/tenant/get-hotel-client';
 import { getDecryptedBridge } from '@/lib/tenant/decrypt-credentials';
 import { classifyAndRespond } from '@/lib/ai/classify-and-respond';
 import type { ConversationContextMessage } from '@/lib/ai/classify-and-respond';
+import { detectPriceIntent } from '@/lib/ai/detect-price-intent';
+import { handleRoomPriceQuery } from '@/lib/ai/room-price-tool';
 import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-hours';
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
@@ -417,7 +419,7 @@ export async function POST(
     }
 
     try {
-      await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, hotelSlug, msg, tg, botToken });
+      await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, hotelSlug, msg, tg, botToken, ibeType: hotel.ibe_type, ibeDomain: hotel.ibe_domain });
     } catch (err) {
       console.error('[telegram] handleMessage error:', err);
 
@@ -1014,6 +1016,8 @@ async function handleMessage(args: {
   msg: TelegramMessage;
   tg: TelegramClient;
   botToken: string;
+  ibeType: string | null;
+  ibeDomain: string | null;
 }) {
   const { supa, hotelId, hotelName, hotelSlug, msg, tg, botToken } = args;
   const chatId = msg.chat.id;
@@ -2122,6 +2126,41 @@ async function handleMessage(args: {
       }
     } catch (vgErr) {
       console.error('[ai] verifiedGuestName lookup hatası:', vgErr instanceof Error ? vgErr.message : vgErr);
+    }
+  }
+
+  // ── CANLI FIYAT KAPISI (rez sitesi olan otelde oda/fiyat sorusu) ──
+  // Mevcut akisa dokunmaz; sadece rez sitesi + fiyat niyeti varsa devreye girer.
+  if (args.ibeType && args.ibeDomain) {
+    try {
+      const isPriceQ = await detectPriceIntent({ message: text, history: '' });
+      if (isPriceQ) {
+        const priceRes = await handleRoomPriceQuery({
+          ibeType: args.ibeType,
+          ibeDomain: args.ibeDomain,
+          hotelId: args.hotelId,
+          message: text,
+          history: '',
+          todayISO: getTurkeyToday(),
+        });
+        if (priceRes.status === 'need_dates') {
+          await tg.sendMessage({
+            chat_id: chatId,
+            text: 'Size en dogru fiyati verebilmem icin birkac bilgi gerekli: hangi tarihler arasi (giris-cikis) ve kac kisi (yetiskin/cocuk) kalacaksiniz?',
+          });
+          return;
+        }
+        if (priceRes.status === 'ok') {
+          await tg.sendMessage({ chat_id: chatId, text: priceRes.reply });
+          return;
+        }
+        // status 'error' veya 'not_ibe' -> asagi dus, normal akis calissin
+        if (priceRes.status === 'error') {
+          console.error('[telegram] canli fiyat hatasi:', priceRes.message);
+        }
+      }
+    } catch (e) {
+      console.error('[telegram] fiyat kapisi hatasi:', e instanceof Error ? e.message : 'unknown');
     }
   }
 
