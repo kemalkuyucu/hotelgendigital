@@ -5,8 +5,6 @@
 import { fetchBarboonLive } from './barboon-live';
 import { parseStayQuery } from './parse-stay-query';
 
-type IbeRow = { ibe_type: string | null; ibe_domain: string | null };
-
 export type RoomPriceResult =
   | { status: 'not_ibe' }                       // otelde rez sitesi yok -> eski yontem
   | { status: 'need_dates'; adultCount: number; childCount: number } // tarih sor
@@ -29,30 +27,17 @@ function nightsBetween(begin: string, end: string): number {
 }
 
 export async function handleRoomPriceQuery(params: {
-  supabase: any;          // otel DB client
+  ibeType: string | null;   // caller hotels tablosundan gecirir
+  ibeDomain: string | null; // caller hotels tablosundan gecirir
+  hotelId: string;          // barboon icin gerekli
   message: string;
   history?: string;
   todayISO: string;
 }): Promise<RoomPriceResult> {
-  const { supabase, message, history = '', todayISO } = params;
+  const { ibeType, ibeDomain, hotelId, message, history = '', todayISO } = params;
 
-  // 1) Otelin rez sitesi ayarini oku (Central degil, otel-baglantili degil -> hotels tablosu Central'da,
-  //    ama bu client otel DB'si; ibe bilgisi hotel_settings'e degil hotels'e yazildi.
-  //    Bu yuzden ibe bilgisini cagiran taraf gecirecek. Burada supabase uzerinden hotel_settings denenir,
-  //    yoksa cagiran ibe bilgisini ayrica saglamali.)
-  let ibe: IbeRow | null = null;
-  try {
-    const { data } = await supabase
-      .from('hotel_settings')
-      .select('ibe_type, ibe_domain')
-      .limit(1)
-      .maybeSingle();
-    if (data) ibe = data as IbeRow;
-  } catch {
-    ibe = null;
-  }
-
-  if (!ibe || !ibe.ibe_type || !ibe.ibe_domain) {
+  // 1) Otelin rez sitesi yoksa -> eski (Excel) yontem calissin
+  if (!ibeType || !ibeDomain) {
     return { status: 'not_ibe' };
   }
 
@@ -63,13 +48,13 @@ export async function handleRoomPriceQuery(params: {
   }
 
   // 3) Canli cek (su an yalniz barboon destekli)
-  if (ibe.ibe_type !== 'barboon') {
+  if (ibeType !== 'barboon') {
     return { status: 'not_ibe' };
   }
 
   const res = await fetchBarboonLive({
-    ibeDomain: ibe.ibe_domain,
-    hotelId: '', // cagiran taraf hotelId'yi gecirmeli; asagida override edilir
+    ibeDomain,
+    hotelId,
     begin: stay.begin,
     end: stay.end,
     adultCount: stay.adultCount,
