@@ -2155,7 +2155,7 @@ async function handleMessage(args: {
           return;
         }
         if (priceRes.status === 'ok') {
-          await tg.sendMessage({ chat_id: chatId, text: priceRes.reply });
+          await tg.sendMessage({ chat_id: chatId, text: priceRes.reply, parse_mode: 'HTML' });
           return;
         }
         // status 'error' veya 'not_ibe' -> asagi dus, normal akis calissin

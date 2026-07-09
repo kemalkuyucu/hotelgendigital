@@ -19,6 +19,20 @@ function fmtMoney(n: number, cur: string): string {
   }
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function formatTrDate(iso: string): string {
+  // "2026-08-01" -> "1 Agustos 2026"
+  const aylar = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
+  const p = (iso || '').split('-');
+  if (p.length !== 3) return iso;
+  const y = p[0]; const m = parseInt(p[1], 10); const d = parseInt(p[2], 10);
+  if (!m || !d) return iso;
+  return `${d} ${aylar[m - 1]} ${y}`;
+}
+
 function nightsBetween(begin: string, end: string): number {
   const a = new Date(begin + 'T00:00:00');
   const b = new Date(end + 'T00:00:00');
@@ -90,24 +104,23 @@ export async function handleRoomPriceQuery(params: {
     `${stay.adultCount} yetiskin` + (stay.childCount > 0 ? ` ${stay.childCount} cocuk` : '');
 
   const header =
-    `🏨 ${stay.begin} — ${stay.end}\n` +
-    `👥 ${kisiStr} · 🌙 ${nights} gece\n` +
-    `━━━━━━━━━━━━━━`;
+    `🏨 <b>${formatTrDate(stay.begin)} – ${formatTrDate(stay.end)}</b>\n` +
+    `👥 ${kisiStr}  ·  🌙 ${nights} gece\n` +
+    `━━━━━━━━━━━━━━━━━━━`;
 
   const roomLines = rooms
     .map((r) => {
       const parts: string[] = [`💰 ${fmtMoney(r.totalPrice, r.currency)}`];
       if (r.squareMeter > 0) parts.push(`📐 ${r.squareMeter} m²`);
       if (r.maxPax > 0) parts.push(`👥 ${r.maxPax} kisi`);
-      return `🛏 ${r.name}\n${parts.join(' · ')}`;
+      return `🛏 <b>${escapeHtml(r.name)}</b>\n${parts.join(' · ')}`;
     })
     .join('\n\n');
 
   const footer =
-    `━━━━━━━━━━━━━━\n` +
+    `━━━━━━━━━━━━━━━━━━━\n` +
     `ℹ️ Fiyatlar ${nights} gecelik toplam, yarim pansiyon dahildir.\n\n` +
-    `🔗 Tum oda kategorilerini, gorselleri ve detaylari gormek veya rezervasyon yapmak icin:\n` +
-    `${bookingUrl}`;
+    `🔗 <a href="${escapeHtml(bookingUrl)}">Rezervasyon Sayfasi</a> — tum kategoriler, gorseller ve detaylar burada.`;
 
   const reply = `${header}\n\n${roomLines}\n\n${footer}`;
 
