@@ -16,11 +16,13 @@ export async function detectRoomDetailIntent(params: {
   message: string;
   history?: string;
   // mevcut odalar: kod + ad listesi (canli cekilenden) - AI dogru eslesme yapsin
-  rooms: Array<{ code: string; name: string }>;
+  rooms?: Array<{ code: string; name: string }>;
 }): Promise<RoomDetailIntent> {
-  const { message, history = '', rooms } = params;
+  const { message, history = '', rooms = [] } = params;
 
-  const roomList = rooms.map((r) => `${r.code} = ${r.name}`).join('\n');
+  const roomList = rooms.length > 0
+    ? rooms.map((r) => `${r.code} = ${r.name}`).join('\n')
+    : '(oda listesi henuz yok - sadece detay sorusu olup olmadigini belirle, roomCode null birak)';
 
   const system =
     'Bir otel asistanisin. Kullanicinin SON mesaji, belirli bir ODA hakkinda DETAY sorusu mu? ' +

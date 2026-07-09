@@ -9,7 +9,10 @@ import { getDecryptedBridge } from '@/lib/tenant/decrypt-credentials';
 import { classifyAndRespond } from '@/lib/ai/classify-and-respond';
 import type { ConversationContextMessage } from '@/lib/ai/classify-and-respond';
 import { detectPriceIntent } from '@/lib/ai/detect-price-intent';
-import { handleRoomPriceQuery } from '@/lib/ai/room-price-tool';
+import { handleRoomPriceQuery, handleRoomDetailQuery } from '@/lib/ai/room-price-tool';
+import { detectRoomDetailIntent } from '@/lib/ai/detect-room-detail-intent';
+import { parseStayQuery } from '@/lib/ai/parse-stay-query';
+import { fetchBarboonLive } from '@/lib/ai/barboon-live';
 import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-hours';
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
@@ -2165,6 +2168,74 @@ async function handleMessage(args: {
       }
     } catch (e) {
       console.error('[telegram] fiyat kapisi hatasi:', e instanceof Error ? e.message : 'unknown');
+    }
+  }
+
+  // ── ODA DETAY / GORSEL KAPISI (rez sitesi olan otelde belirli oda detay/foto sorusu) ──
+  // Once UCUZ niyet kontrolu; detay niyeti yoksa hicbir agir is (canli cekim) yapilmaz.
+  if (args.ibeType && args.ibeDomain) {
+    try {
+      // 1) Bu bir oda-detay/gorsel sorusu mu? (liste olmadan, ucuz)
+      const diLight = await detectRoomDetailIntent({ message: text, history: priceHistory });
+      if (diLight.isDetailQuery) {
+        // 2) Detay sorusu -> tarih var mi?
+        const stay = await parseStayQuery({ message: text, history: priceHistory, todayISO: getTurkeyToday() });
+        if (stay.needsDates || !stay.begin || !stay.end) {
+          // Tarih yok -> sor
+          await tg.sendMessage({
+            chat_id: chatId,
+            text: 'Odalarımızın detaylarını ve görsellerini size en doğru şekilde gösterebilmem için hangi tarihler arası (giriş-çıkış) ve kaç kişi (yetişkin/çocuk) kalacaksınız?',
+          });
+          return;
+        }
+        // 3) Tarih var -> canli cek, odayi eslestir
+        const live = await fetchBarboonLive({
+          ibeDomain: args.ibeDomain,
+          hotelId: args.ibeHotelId || '',
+          begin: stay.begin,
+          end: stay.end,
+          adultCount: stay.adultCount,
+          childCount: stay.childCount,
+        });
+        if (live.ok && live.rooms.length > 0) {
+          const roomsForIntent = live.rooms.map((r) => ({ code: r.code, name: r.name }));
+          const di = await detectRoomDetailIntent({ message: text, history: priceHistory, rooms: roomsForIntent });
+          const roomCode = di.roomCode;
+          if (roomCode) {
+            const detailRes = await handleRoomDetailQuery({
+              ibeType: args.ibeType,
+              ibeDomain: args.ibeDomain,
+              hotelId: args.ibeHotelId || '',
+              roomCode,
+              begin: stay.begin,
+              end: stay.end,
+              adultCount: stay.adultCount,
+              childCount: stay.childCount,
+            });
+            if (detailRes.status === 'ok') {
+              await tg.sendMessage({ chat_id: chatId, text: detailRes.reply, parse_mode: 'HTML' });
+              return;
+            }
+          } else {
+            // Detay sorusu ama hangi oda belirsiz -> genel rez linkine yonlendir
+            const genelUrl =
+              `https://${args.ibeDomain}/search-result?adultCount=${stay.adultCount}` +
+              `&adultCountRoom1=${stay.adultCount}&checkIn=${stay.begin}&checkOut=${stay.end}` +
+              `&childCount=${stay.childCount}&childCountRoom1=${stay.childCount}` +
+              `&currency=TRY&language=TR&roomCount=1`;
+            await tg.sendMessage({
+              chat_id: chatId,
+              text: `Tüm oda kategorilerimizin görsellerini ve detaylarını aşağıdaki sayfamızdan inceleyebilirsiniz.\n\n🔗 <a href="${genelUrl.replace(/&/g, '&amp;')}">Rezervasyon Sayfası</a>\n\nℹ️ Rezervasyon ve ödeme işlemleri otelin kendi sayfası üzerinden yapılır.`,
+              parse_mode: 'HTML',
+            });
+            return;
+          }
+        }
+        // canli cekim basarisiz -> asagi dus, normal akis
+      }
+      // detay niyeti yok -> hicbir sey yapma, normal akisa dus
+    } catch (e) {
+      console.error('[telegram] oda detay kapisi hatasi:', e instanceof Error ? e.message : 'unknown');
     }
   }
 
