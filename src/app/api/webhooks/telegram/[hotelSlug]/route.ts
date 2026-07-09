@@ -2131,9 +2131,12 @@ async function handleMessage(args: {
 
   // ── CANLI FIYAT KAPISI (rez sitesi olan otelde oda/fiyat sorusu) ──
   // Mevcut akisa dokunmaz; sadece rez sitesi + fiyat niyeti varsa devreye girer.
+  console.log('[FIYATKAPI] blok oncesi. ibeType var mi=', !!args.ibeType, 'ibeDomain var mi=', !!args.ibeDomain);
   if (args.ibeType && args.ibeDomain) {
+    console.log('[FIYATKAPI] girildi. ibeType=', args.ibeType, 'ibeDomain=', args.ibeDomain, 'mesaj=', text);
     try {
       const isPriceQ = await detectPriceIntent({ message: text, history: '' });
+      console.log('[FIYATKAPI] niyet sonucu isPriceQ=', isPriceQ);
       if (isPriceQ) {
         const priceRes = await handleRoomPriceQuery({
           ibeType: args.ibeType,
@@ -2143,6 +2146,7 @@ async function handleMessage(args: {
           history: '',
           todayISO: getTurkeyToday(),
         });
+        console.log('[FIYATKAPI] priceRes.status=', priceRes.status);
         if (priceRes.status === 'need_dates') {
           await tg.sendMessage({
             chat_id: chatId,
