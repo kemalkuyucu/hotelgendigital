@@ -25,7 +25,7 @@ function escapeHtml(s: string): string {
 
 function formatTrDate(iso: string): string {
   // "2026-08-01" -> "1 Agustos 2026"
-  const aylar = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
+  const aylar = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   const p = (iso || '').split('-');
   if (p.length !== 3) return iso;
   const y = p[0]; const m = parseInt(p[1], 10); const d = parseInt(p[2], 10);
@@ -86,8 +86,8 @@ export async function handleRoomPriceQuery(params: {
     return {
       status: 'ok',
       reply:
-        stay.begin + ' - ' + stay.end + ' tarihleri icin sectiginiz kisi sayisina uygun musait oda bulunamadi. ' +
-        'Farkli tarih veya kisi sayisi ile tekrar deneyebilirsiniz.',
+        formatTrDate(stay.begin) + ' – ' + formatTrDate(stay.end) + ' tarihleri için seçtiğiniz kişi sayısına uygun müsait oda bulunamadı. ' +
+        'Farklı tarih veya kişi sayısı ile tekrar deneyebilirsiniz.',
     };
   }
 
@@ -101,7 +101,7 @@ export async function handleRoomPriceQuery(params: {
     `&currency=TRY&language=TR&roomCount=${roomCount}`;
 
   const kisiStr =
-    `${stay.adultCount} yetiskin` + (stay.childCount > 0 ? ` ${stay.childCount} cocuk` : '');
+    `${stay.adultCount} yetişkin` + (stay.childCount > 0 ? ` ${stay.childCount} çocuk` : '');
 
   const header =
     `🏨 <b>${formatTrDate(stay.begin)} – ${formatTrDate(stay.end)}</b>\n` +
@@ -112,15 +112,15 @@ export async function handleRoomPriceQuery(params: {
     .map((r) => {
       const parts: string[] = [`💰 ${fmtMoney(r.totalPrice, r.currency)}`];
       if (r.squareMeter > 0) parts.push(`📐 ${r.squareMeter} m²`);
-      if (r.maxPax > 0) parts.push(`👥 ${r.maxPax} kisi`);
+      if (r.maxPax > 0) parts.push(`👥 ${r.maxPax} kişi`);
       return `🛏 <b>${escapeHtml(r.name)}</b>\n${parts.join(' · ')}`;
     })
     .join('\n\n');
 
   const footer =
     `━━━━━━━━━━━━━━━━━━━\n` +
-    `ℹ️ Fiyatlar ${nights} gecelik toplam, yarim pansiyon dahildir.\n\n` +
-    `🔗 <a href="${escapeHtml(bookingUrl)}">Rezervasyon Sayfasi</a> — tum kategoriler, gorseller ve detaylar burada.`;
+    `ℹ️ Fiyatlar ${nights} gecelik toplam, yarım pansiyon dahildir.\n\n` +
+    `🔗 <a href="${escapeHtml(bookingUrl)}">Rezervasyon Sayfası</a> — tüm kategoriler, görseller ve detaylar burada.`;
 
   const reply = `${header}\n\n${roomLines}\n\n${footer}`;
 
