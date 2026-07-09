@@ -77,18 +77,39 @@ export async function handleRoomPriceQuery(params: {
     };
   }
 
-  const kisi =
-    stay.adultCount + ' yetiskin' + (stay.childCount > 0 ? ' ' + stay.childCount + ' cocuk' : '');
-  const lines = rooms
-    .map((r) => '- ' + r.name + ': ' + fmtMoney(r.totalPrice, r.currency) + ' (' + nights + ' gece toplam)')
-    .join('\n');
+  // Rezervasyon linki (tarih + kisi dolu) - o odalarin sonuc sayfasi
+  const roomCount = 1;
+  const bookingUrl =
+    `https://${ibeDomain}/search-result?adultCount=${stay.adultCount}` +
+    `&adultCountRoom1=${stay.adultCount}` +
+    `&checkIn=${stay.begin}&checkOut=${stay.end}` +
+    `&childCount=${stay.childCount}&childCountRoom1=${stay.childCount}` +
+    `&currency=TRY&language=TR&roomCount=${roomCount}`;
 
-  const reply =
-    stay.begin + ' - ' + stay.end + ' | ' + kisi + ' icin musait odalar:\n' +
-    lines +
-    '\n\nFiyatlar ' + nights + ' gecelik toplam ve yarim pansiyon dahildir. ' +
-    'Bir odanin detaylarini (metrekare, ozellikler) veya fotograflarini gormek ister misiniz? ' +
-    'Rezervasyon icin de yardimci olabilirim.';
+  const kisiStr =
+    `${stay.adultCount} yetiskin` + (stay.childCount > 0 ? ` ${stay.childCount} cocuk` : '');
+
+  const header =
+    `🏨 ${stay.begin} — ${stay.end}\n` +
+    `👥 ${kisiStr} · 🌙 ${nights} gece\n` +
+    `━━━━━━━━━━━━━━`;
+
+  const roomLines = rooms
+    .map((r) => {
+      const parts: string[] = [`💰 ${fmtMoney(r.totalPrice, r.currency)}`];
+      if (r.squareMeter > 0) parts.push(`📐 ${r.squareMeter} m²`);
+      if (r.maxPax > 0) parts.push(`👥 ${r.maxPax} kisi`);
+      return `🛏 ${r.name}\n${parts.join(' · ')}`;
+    })
+    .join('\n\n');
+
+  const footer =
+    `━━━━━━━━━━━━━━\n` +
+    `ℹ️ Fiyatlar ${nights} gecelik toplam, yarim pansiyon dahildir.\n\n` +
+    `🔗 Tum oda kategorilerini, gorselleri ve detaylari gormek veya rezervasyon yapmak icin:\n` +
+    `${bookingUrl}`;
+
+  const reply = `${header}\n\n${roomLines}\n\n${footer}`;
 
   return { status: 'ok', reply };
 }
