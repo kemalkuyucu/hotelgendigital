@@ -2135,12 +2135,9 @@ async function handleMessage(args: {
   const priceHistory = (context || [])
     .map((m) => `${m.direction === 'outbound' ? 'Bot' : 'Misafir'}: ${m.text}`)
     .join('\n');
-  console.log('[FIYATKAPI] blok oncesi. ibeType var mi=', !!args.ibeType, 'ibeDomain var mi=', !!args.ibeDomain);
   if (args.ibeType && args.ibeDomain) {
-    console.log('[FIYATKAPI] girildi. ibeType=', args.ibeType, 'ibeDomain=', args.ibeDomain, 'mesaj=', text);
     try {
       const isPriceQ = await detectPriceIntent({ message: text, history: priceHistory });
-      console.log('[FIYATKAPI] niyet sonucu isPriceQ=', isPriceQ);
       if (isPriceQ) {
         const priceRes = await handleRoomPriceQuery({
           ibeType: args.ibeType,
@@ -2150,7 +2147,6 @@ async function handleMessage(args: {
           history: priceHistory,
           todayISO: getTurkeyToday(),
         });
-        console.log('[FIYATKAPI] priceRes.status=', priceRes.status);
         if (priceRes.status === 'need_dates') {
           await tg.sendMessage({
             chat_id: chatId,
