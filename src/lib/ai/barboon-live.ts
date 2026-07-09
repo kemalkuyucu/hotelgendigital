@@ -31,16 +31,26 @@ type CatalogEntry = {
 
 type BarboonResult = { ok: true; rooms: BarboonRoom[] } | { ok: false; error: string };
 
-async function fetchCatalog(ibeDomain: string): Promise<Record<string, CatalogEntry>> {
+async function fetchCatalog(
+  ibeDomain: string,
+): Promise<{ entries: Record<string, CatalogEntry>; hotelId: string | null }> {
+  let foundHotelId: string | null = null;
   const res = await fetch(`https://${ibeDomain}/`, {
     headers: { "User-Agent": "Mozilla/5.0" },
   });
   const html = await res.text();
   const m = html.match(/window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\})\s*<\/script>/);
   const out: Record<string, CatalogEntry> = {};
-  if (!m) return out;
+  if (!m) return { entries: {}, hotelId: null };
   try {
     const state = JSON.parse(m[1]);
+    foundHotelId =
+      state?.domain?.property?.hotelId ||
+      state?.domain?.property?.hotel?.id ||
+      state?.domain?.property?.id ||
+      state?.__propertySettingsData?.hotelId ||
+      state?.__propertySettingsData?.hotel?.id ||
+      null;
     const payloads =
       state?.domain?.property?.roomTypePayloads ||
       state?.__propertySettingsData?.roomTypePayloads ||
@@ -68,9 +78,9 @@ async function fetchCatalog(ibeDomain: string): Promise<Record<string, CatalogEn
       };
     }
   } catch {
-    return out;
+    return { entries: out, hotelId: foundHotelId };
   }
-  return out;
+  return { entries: out, hotelId: foundHotelId };
 }
 
 export async function fetchBarboonLive(params: {
@@ -95,9 +105,16 @@ export async function fetchBarboonLive(params: {
   } = params;
 
   try {
+    // hotelId POST body'sinde lazim -> katalogu (ve site hotelId'sini) once cek.
+    const catalog = await fetchCatalog(ibeDomain);
+    const effectiveHotelId = (hotelId && hotelId.trim()) ? hotelId : (catalog.hotelId || '');
+    if (!effectiveHotelId) {
+      return { ok: false, error: 'hotelId bulunamadi (ne parametre ne site)' };
+    }
+
     const body = {
       period: { begin, end },
-      hotelId,
+      hotelId: effectiveHotelId,
       roomOccupancies: [{ adultCount, childCount }],
       currency,
       viewCurrency: currency,
@@ -128,7 +145,6 @@ export async function fetchBarboonLive(params: {
     const json: any = await priceRes.json();
     const options: any[] =
       json?.data?.roomList?.[0]?.accommodationOptionList || [];
-    const catalog = await fetchCatalog(ibeDomain);
 
     const empty: CatalogEntry = {
       images: [],
@@ -143,7 +159,7 @@ export async function fetchBarboonLive(params: {
     const rooms: BarboonRoom[] = options.map((opt) => {
       const rt = opt?.roomType || {};
       const code: string = rt?.code || "";
-      const cat = catalog[code] || empty;
+      const cat = catalog.entries[code] || empty;
       const name: string =
         rt?.names?.descriptions?.TR ||
         rt?.names?.descriptions?.EN ||

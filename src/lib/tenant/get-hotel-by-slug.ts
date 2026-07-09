@@ -7,6 +7,7 @@ export interface HotelRow {
   status: string;
   ibe_type: string | null;
   ibe_domain: string | null;
+  ibe_hotel_id: string | null;
 }
 
 let centralClient: ReturnType<typeof createClient> | null = null;
@@ -25,7 +26,7 @@ function getCentralClient() {
 export async function getHotelBySlug(slug: string): Promise<HotelRow | null> {
   const { data, error } = await getCentralClient()
     .from('hotels')
-    .select('id, slug, name, status, ibe_type, ibe_domain')
+    .select('id, slug, name, status, ibe_type, ibe_domain, ibe_hotel_id')
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw new Error(`getHotelBySlug error: ${error.message}`);

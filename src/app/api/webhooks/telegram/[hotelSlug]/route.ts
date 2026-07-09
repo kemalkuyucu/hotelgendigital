@@ -419,7 +419,7 @@ export async function POST(
     }
 
     try {
-      await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, hotelSlug, msg, tg, botToken, ibeType: hotel.ibe_type, ibeDomain: hotel.ibe_domain });
+      await handleMessage({ supa, hotelId: hotel.id, hotelName: hotel.name, hotelSlug, msg, tg, botToken, ibeType: hotel.ibe_type, ibeDomain: hotel.ibe_domain, ibeHotelId: hotel.ibe_hotel_id });
     } catch (err) {
       console.error('[telegram] handleMessage error:', err);
 
@@ -1018,6 +1018,7 @@ async function handleMessage(args: {
   botToken: string;
   ibeType: string | null;
   ibeDomain: string | null;
+  ibeHotelId: string | null;
 }) {
   const { supa, hotelId, hotelName, hotelSlug, msg, tg, botToken } = args;
   const chatId = msg.chat.id;
@@ -2144,7 +2145,7 @@ async function handleMessage(args: {
         const priceRes = await handleRoomPriceQuery({
           ibeType: args.ibeType,
           ibeDomain: args.ibeDomain,
-          hotelId: args.hotelId,
+          hotelId: args.ibeHotelId || '',
           message: text,
           history: priceHistory,
           todayISO: getTurkeyToday(),
