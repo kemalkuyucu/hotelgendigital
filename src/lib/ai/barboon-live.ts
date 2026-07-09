@@ -119,6 +119,9 @@ export async function fetchBarboonLive(params: {
     });
 
     if (!priceRes.ok) {
+      let errBody = '';
+      try { errBody = (await priceRes.text()).slice(0, 500); } catch {}
+      console.error('[BARBOON] price HTTP', priceRes.status, '| begin=', begin, 'end=', end, 'adult=', adultCount, 'child=', childCount, '| body=', errBody);
       return { ok: false, error: `price HTTP ${priceRes.status}` };
     }
 
