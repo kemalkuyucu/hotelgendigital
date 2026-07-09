@@ -29,7 +29,7 @@ export async function detectPriceIntent(params: {
       tier: 'standard',
       system,
       messages: [{ role: 'user', content: userMsg }],
-      maxTokens: 5,
+      maxTokens: 16,
       temperature: 0,
     });
     const t = (res.text || '').trim().toUpperCase();
