@@ -12,12 +12,17 @@ export async function detectPriceIntent(params: {
 
   const system =
     'Bir otel mesajlasma asistanisin. Gorevin: kullanicinin SON mesaji, KONAKLAMA icin ODA FIYATI, ' +
-    'MUSAITLIK, oda cesitleri/kategorileri veya REZERVASYON YAPMA niyeti tasiyor mu? ' +
+    'MUSAITLIK veya REZERVASYON YAPMA niyeti tasiyor mu? ' +
     'Ornek EVET: "odalar kaca", "temmuzda fiyat nedir", "musait oda var mi", "aile odasi ne kadar", ' +
-    '"rezervasyon yaptirmak istiyorum", "hangi oda tipleri var". ' +
-    'Ornek HAYIR: "odam soguk", "oda servisi nerede", "havlu istiyorum", "kahvalti saati", "wifi sifresi", ' +
-    '"spa var mi" (bu fiyat/oda degil, tesis sorusu). ' +
-    'Tesis/hizmet/sikayet/genel bilgi sorulari HAYIR. Sadece konaklama oda-fiyat-musaitlik-rezervasyon EVET. ' +
+    '"rezervasyon yaptirmak istiyorum", "fiyat listesi", "bos oda var mi". ' +
+    'COK ONEMLI: Belli bir odanin OZELLIK / DETAY / M2 / FOTOGRAF / GORSEL veya "nasil bir oda" ' +
+    'sorulari FIYAT DEGILDIR -> HAYIR de. Bunlar ayri bir oda-detay kapisina gider, sen ACMA. ' +
+    'Ornek HAYIR (oda-detay, fiyat degil): "deluxe corner odasi nasil", "villa fotografi var mi", ' +
+    '"aile odasi kac m2", "suite nasil bir oda", "odanin ozellikleri neler", "oda gorselleri var mi". ' +
+    'Ornek HAYIR (tesis/hizmet): "odam soguk", "oda servisi nerede", "havlu istiyorum", "kahvalti saati", ' +
+    '"wifi sifresi", "spa var mi". ' +
+    'Ayirt edici kural: "ne kadar / kac para / fiyat / musait / rezervasyon" -> EVET. ' +
+    '"nasil / ozellik / detay / m2 / foto / gorsel" -> HAYIR. ' +
     'CIKTI: yalniz tek kelime, buyuk harf: EVET veya HAYIR. Baska hicbir sey yazma.';
 
   const userMsg =
