@@ -3624,11 +3624,11 @@ async function upsertGuestAndConversation(args: {
   } else {
     const { data: newGuest, error } = await supa
       .from('guests')
-      .insert({
+      .upsert({
         full_name: fullName,
         telegram_user_id: userId,
         telegram_username: username,
-      })
+      }, { onConflict: 'telegram_user_id' })
       .select('id')
       .single();
     if (error) throw new Error(`guest insert: ${error.message}`);
@@ -3672,12 +3672,12 @@ async function upsertGuestAndConversation(args: {
   } else {
     const { data: newConv, error } = await supa
       .from('conversations')
-      .insert({
+      .upsert({
         guest_id: guestId,
         channel: 'telegram',
         telegram_chat_id: chatId,
         last_message_at: new Date().toISOString(),
-      })
+      }, { onConflict: 'telegram_chat_id' })
       .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts')
       .single();
     if (error) throw new Error(`conversation insert: ${error.message}`);
