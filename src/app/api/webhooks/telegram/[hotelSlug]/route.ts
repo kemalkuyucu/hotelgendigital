@@ -2253,10 +2253,19 @@ async function handleMessage(args: {
         const stay = await parseStayQuery({ message: text, history: priceHistory, todayISO: getTurkeyToday() });
         if (stay.needsDates || !stay.begin || !stay.end) {
           // Tarih yok -> bayragi yaz (sonraki turda cevabi yakalamak icin) sonra sor
-          await supa
+          const { error: detailFlagErr } = await supa
             .from('conversations')
             .update({ detail_pending: true, detail_pending_text: text })
             .eq('id', conversationId);
+          if (detailFlagErr) {
+            console.error('[detail-pending] BAYRAK YAZILAMADI:', {
+              message: detailFlagErr.message,
+              code: detailFlagErr.code,
+              details: detailFlagErr.details,
+              hint: detailFlagErr.hint,
+              conversationId,
+            });
+          }
           await tg.sendMessage({
             chat_id: chatId,
             text: 'Odalarımızın detaylarını ve görsellerini size en doğru şekilde gösterebilmem için hangi tarihler arası (giriş-çıkış) ve kaç kişi (yetişkin/çocuk) kalacaksınız?',
