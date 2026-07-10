@@ -108,7 +108,11 @@ export async function handleRoomPriceQuery(params: {
     `👥 ${kisiStr}  ·  🌙 ${nights} gece\n` +
     `━━━━━━━━━━━━━━━━━━━`;
 
-  const roomLines = rooms
+  const MAX_ROOMS = 4; // genel fiyat sorusunda en ucuz kac oda gosterilsin
+  const shownRooms = rooms.slice(0, MAX_ROOMS);
+  const remainingCount = rooms.length - shownRooms.length;
+
+  const roomLines = shownRooms
     .map((r) => {
       const parts: string[] = [`💰 ${fmtMoney(r.totalPrice, r.currency)}`];
       if (r.squareMeter > 0) parts.push(`📐 ${r.squareMeter} m²`);
@@ -117,10 +121,15 @@ export async function handleRoomPriceQuery(params: {
     })
     .join('\n\n');
 
+  const linkTail =
+    remainingCount > 0
+      ? `${remainingCount} kategori daha, görseller ve detaylar burada.`
+      : `görseller ve detaylar burada.`;
+
   const footer =
     `━━━━━━━━━━━━━━━━━━━\n` +
     `ℹ️ Fiyatlar ${nights} gecelik toplam, yarım pansiyon dahildir.\n\n` +
-    `🔗 <a href="${escapeHtml(bookingUrl)}">Rezervasyon Sayfası</a> — tüm kategoriler, görseller ve detaylar burada.`;
+    `🔗 <a href="${escapeHtml(bookingUrl)}">Rezervasyon Sayfası</a> — ${linkTail}`;
 
   const reply = `${header}\n\n${roomLines}\n\n${footer}`;
 
