@@ -658,6 +658,9 @@ interface ConversationState {
   verification_pending_intent: string | null;
   verification_attempts: number;
   pending_request_text: string | null; // Modül 10.4: doğrulama öncesi orijinal talep
+  // v5 — Oda-detay follow-up state (018_detail_pending)
+  detail_pending: boolean;            // Detay akisinda tarih cevabi bekleniyor mu?
+  detail_pending_text: string | null; // Orijinal oda sorusu ("villa ozellikleri nedir")
   // Modül 3 — Alerjen akışı
   allergen_asked: boolean;   // Bu konuşmada alerji sorusu soruldu mu?
   allergen_pending: boolean; // Şu an alerji cevabı bekleniyor mu?
@@ -2175,13 +2178,85 @@ async function handleMessage(args: {
   // Once UCUZ niyet kontrolu; detay niyeti yoksa hicbir agir is (canli cekim) yapilmaz.
   if (args.ibeType && args.ibeDomain) {
     try {
+      // 0) FOLLOW-UP: Onceki turda detay kapisi tarih sordu mu? (detail_pending state)
+      // Deterministik DB bayragi (LLM degil). Misafir simdi tarih veriyor demektir.
+      if (conversation.detail_pending) {
+        // Bayragi HEMEN temizle — parse basarisiz olsa bile takili kalmasin
+        await supa
+          .from('conversations')
+          .update({ detail_pending: false, detail_pending_text: null })
+          .eq('id', conversationId);
+
+        // Orijinal oda sorusu ("villa ozellikleri nedir") + simdiki tarih -> birlestir
+        const savedRoomQ = conversation.detail_pending_text || '';
+        const mergedText = savedRoomQ ? `${savedRoomQ} ${text}` : text;
+
+        const stayF = await parseStayQuery({
+          message: mergedText,
+          history: priceHistory,
+          todayISO: getTurkeyToday(),
+        });
+        if (!stayF.needsDates && stayF.begin && stayF.end) {
+          const liveF = await fetchBarboonLive({
+            ibeDomain: args.ibeDomain,
+            hotelId: args.ibeHotelId || '',
+            begin: stayF.begin,
+            end: stayF.end,
+            adultCount: stayF.adultCount,
+            childCount: stayF.childCount,
+          });
+          if (liveF.ok && liveF.rooms.length > 0) {
+            const roomsF = liveF.rooms.map((r) => ({ code: r.code, name: r.name }));
+            const diF = await detectRoomDetailIntent({
+              message: mergedText,
+              history: priceHistory,
+              rooms: roomsF,
+            });
+            if (diF.roomCode) {
+              const detRes = await handleRoomDetailQuery({
+                ibeType: args.ibeType,
+                ibeDomain: args.ibeDomain,
+                hotelId: args.ibeHotelId || '',
+                roomCode: diF.roomCode,
+                begin: stayF.begin,
+                end: stayF.end,
+                adultCount: stayF.adultCount,
+                childCount: stayF.childCount,
+              });
+              if (detRes.status === 'ok') {
+                await tg.sendMessage({ chat_id: chatId, text: detRes.reply, parse_mode: 'HTML' });
+                return;
+              }
+            }
+            // Oda cozulemedi -> genel rez linkine yonlendir
+            const gUrl =
+              `https://${args.ibeDomain}/search-result?adultCount=${stayF.adultCount}` +
+              `&adultCountRoom1=${stayF.adultCount}&checkIn=${stayF.begin}&checkOut=${stayF.end}` +
+              `&childCount=${stayF.childCount}&childCountRoom1=${stayF.childCount}` +
+              `&currency=TRY&language=TR&roomCount=1`;
+            await tg.sendMessage({
+              chat_id: chatId,
+              text: `Tüm oda kategorilerimizin görsellerini ve detaylarını aşağıdaki sayfamızdan inceleyebilirsiniz.\n\n🔗 <a href="${gUrl.replace(/&/g, '&amp;')}">Rezervasyon Sayfası</a>\n\nℹ️ Rezervasyon ve ödeme işlemleri otelin kendi sayfası üzerinden yapılır.`,
+              parse_mode: 'HTML',
+            });
+            return;
+          }
+        }
+        // Birlesik parse/cekim basarisiz -> asagi dus, normal akis devam etsin
+        // (bayrak zaten temizlendi, misafir yeni detay sorusuyla bastan baslayabilir)
+      }
+
       // 1) Bu bir oda-detay/gorsel sorusu mu? (liste olmadan, ucuz)
       const diLight = await detectRoomDetailIntent({ message: text, history: priceHistory });
       if (diLight.isDetailQuery) {
         // 2) Detay sorusu -> tarih var mi?
         const stay = await parseStayQuery({ message: text, history: priceHistory, todayISO: getTurkeyToday() });
         if (stay.needsDates || !stay.begin || !stay.end) {
-          // Tarih yok -> sor
+          // Tarih yok -> bayragi yaz (sonraki turda cevabi yakalamak icin) sonra sor
+          await supa
+            .from('conversations')
+            .update({ detail_pending: true, detail_pending_text: text })
+            .eq('id', conversationId);
           await tg.sendMessage({
             chat_id: chatId,
             text: 'Odalarımızın detaylarını ve görsellerini size en doğru şekilde gösterebilmem için hangi tarihler arası (giriş-çıkış) ve kaç kişi (yetişkin/çocuk) kalacaksınız?',
@@ -3551,7 +3626,7 @@ async function upsertGuestAndConversation(args: {
   // Conversation upsert — doğrulama state sütunlarını da çek
   const { data: existingConv } = await supa
     .from('conversations')
-    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text, allergen_asked, allergen_pending, allergen_verify_pending, allergen_verify_pending_at, allergen_verify_attempts')
+    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text, allergen_asked, allergen_pending, allergen_verify_pending, allergen_verify_pending_at, allergen_verify_attempts, detail_pending, detail_pending_text')
     .eq('telegram_chat_id', chatId)
     .maybeSingle();
 
@@ -3567,6 +3642,8 @@ async function upsertGuestAndConversation(args: {
       verification_pending_intent: (existingConv.verification_pending_intent as string | null) ?? null,
       verification_attempts: (existingConv.verification_attempts as number) ?? 0,
       pending_request_text: (existingConv.pending_request_text as string | null) ?? null, // Modül 10.4
+      detail_pending: (existingConv.detail_pending as boolean) ?? false,             // v5 detay follow-up
+      detail_pending_text: (existingConv.detail_pending_text as string | null) ?? null, // v5 detay follow-up
       allergen_asked: (existingConv.allergen_asked as boolean) ?? false,             // Modül 3
       allergen_pending: (existingConv.allergen_pending as boolean) ?? false,         // Modül 3
       allergen_verify_pending: (existingConv.allergen_verify_pending as boolean) ?? false,         // Modül 3 izolasyon
@@ -3597,6 +3674,8 @@ async function upsertGuestAndConversation(args: {
       verification_pending_intent: null,
       verification_attempts: 0,
       pending_request_text: null,          // Modül 10.4
+      detail_pending: false,
+      detail_pending_text: null,
       allergen_asked: false,               // Modül 3
       allergen_pending: false,             // Modül 3
       allergen_verify_pending: false,      // Modül 3 izolasyon
