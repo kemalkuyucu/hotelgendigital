@@ -2187,6 +2187,23 @@ async function handleMessage(args: {
           .update({ detail_pending: false, detail_pending_text: null })
           .eq('id', conversationId);
 
+        // YENI KAPI (allergen_pending deseni): misafir tarih vermek yerine
+        // ALAKASIZ yeni soru yazdiysa (kahvalti/havuz/bosver gibi), bayragi zaten
+        // kapattik; mesaji handleMessage RE-ENTRY ile normal akisa birak.
+        // "Bu bir tarih cevabi mi?" -> sadece guncel text'e bak (ucuz, deterministik).
+        {
+          const stayCheck = await parseStayQuery({
+            message: text,
+            history: priceHistory,
+            todayISO: getTurkeyToday(),
+          });
+          const looksLikeDateAnswer = !stayCheck.needsDates && !!stayCheck.begin && !!stayCheck.end;
+          if (!looksLikeDateAnswer) {
+            // Tarih cevabi DEGIL -> normal akisa don (bayrak DB'de zaten false)
+            return await handleMessage(args);
+          }
+        }
+
         // Orijinal oda sorusu ("villa ozellikleri nedir") + simdiki tarih -> birlestir
         const savedRoomQ = conversation.detail_pending_text || '';
         const mergedText = savedRoomQ ? `${savedRoomQ} ${text}` : text;
