@@ -3609,11 +3609,14 @@ async function upsertGuestAndConversation(args: {
     [firstName, lastName].filter(Boolean).join(' ').trim() || `Telegram ${userId}`;
 
   // Guest upsert
-  const { data: existingGuest } = await supa
+  const { data: existingGuest, error: guestSelErr } = await supa
     .from('guests')
     .select('id')
     .eq('telegram_user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
+  if (guestSelErr) console.error('[upsert-guest] guest SELECT error:', guestSelErr.message);
 
   let guestId: string;
   if (existingGuest) {
@@ -3633,11 +3636,14 @@ async function upsertGuestAndConversation(args: {
   }
 
   // Conversation upsert — doğrulama state sütunlarını da çek
-  const { data: existingConv } = await supa
+  const { data: existingConv, error: convSelErr } = await supa
     .from('conversations')
     .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text, allergen_asked, allergen_pending, allergen_verify_pending, allergen_verify_pending_at, allergen_verify_attempts, detail_pending, detail_pending_text')
     .eq('telegram_chat_id', chatId)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
+  if (convSelErr) console.error('[upsert-conv] conversation SELECT error:', convSelErr.message);
 
   let conversationId: string;
   let conversation: ConversationState;
