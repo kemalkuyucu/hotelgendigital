@@ -2194,7 +2194,7 @@ async function handleMessage(args: {
         {
           const stayCheck = await parseStayQuery({
             message: text,
-            history: priceHistory,
+            history: '',
             todayISO: getTurkeyToday(),
           });
           const looksLikeDateAnswer = !stayCheck.needsDates && !!stayCheck.begin && !!stayCheck.end;
