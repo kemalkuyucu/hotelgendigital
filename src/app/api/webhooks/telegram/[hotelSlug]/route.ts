@@ -2264,8 +2264,15 @@ async function handleMessage(args: {
       }
 
       // 1) Bu bir oda-detay/gorsel sorusu mu? (liste olmadan, ucuz)
-      const diLight = await detectRoomDetailIntent({ message: text, history: priceHistory });
-      if (diLight.isDetailQuery) {
+      // v5 HIBRIT KAPI (deterministik, KALICI KARAR #3 — LLM'e birakilmaz):
+      // Oda-detay/gorsel akisi SADECE gorsel/foto veya rezervasyon niyeti olunca calisir.
+      // Bilgi sorulari (en buyuk oda / kac m2 / balkon var mi / villa ozellikleri) asagi
+      // duser ve KB/AI (classifyAndRespond) tarafindan cevaplanir.
+      const _wantsVisualOrBooking = /(g[öo]rsel|foto|resim|g[öo]ster|g[öo]rebilir|g[öo]r[üu]nt[üu]|rezerv|booking)/i.test(text.toLowerCase());
+      const _diLight = _wantsVisualOrBooking
+        ? await detectRoomDetailIntent({ message: text, history: priceHistory })
+        : null;
+      if (_diLight?.isDetailQuery) {
         // 2) Detay sorusu -> tarih var mi?
         const stay = await parseStayQuery({ message: text, history: priceHistory, todayISO: getTurkeyToday() });
         if (stay.needsDates || !stay.begin || !stay.end) {
