@@ -2142,6 +2142,13 @@ async function handleMessage(args: {
     .map((m) => `${m.direction === 'outbound' ? 'Bot' : 'Misafir'}: ${m.text}`)
     .join('\n');
   if (args.ibeType && args.ibeDomain) {
+    // v5: Bekleyen oda-detay follow-up varsa (onceki turda tarih sorduk),
+    // bu turdaki mesaj fiyat kapisina DEGIL, asagidaki detail_pending bloguna
+    // gitmeli. Yoksa bare tarih "fiyat" sanilip en-ucuz-4 listesi doner ve
+    // sorulan oda (villa) context'i kaybolur. Deterministik sira duzeltmesi.
+    if (conversation.detail_pending) {
+      // fiyat kapisini atla; 2179'daki detail_pending blogu devralacak
+    } else {
     try {
       const isPriceQ = await detectPriceIntent({ message: text, history: priceHistory });
       if (isPriceQ) {
@@ -2171,6 +2178,7 @@ async function handleMessage(args: {
       }
     } catch (e) {
       console.error('[telegram] fiyat kapisi hatasi:', e instanceof Error ? e.message : 'unknown');
+    }
     }
   }
 
