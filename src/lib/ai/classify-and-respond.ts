@@ -287,7 +287,23 @@ async function _classifyAndRespondImpl(
   // ile aynı department/messageType/flag) bir allergy intent EKLENİR. LLM yolu zayıflatılmaz
   // — keyword OR model → allergy. Çoklu-intent korunur (mevcut intent'ler silinmez).
   const normalizedGuestMsg = normalizeTr(input.guestMessage);
-  const ALLERGY_KEYWORDS = ['alerj', 'allerg', 'intoleran'];
+  // Cok dilli alerji kok-kelimeleri. normalizeTr Latin/TR diyakritigini katlar +
+  // toLowerCase uygular (Kiril/Yunanca da kuculur), ama transliterasyon YAPMAZ →
+  // Latin-disi scriptler burada dogrudan kendi alfabesiyle eslenir. Yasamsal
+  // guvenlik: yuksek recall onceligi, yanlis-pozitif kabul (guvenli taraf).
+  const ALLERGY_KEYWORDS = [
+    'alerj',    // TR (alerji)
+    'allerg',   // EN/DE/FR/IT: allergy/Allergie/allergie/allergia (cift-L)
+    'alerg',    // ES/PT: alergia (tek-L)
+    'intoleran',// EN/ES/DE/IT/TR intolerance/intolerancia/Intoleranz...
+    'аллерг',   // RU/BG: аллергия (cift-L Kiril)
+    'алерг',    // UK: алергія (tek-L Kiril)
+    'αλλεργ',   // EL: αλλεργία
+    'حساسي',    // AR: حساسية
+    '过敏',      // ZH: guomin
+    'アレルギ',  // JA
+    '알레르기',  // KO
+  ];
   const hasAllergyKeyword = ALLERGY_KEYWORDS.some((kw) => normalizedGuestMsg.includes(kw));
   const llmTaggedAllergy = classifiedIntents.some(
     (i) => (i.rawDepartment ?? '').toLowerCase().trim() === 'allergy',
