@@ -417,6 +417,8 @@ Kisa ve oz tut.`;
   const userContent = recent
     ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
     : input.guestMessage;
+  console.error('[DIAG-brain] dept=technical guestMessage=' + JSON.stringify(input.guestMessage));
+  console.error('[DIAG-brain] systemHead=' + JSON.stringify(system.slice(0, 900)));
   const response = await callAI({
     tier: 'standard',
     maxTokens: 300,
@@ -424,6 +426,7 @@ Kisa ve oz tut.`;
     messages: [{ role: 'user', content: userContent }],
   });
   const replyText = response.text;
+  console.error('[DIAG-brain] replyText=' + JSON.stringify(replyText).slice(0, 300));
   return { handled: true, replyText };
 }
 
