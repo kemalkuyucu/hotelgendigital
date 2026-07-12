@@ -140,7 +140,7 @@ export type RoomDetailResult =
   | { status: 'not_ibe' }
   | { status: 'need_dates' }
   | { status: 'error'; message: string }
-  | { status: 'ok'; reply: string };
+  | { status: 'ok'; reply: string; images: string[]; roomName: string };
 
 export async function handleRoomDetailQuery(params: {
   ibeType: string | null;
@@ -185,6 +185,8 @@ export async function handleRoomDetailQuery(params: {
         `Seçtiğiniz tarihlerde bu oda için güncel bilgiyi aşağıdaki sayfamızdan inceleyebilirsiniz.\n\n` +
         `🔗 <a href="${escapeHtml(genelUrl)}">Rezervasyon Sayfası</a> — tüm oda kategorileri, görseller ve detaylar burada.\n\n` +
         `ℹ️ Rezervasyon ve ödeme işlemleri otelin kendi sayfası üzerinden yapılır.`,
+      images: [],
+      roomName: '',
     };
   }
 
@@ -226,5 +228,5 @@ export async function handleRoomDetailQuery(params: {
     `\n\n🔗 <a href="${escapeHtml(detailUrl)}">Oda Detayı ve Görseller</a> — fotoğraflar ve tüm detaylar burada.` +
     `\n\nℹ️ Rezervasyon ve ödeme işlemleri otelin kendi sayfası üzerinden yapılır.`;
 
-  return { status: 'ok', reply };
+  return { status: 'ok', reply, images: room.images || [], roomName: room.name };
 }

@@ -11,6 +11,7 @@ import type { ConversationContextMessage } from '@/lib/ai/classify-and-respond';
 import { detectPriceIntent } from '@/lib/ai/detect-price-intent';
 import { handleRoomPriceQuery, handleRoomDetailQuery } from '@/lib/ai/room-price-tool';
 import { detectRoomDetailIntent } from '@/lib/ai/detect-room-detail-intent';
+import { sendPhotos } from '@/lib/channels/send-photos';
 import { parseStayQuery } from '@/lib/ai/parse-stay-query';
 import { fetchBarboonLive } from '@/lib/ai/barboon-live';
 import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-hours';
@@ -2249,6 +2250,17 @@ async function handleMessage(args: {
                 childCount: stayF.childCount,
               });
               if (detRes.status === 'ok') {
+                if (detRes.images && detRes.images.length > 0) {
+                  try {
+                    await sendPhotos({
+                      channel: 'telegram',
+                      req: { roomName: detRes.roomName, imageUrls: detRes.images },
+                      telegram: { botToken, chatId },
+                    });
+                  } catch (photoErr) {
+                    console.error('[room-detail] foto gonderilemedi:', photoErr instanceof Error ? photoErr.message : 'unknown');
+                  }
+                }
                 await tg.sendMessage({ chat_id: chatId, text: detRes.reply, parse_mode: 'HTML' });
                 return;
               }
@@ -2329,6 +2341,17 @@ async function handleMessage(args: {
               childCount: stay.childCount,
             });
             if (detailRes.status === 'ok') {
+              if (detailRes.images && detailRes.images.length > 0) {
+                try {
+                  await sendPhotos({
+                    channel: 'telegram',
+                    req: { roomName: detailRes.roomName, imageUrls: detailRes.images },
+                    telegram: { botToken, chatId },
+                  });
+                } catch (photoErr) {
+                  console.error('[room-detail] foto gonderilemedi:', photoErr instanceof Error ? photoErr.message : 'unknown');
+                }
+              }
               await tg.sendMessage({ chat_id: chatId, text: detailRes.reply, parse_mode: 'HTML' });
               return;
             }
