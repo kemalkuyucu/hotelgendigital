@@ -16,6 +16,7 @@ import { parseStayQuery } from '@/lib/ai/parse-stay-query';
 import { fetchBarboonLive } from '@/lib/ai/barboon-live';
 import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-hours';
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
+import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
 import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/verification/verify-guest';
 import { createReceptionApproval, receptionNotifiedMsg, receptionWaitMsg, handlePendingMatchCallback } from '@/lib/verification/reception-approval';
@@ -3458,11 +3459,19 @@ async function handleMessage(args: {
           const roomLine = persistentVerifiedGuest?.room_number
             ? `🚪 <b>Oda:</b> ${esc(persistentVerifiedGuest.room_number)}\n`
             : '';
+
+          // Personel karti Turkce okunabilir olmali: tek-intent'te requestText misafirin
+          // HAM mesajidir (bkz. yukaridaki override) -> yabanci dildeyse ceviri satiri eklenir.
+          // Ceviri BIR kez burada yapilir, forwardToDepartment'a guestMessageTr ile gecilir.
+          const requestTr = await translateToTurkish(fwdItem.requestText);
+          const needsTr = !!requestTr.trim() && requestTr.trim() !== fwdItem.requestText.trim();
+          const trLine = needsTr ? `\n🇹🇷 <b>Çeviri:</b> "${esc(requestTr)}"` : '';
+
           const groupMsgHtml =
             `🛎 <b>Misafir Talebi</b>\n\n` +
             roomLine +
             `👤 <b>Misafir:</b> ${esc(guestFullNameForSla)}\n` +
-            `📝 <b>Talep:</b> "${esc(fwdItem.requestText)}"\n` +
+            `📝 <b>Talep:</b> "${esc(fwdItem.requestText)}"${trLine}\n` +
             `🕐 <b>Saat:</b> ${esc(trDateStr)}`;
 
           // ── B1.1 overlimit: standart disi talepte vardiyadaki sorumlu adi ──
@@ -3576,6 +3585,7 @@ async function handleMessage(args: {
             guestTelegramId: String(userId),
             skipGroupMessage: true, // Modül 11: grup mesajı zaten SLA butonlu gönderildi
             guestLanguage: language,
+            guestMessageTr: needsTr ? requestTr : undefined, // ceviri yukarida yapildi, tekrarlama
           });
 
           console.log(

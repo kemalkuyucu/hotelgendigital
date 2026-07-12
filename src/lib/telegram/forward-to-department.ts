@@ -34,6 +34,9 @@ export interface ForwardInput {
   skipGroupMessage?: boolean;
   // Misafirin mesaj dili (tr/en/de/ru/ar...). Personel bildiriminde Türkçe çeviri için.
   guestLanguage?: string;
+  // guestMessage'ın hazır Türkçe çevirisi. Caller (SLA yolu) çeviriyi zaten yaptıysa
+  // burada TEKRAR çevirme — aynı istekte çift AI çağrısı olmasın.
+  guestMessageTr?: string;
 }
 
 export interface ForwardResult {
@@ -73,6 +76,7 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     guestTelegramId,
     skipGroupMessage,
     guestLanguage,
+    guestMessageTr,
   } = input;
 
   // Türkiye saati — Intl.DateTimeFormat ile güvenilir
@@ -92,9 +96,12 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
   // (Telegram language_code yanlış olabilir), o yüzden metnin kendisine bakılır:
   // translateToTurkish Türkçe metni aynen döndürür → çeviri satırı eklenmez.
   // Yabancı metin → Türkçe çeviri satırı eklenir. Böylece hiçbir yabancı mesaj kaçmaz.
+  // Caller çeviriyi zaten yaptıysa (SLA yolu → guestMessageTr) tekrar çevirme.
   let guestMessageForStaff = guestMessage;
   if (guestMessage && guestMessage.trim()) {
-    const trMsg = await translateToTurkish(guestMessage);
+    const trMsg = guestMessageTr && guestMessageTr.trim()
+      ? guestMessageTr
+      : await translateToTurkish(guestMessage);
     if (trMsg && trMsg.trim() && trMsg.trim() !== guestMessage.trim()) {
       guestMessageForStaff = `${guestMessage}\n🇹🇷 <i>Çeviri:</i> ${trMsg}`;
     }

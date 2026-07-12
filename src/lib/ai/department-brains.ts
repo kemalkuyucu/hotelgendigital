@@ -1,4 +1,5 @@
 import { callAI } from './anthropic-client';
+import { enforceReplyLanguage } from './enforce-reply-language';
 // B1.1 — Departman beyni iskeleti (davranis-notr).
 // Bayrak KAPALI iken dispatcher hep handled=false doner; monolit orkestrator
 // aynen calisir. Departman beyinleri tek tek eklenecek (7.4 kalibrasyonu).
@@ -571,14 +572,9 @@ async function runDepartmentBeyincik(
   return null;
 }
 
-export async function dispatchToDepartmentBrain(
+async function runBrainByDepartment(
   input: DepartmentBrainInput,
 ): Promise<DepartmentBrainResult> {
-  if (!DEPARTMENT_BRAINS_ENABLED) return { handled: false };
-  const config = DEPARTMENT_BRAIN_REGISTRY[input.department];
-  if (!config) return { handled: false };
-  const reflex = await runDepartmentBeyincik(input, config);
-  if (reflex) return reflex;
   if (input.department === 'animation') return runAnimationBrain(input);
   if (input.department === 'housekeeping') return runHousekeepingBrain(input);
   if (input.department === 'spa') return runSpaBrain(input);
@@ -587,4 +583,22 @@ export async function dispatchToDepartmentBrain(
   if (input.department === 'guest_relation') return runGuestRelationBrain(input);
   if (input.department === 'fb') return runFbBrain(input);
   return { handled: false };
+}
+
+export async function dispatchToDepartmentBrain(
+  input: DepartmentBrainInput,
+): Promise<DepartmentBrainResult> {
+  if (!DEPARTMENT_BRAINS_ENABLED) return { handled: false };
+  const config = DEPARTMENT_BRAIN_REGISTRY[input.department];
+  if (!config) return { handled: false };
+  const reflex = await runDepartmentBeyincik(input, config);
+  const result = reflex ?? (await runBrainByDepartment(input));
+
+  // DIL KAPISI — 7 beyin de buradan doner. Beyin prompt'lari Turkce yazili oldugu
+  // icin model yabanci misafire Turkce yanit verebiliyor; cevabi misafirin diline
+  // zorla. Hata halinde metin AYNEN korunur (enforceReplyLanguage try/catch'li).
+  if (result.handled && result.replyText && result.replyText.trim()) {
+    result.replyText = await enforceReplyLanguage(input.guestMessage, result.replyText);
+  }
+  return result;
 }
