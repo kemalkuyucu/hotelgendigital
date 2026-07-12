@@ -76,6 +76,7 @@ async function fetchCatalog(
         maxPax: Number(occ?.maxPax || 0),
         facilities,
       };
+      console.error(`[DIAG-catalog] code=${code} imageCount=${out[code].images.length} firstUrl=${out[code].images[0] || 'YOK'}`);
     }
   } catch {
     return { entries: out, hotelId: foundHotelId };
@@ -166,6 +167,7 @@ export async function fetchBarboonLive(params: {
       const daily = rate?.dailyPrices || {};
       const firstKey = Object.keys(daily)[0];
       const nightlyFirst = firstKey ? Number(daily[firstKey]?.totalPrice || 0) : 0;
+      console.error(`[DIAG-live] room=${code || 'NOCODE'} imagesFromCat=${(cat?.images?.length ?? -1)}`);
       return {
         code,
         name,
