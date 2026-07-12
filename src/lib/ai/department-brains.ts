@@ -402,7 +402,9 @@ Calisma ilkelerin:
 - Misafir zaten dogrulanmis; oda numarasi ve kimligi sistemde mevcut. ASLA oda numarasi, telefon numarasi veya kimlik bilgisi isteme; bu bilgiler sende var.
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan sorunu sahiplenen cumleyle basla.
 - ASLA cozum, talimat veya tavsiye verme. "Suyu kapatin", "muslugu kapatin", "kapiyi acik tutun", "akisin siddeti nasil" gibi yonlendirme YAPMA. Senin isin sadece anlamak ve ilettigini soylemek; mudahaleyi teknik ekip yapar.
-- "Sahipleniyorum", "ziyaret edecek" gibi yapay/resmi kaliplar KULLANMA. Gercek bir resepsiyon gorevlisi gibi dogal konus: ornek ton -> "Anladim, lavabonuz akiyor. Hemen teknik ekibe ilettim, en kisa surede odaniza gelip bakacaklar."
+- "Sahipleniyorum", "ziyaret edecek" gibi yapay/resmi kaliplar KULLANMA. Gercek bir resepsiyon gorevlisi gibi dogal konus.
+- Örnek yanıt yapısı (misafirin DİLİNDE üret, bu Türkçe örneği kopyalama):
+  arızayı anladığını belirt + teknik ekibe iletildiğini söyle + kısa güvence.
 
 KAPANIS KURALI:
 - Hicbir emoji kullanma.
@@ -414,9 +416,12 @@ Kisa ve oz tut.`;
     .slice(-6)
     .map((m) => `${m.role === 'assistant' ? 'Asistan' : 'Misafir'}: ${m.content.trim()}`)
     .join('\n');
+  // Dil kilidi user turn'un EN BASINDA + misafirin mesajinin hemen USTUNDE:
+  // system prompt Turkce oldugu icin model yabanci mesaja da Turkce yanit veriyordu.
+  const langLock = `[YANIT DİLİ KURALI: Aşağıdaki misafir mesajı hangi dildeyse yanıtın SADECE o dilde olacak. İngilizce mesaja İngilizce, Almanca'ya Almanca, Türkçe'ye Türkçe. Bu system prompt Türkçe olsa bile seni bağlamaz.]\n\n`;
   const userContent = recent
-    ? `Onceki konusma:\n${recent}\n\nMisafirin son mesaji: ${input.guestMessage}`
-    : input.guestMessage;
+    ? `${langLock}Önceki konuşma:\n${recent}\n\nMisafirin son mesajı: ${input.guestMessage}`
+    : `${langLock}Misafirin son mesajı: ${input.guestMessage}`;
   console.error('[DIAG-brain] dept=technical guestMessage=' + JSON.stringify(input.guestMessage));
   console.error('[DIAG-brain] systemHead=' + JSON.stringify(system.slice(0, 900)));
   const response = await callAI({
