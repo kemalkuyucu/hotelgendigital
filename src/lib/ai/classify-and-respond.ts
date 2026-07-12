@@ -353,7 +353,6 @@ async function _classifyAndRespondImpl(
         hotelContext: hotelContext as Record<string, unknown> | null,
         conversationContext: (input.context ?? []).map((m) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.text ?? '' })),
       });
-      console.error('[DIAG-dispatch] dept=' + primaryIntent.department + ' brainHandled=' + JSON.stringify(brainResult?.handled) + ' finalReplyLang-check=' + JSON.stringify(brainResult?.replyText).slice(0, 200));
       if (brainResult.handled && brainResult.replyText) {
         return {
           classifiedIntents,

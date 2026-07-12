@@ -380,7 +380,6 @@ Kisa ve oz tut.`;
 }
 
 async function runTechnicalBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
-  console.error('[DIAG-v2] ENTER runTechnicalBrain');
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
     ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
@@ -424,8 +423,6 @@ Kisa ve oz tut.`;
   const userContent = recent
     ? `${langLock}Önceki konuşma:\n${recent}\n\nMisafirin son mesajı: ${input.guestMessage}`
     : `${langLock}Misafirin son mesajı: ${input.guestMessage}`;
-  console.error('[DIAG-brain] dept=technical guestMessage=' + JSON.stringify(input.guestMessage));
-  console.error('[DIAG-brain] systemHead=' + JSON.stringify(system.slice(0, 900)));
   const response = await callAI({
     tier: 'standard',
     maxTokens: 300,
@@ -433,9 +430,6 @@ Kisa ve oz tut.`;
     messages: [{ role: 'user', content: userContent }],
   });
   const replyText = response.text;
-  console.error('[DIAG-brain] replyText=' + JSON.stringify(replyText).slice(0, 300));
-  console.error('[DIAG-v2] LANGLOCK-ACTIVE userContentHead=' + JSON.stringify(userContent.slice(0, 120)));
-  console.error('[DIAG-v2] systemTail=' + JSON.stringify(system.slice(-200)));
   return { handled: true, replyText };
 }
 
