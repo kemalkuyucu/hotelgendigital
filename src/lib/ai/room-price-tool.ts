@@ -228,6 +228,5 @@ export async function handleRoomDetailQuery(params: {
     `\n\n🔗 <a href="${escapeHtml(detailUrl)}">Oda Detayı ve Görseller</a> — fotoğraflar ve tüm detaylar burada.` +
     `\n\nℹ️ Rezervasyon ve ödeme işlemleri otelin kendi sayfası üzerinden yapılır.`;
 
-  console.error(`[DIAG-detail] roomCode=${roomCode} roomName=${room.name} imageCount=${(room.images?.length ?? -1)} first=${room.images?.[0] || 'YOK'}`);
   return { status: 'ok', reply, images: room.images || [], roomName: room.name };
 }
