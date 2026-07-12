@@ -2422,12 +2422,10 @@ async function handleMessage(args: {
     });
   }
 
-  // Sosyal intent override sonrası shouldForward kararı:
-  // Override sosyal intent verdiyse → forward yok; aksi hâlde AI kararına bak
-  const SOCIAL_NO_FORWARD_INTENTS = new Set(['greeting', 'acknowledgment', 'farewell', 'affirmation', 'negation', 'chitchat']);
-  const aiShouldForward = intentOverridden
-    ? !SOCIAL_NO_FORWARD_INTENTS.has(overriddenIntent)
-    : aiShouldForwardRaw;
+  // Forward kararı = deterministik tablo kararı (routeIntentToDepartment → shouldForward).
+  // overrideSocialIntent SADECE loglama/etiketleme için — forward kararını EZMEZ.
+  // Tablo dil-bağımsızdır; yabancı dildeki "nicht/нет" olumsuzlamaları artık gerçek talebi yutmaz.
+  const aiShouldForward = aiShouldForwardRaw;
   const aiRawIntent = overriddenIntent === 'unknown' ? aiRawIntentRaw : overriddenIntent;
 
   // ── Modül 10: Doğrulama Gate ────────────────────────────────────
@@ -2442,8 +2440,10 @@ async function handleMessage(args: {
   }
   let finalIntent = aiRawIntent;
   // Mod\u00fcl 10.6/10.7: shouldForward=false (sosyal) VEYA KB cevab\u0131 \u2192 forward yok
-  // FIX 2a: isInfoOnlyQuery=true ise de skip \u2014 bilgi sorusu ASLA departmana forward edilmez
-  let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false) || isInfoOnlyQuery(text);
+  // isInfoOnlyQuery forward hesabindan CIKARILDI: TR keyword listesi yabanci dildeki gercek
+  // talebi yutuyordu. Bilgi sorusunu forward'dan koruyan iki dil-bagimsiz sart yeterli:
+  // aiShouldForward (routeIntentToDepartment tablosu) + answered_from_knowledge (LLM karari).
+  let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
   // Modül 3: Bu turda oda no (doğrulama) sorusu sorulduysa true — alerji sorusu ASLA aynı turda çıkmasın
   let verificationAskedThisRound = false;
 
@@ -2825,9 +2825,10 @@ async function handleMessage(args: {
     // LLM doğrulanmış misafire sıcak "ilettim" cevabı verirken answered_from_knowledge=true
     // işaretleyebiliyor → eski skipForward bunu true yapıp forward'ı engelliyordu (bot
     // "ilettim" diyor ama talep düşmüyordu). Doğrulanmış misafirde answered_from_knowledge
-    // suppressor'ını KALDIR; forward yalnız gerçekten forward-edilebilir intent varsa ve
-    // saf bilgi sorusu değilse olur (non-forwardable/social/KB hâlâ korunur).
-    skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false) || isInfoOnlyQuery(text);
+    // suppressor'ını KALDIR; forward yalnız gerçekten forward-edilebilir intent varsa
+    // olur (non-forwardable/social/KB hâlâ korunur).
+    // isInfoOnlyQuery burada da CIKARILDI — TR keyword listesi yabanci dildeki talebi yutuyordu.
+    skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent} skipForward=${skipForward}`);
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
