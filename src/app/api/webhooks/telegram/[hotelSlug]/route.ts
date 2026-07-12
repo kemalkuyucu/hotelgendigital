@@ -3575,6 +3575,7 @@ async function handleMessage(args: {
               : null,
             guestTelegramId: String(userId),
             skipGroupMessage: true, // Modül 11: grup mesajı zaten SLA butonlu gönderildi
+            guestLanguage: language,
           });
 
           console.log(

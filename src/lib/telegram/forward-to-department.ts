@@ -6,6 +6,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { TelegramClient } from './client';
 import { getActiveStaffNow } from '@/lib/hotel-admin/staff-client';
+import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 import type { DepartmentKey } from '@/lib/hotel-admin/types';
 
 export interface ForwardInput {
@@ -31,6 +32,8 @@ export interface ForwardInput {
   guestTelegramId?: string | null;
   // Modül 11: true ise grup mesajı atlanır (SLA butonlu mesaj zaten gönderildi)
   skipGroupMessage?: boolean;
+  // Misafirin mesaj dili (tr/en/de/ru/ar...). Personel bildiriminde Türkçe çeviri için.
+  guestLanguage?: string;
 }
 
 export interface ForwardResult {
@@ -69,6 +72,7 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     verifiedGuest,
     guestTelegramId,
     skipGroupMessage,
+    guestLanguage,
   } = input;
 
   // Türkiye saati — Intl.DateTimeFormat ile güvenilir
@@ -84,6 +88,18 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
   const resolvedGuestName = resolveGuestName(verifiedGuest ?? null, guestName);
   const resolvedRoomNumber = verifiedGuest?.room_number ?? null;
 
+  // Personel bildirimi HER ZAMAN Türkçe olmalı. Misafirin profil dili güvenilmez
+  // (Telegram language_code yanlış olabilir), o yüzden metnin kendisine bakılır:
+  // translateToTurkish Türkçe metni aynen döndürür → çeviri satırı eklenmez.
+  // Yabancı metin → Türkçe çeviri satırı eklenir. Böylece hiçbir yabancı mesaj kaçmaz.
+  let guestMessageForStaff = guestMessage;
+  if (guestMessage && guestMessage.trim()) {
+    const trMsg = await translateToTurkish(guestMessage);
+    if (trMsg && trMsg.trim() && trMsg.trim() !== guestMessage.trim()) {
+      guestMessageForStaff = `${guestMessage}\n🇹🇷 <i>Çeviri:</i> ${trMsg}`;
+    }
+  }
+
   // ─── 1. GRUP MESAJI ──────────────────────────────────────────────────────
   console.log(`[forward] starting forward → dept=${targetDept} chatId=${targetChatId} skipGroupMessage=${skipGroupMessage ?? false}`);
 
@@ -92,7 +108,7 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
     const groupMsgText = formatGroupMessage({
       guestName: resolvedGuestName,
       roomNumber: resolvedRoomNumber,
-      guestMessage,
+      guestMessage: guestMessageForStaff,
       trDateStr,
       reroutedNote,
     });
@@ -175,7 +191,7 @@ export async function forwardToDepartment(input: ForwardInput): Promise<ForwardR
       const dmText = formatStaffDmMessage({
         staffFullName: staff.full_name,
         guestName: resolvedGuestName,
-        guestMessage,
+        guestMessage: guestMessageForStaff,
         deptDisplayLabel,
         trDateStr,
       });
