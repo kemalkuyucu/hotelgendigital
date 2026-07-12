@@ -79,6 +79,36 @@ export interface DepartmentBrainResult {
   isInfoOnly?: boolean;
 }
 
+// ── DIL KURALI — tum beyinlerde ortak ────────────────────────────────────────
+// Orkestratordeki (system-prompts.ts) DIL KURALI blogunun beyin surumu. Beyin
+// prompt'lari Turkce yazili oldugu icin model yabanci misafire de Turkce
+// yanit veriyordu; olcut tek basina misafirin dilidir.
+export const LANGUAGE_RULE = `=== EN ÖNCELİKLİ KURAL — DİL ===
+
+ADIM 0: Misafirin ORİJİNAL mesajı hangi dildeyse SADECE o dilde yanıtla. Bu kural diğer her şeyin üstündedir.
+Bu prompt Türkçe yazılmış olsa bile bu seni ETKİLEMEZ; ölçüt yalnızca misafirin dilidir. Otel bilgileri de Türkçe yazılıdır — onları misafirin diline ÇEVİREREK aktar.
+
+Diller ve örnek ton:
+- Türkçe: "Havuzumuz 09:00'da açılır."
+- English: "Our pool opens at 09:00."
+- Deutsch: "Unser Pool öffnet um 09:00 Uhr."
+- Русский: "Наш бассейн открывается в 09:00."
+- العربية: "يفتح مسبحنا في الساعة 09:00."
+- Français: "Notre piscine ouvre à 09:00."
+- Español: "Nuestra piscina abre a las 09:00."
+
+EK KURALLAR:
+- Özel isimleri ÇEVİRME: otel adı, şehir adı, kişi adı, Wi-Fi ağ adı, şifre aynen kalır.
+- Misafir dilleri karıştırırsa daha çok kullandığı dile göre yanıtla.
+- Misafir çok kısa veya tek kelime yazdıysa Türkçe varsay.
+- Türkçe yanıt verirken TAM Türkçe karakter kullan (ç ğ ı ö ş ü / Ç Ğ İ Ö Ş Ü). ASCII karşılıklarını KULLANMA: "gorseller" değil "görseller", "kisi" değil "kişi", "Agustos" değil "Ağustos".`;
+
+// Beyin prompt'unun basina giren dil blogu. Misafirin HAM mesaji system prompt
+// govdesine de yazilir — dil karari yalnizca user turn'e birakilmaz.
+function languageBlock(guestMessage: string): string {
+  return `${LANGUAGE_RULE}\n\nMİSAFİRİN ORİJİNAL MESAJI: "${guestMessage}"\n\n`;
+}
+
 // Passthrough dispatcher. Bayrak KAPALI veya kayitli beyin yoksa handled=false.
 const TR_SAYI_KELIMELERI: Record<string, number> = {
   bir: 1, iki: 2, 'üç': 3, uc: 3, 'dört': 4, dort: 4, 'beş': 5, bes: 5,
@@ -133,7 +163,7 @@ async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<Depart
     : [];
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
-  const system = `Sen ${input.hotelName} otelinin housekeeping (kat hizmetleri) departmani asistanisin.${contextBlock}
+  const system = `${languageBlock(input.guestMessage)}Sen ${input.hotelName} otelinin housekeeping (kat hizmetleri) departmani asistanisin.${contextBlock}
 Gorev: Misafirin temizlik, havlu, carsaf, oda duzeni, ekstra malzeme (sabun, sampuan, tuvalet kagidi vb.) taleplerini nazikce, kisa ve net yanitla.
 
 HAVLU/MALZEME KURALI:
@@ -144,7 +174,7 @@ HAVLU/MALZEME KURALI:
 Bilmediginde: "Kat hizmetleri ekibimiz en kisa surede ilgilenecektir, lutfen resepsiyondan da destek alabilirsiniz."
 Kapsam disinda (teknik ariza, yemek, animasyon vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
-Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.
+Kisa ve oz tut.
 
 DURUM KURALI:
 - Kat hizmetleri talebi DOGRUDAN ekibe iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" veya "teslim edilecektir" gibi ifadelerle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
@@ -199,7 +229,7 @@ async function runAnimationBrain(input: DepartmentBrainInput): Promise<Departmen
     : [];
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BİLGİLERİ:\n${ctxParts.join('\n\n')}` : '';
-  const system = `Sen ${input.hotelName} otelinin animasyon departmani asistanisin.${contextBlock}
+  const system = `${languageBlock(input.guestMessage)}Sen ${input.hotelName} otelinin animasyon departmani asistanisin.${contextBlock}
 
 DURUM KURALI:
 - Talep DOGRUDAN animasyon ekibine iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
@@ -207,7 +237,7 @@ Gorev: Misafirin animasyon, etkinlik, cocuk kulubu, gece programi ve eglence sor
 Bilmediginde: "Animasyon ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan sorabilirsiniz."
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
-Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.
+Maksimum 3 cumle.
 
 CIKTI BICIMI: Yanitini SADECE su JSON olarak ver, baska metin/markdown YOK:
 {"reply": "misafire gidecek cevap", "infoOnly": true veya false}
@@ -257,7 +287,7 @@ async function runSpaBrain(input: DepartmentBrainInput): Promise<DepartmentBrain
     : [];
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
-  const system = `Sen ${input.hotelName} otelinin spa & wellness departmani asistanisin.${contextBlock}
+  const system = `${languageBlock(input.guestMessage)}Sen ${input.hotelName} otelinin spa & wellness departmani asistanisin.${contextBlock}
 
 DURUM KURALI:
 - Talep DOGRUDAN spa ekibine iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
@@ -267,7 +297,7 @@ Gorev: Misafirin spa, masaj, sauna, hamam, buhar odasi, cilt bakimi taleplerini 
 Bilmediginde: "Spa ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan da destek alabilirsiniz."
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
-Misafir hangi dilde yazdiysa AYNI dilde yanitla. Maksimum 3 cumle.`;
+Maksimum 3 cumle.`;
 
   const recent = (input.conversationContext ?? [])
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -301,7 +331,7 @@ async function runFrontOfficeBrain(input: DepartmentBrainInput): Promise<Departm
     : [];
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
-  const system = `Sen ${input.hotelName} otelinin on buro asistanisin. Sicak, profesyonel ve cozum odakli bir insan gibi konusursun. Misafirin talebiyle bizzat sen ilgilenirsin.${contextBlock}
+  const system = `${languageBlock(input.guestMessage)}Sen ${input.hotelName} otelinin on buro asistanisin. Sicak, profesyonel ve cozum odakli bir insan gibi konusursun. Misafirin talebiyle bizzat sen ilgilenirsin.${contextBlock}
 
 Calisma ilkelerin:
 - Misafiri asla baska bir yere (resepsiyon, telefon, mail) yonlendirmezsin; talebi sen ele alirsin.
@@ -317,7 +347,7 @@ KAPANIS KURALI:
 - Hicbir emoji kullanma.
 - Yaniti kisa, sicak ve guven verici bir cumleyle bitir.
 - "Ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME.
-Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.`;
+Kisa ve oz tut.`;
 
   const recent = (input.conversationContext ?? [])
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -357,7 +387,7 @@ async function runTechnicalBrain(input: DepartmentBrainInput): Promise<Departmen
     : [];
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
-  const system = `Sen ${input.hotelName} otelinin teknik servis departmani asistanisin. Sicak, profesyonel ve cozum odakli bir insan gibi konusursun. Misafirin bildirdigi ariza veya sorunla bizzat sen ilgilenirsin.${contextBlock}
+  const system = `${languageBlock(input.guestMessage)}Sen ${input.hotelName} otelinin teknik servis departmani asistanisin. Sicak, profesyonel ve cozum odakli bir insan gibi konusursun. Misafirin bildirdigi ariza veya sorunla bizzat sen ilgilenirsin.${contextBlock}
 
 DURUM KURALI:
 - Ariza/talep DOGRUDAN teknik ekibe iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" veya "giderilecektir" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
@@ -378,7 +408,7 @@ KAPANIS KURALI:
 - Hicbir emoji kullanma.
 - Yaniti kisa, sicak ve guven verici bir cumleyle bitir.
 - "Ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME; misafir zaten sorunu iletti.
-Misafir hangi dilde yazdiysa AYNI dilde yanitla; kisa ve oz tut.`;
+Kisa ve oz tut.`;
   const recent = (input.conversationContext ?? [])
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
     .slice(-6)
@@ -406,7 +436,7 @@ async function runGuestRelationBrain(input: DepartmentBrainInput): Promise<Depar
     : [];
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
-  const system = `Sen ${input.hotelName} otelinin misafir iliskileri departmani asistanisin. Empatik, sakin, nazik ve diplomatik bir insan gibi konusursun. Misafirin sikayeti, memnuniyetsizligi veya ozel istegiyle bizzat sen ilgilenirsin.${contextBlock}
+  const system = `${languageBlock(input.guestMessage)}Sen ${input.hotelName} otelinin misafir iliskileri departmani asistanisin. Empatik, sakin, nazik ve diplomatik bir insan gibi konusursun. Misafirin sikayeti, memnuniyetsizligi veya ozel istegiyle bizzat sen ilgilenirsin.${contextBlock}
 
 DURUM KURALI:
 - Konu/talep DOGRUDAN misafir iliskileri ekibine iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel konuyu/talebi karsila.
@@ -425,8 +455,7 @@ KESIN YASAKLAR (cok onemli):
 
 KAPANIS:
 - Hicbir emoji kullanma. Yaniti kisa (en fazla 3-4 cumle), sicak ve guven verici tut.
-- Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
-- DIL: Misafir hangi dilde yazdiysa AYNI dilde yanitla.`;
+- Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.`;
   const recent = (input.conversationContext ?? [])
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
     .slice(-6)
@@ -454,7 +483,7 @@ async function runFbBrain(input: DepartmentBrainInput): Promise<DepartmentBrainR
     : [];
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
-  const system = `Sen ${input.hotelName} otelinin F&B (yiyecek-icecek / restoran) departmani asistanisin.${contextBlock}
+  const system = `${languageBlock(input.guestMessage)}Sen ${input.hotelName} otelinin F&B (yiyecek-icecek / restoran) departmani asistanisin.${contextBlock}
 
 DURUM KURALI:
 - Talep DOGRUDAN F&B ekibine iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
@@ -472,7 +501,6 @@ KAPSAM:
 - Teknik ariza, temizlik, animasyon vb. kapsam disi: "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
-DIL: Misafir hangi dilde yazdiysa AYNI dilde yanitla.
 
 KAPANIS:
 - Hicbir emoji kullanma.
