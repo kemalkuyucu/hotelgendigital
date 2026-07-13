@@ -106,6 +106,10 @@ export default function MenuManager({ slug }: { slug: string }) {
   const [addImageUrl, setAddImageUrl] = useState('');
   const [addUploading, setAddUploading] = useState(false);
 
+  // room-service menu gorseli (fiyat listesi) — hotel_settings.menu_image_urls
+  const [menuImages, setMenuImages] = useState<string[]>([]);
+  const [menuImgUploading, setMenuImgUploading] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -124,6 +128,64 @@ export default function MenuManager({ slug }: { slug: string }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadMenuImages = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/hotel-admin/${slug}/menu/image`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Menü görseli alinamadi');
+      setMenuImages(Array.isArray(data.menu_image_urls) ? data.menu_image_urls : []);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    loadMenuImages();
+  }, [loadMenuImages]);
+
+  // menu gorsel listesini kaydet (PUT tum diziyi degistirir)
+  async function saveMenuImages(next: string[]) {
+    const res = await fetch(`/api/hotel-admin/${slug}/menu/image`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ menu_image_urls: next }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Menü görseli kaydedilemedi');
+  }
+
+  async function uploadMenuImage(file: File) {
+    setMenuImgUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/hotel-admin/${slug}/menu/upload-image`, {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Görsel yüklenemedi');
+
+      const next = [...menuImages, data.image_url as string];
+      await saveMenuImages(next);
+      setMenuImages(next);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setMenuImgUploading(false);
+    }
+  }
+
+  async function removeMenuImage(url: string) {
+    const next = menuImages.filter((u) => u !== url);
+    try {
+      await saveMenuImages(next);
+      setMenuImages(next);
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  }
 
   // category'e gore grupla (server zaten category + display_order sirali dondurur)
   const groups = useMemo(() => {
@@ -293,6 +355,60 @@ export default function MenuManager({ slug }: { slug: string }) {
 
   return (
     <div style={{ marginTop: 40 }}>
+      {/* Room-Service Menu Gorseli */}
+      <div style={{ ...card, padding: 22, marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          <span style={{ fontSize: 20 }}>🖼</span>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', margin: 0, letterSpacing: '-0.02em' }}>
+            Room-Service Menü Görseli
+          </h2>
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 16px' }}>
+          Misafir “menü” veya “room service” dediğinde bot bu görseli gönderir. Fiyat listesini buraya yükleyin.
+          Çok sayfalı menüler için birden fazla görsel ekleyebilirsiniz.
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: '1 1 240px' }}>
+            <span style={{ color: '#94a3b8', fontSize: 12 }}>Görsel ekle (PNG/JPEG/WebP, maks. 5 MB)</span>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              disabled={menuImgUploading}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadMenuImage(f);
+                e.target.value = '';
+              }}
+              style={{ ...inputStyle, padding: '7px 9px', fontSize: 12.5 }}
+            />
+          </label>
+          {menuImgUploading && <span style={{ color: '#a5b4fc', fontSize: 13 }}>Yükleniyor…</span>}
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          {menuImages.length === 0 ? (
+            <span style={{ color: '#64748b', fontSize: 13 }}>Henüz menü görseli yüklenmedi</span>
+          ) : (
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              {menuImages.map((url) => (
+                <div key={url} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt="Menü görseli"
+                    style={{ maxWidth: 120, maxHeight: 120, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)' }}
+                  />
+                  <button onClick={() => removeMenuImage(url)} disabled={menuImgUploading} style={dangerBtn}>
+                    Sil
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Baslik + Yeni Urun */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
