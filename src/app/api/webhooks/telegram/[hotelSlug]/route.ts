@@ -3103,7 +3103,7 @@ async function handleMessage(args: {
       // F&B siparisi forward edilmeden once misafirden onay al. Kart, ancak
       // misafir "evet" dedikten sonra dusurulur (order:confirm callback'inde).
       const fbOrderItem = forwardableItems.find(
-        (it) => (it.rawDepartment ?? it.dept ?? '').toLowerCase().trim() === 'fb' && it.createsSlaEvent,
+        (it) => (it.dept ?? '').toLowerCase().trim() === 'fb' && it.createsSlaEvent,
       );
       if (fbOrderItem) {
         // MENUDE YOK KONTROLU — listede olmayan urun: teyit YOK, kart YOK, nazik red
