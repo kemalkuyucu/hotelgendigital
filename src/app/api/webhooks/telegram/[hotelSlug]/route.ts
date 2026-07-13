@@ -3152,10 +3152,11 @@ async function handleMessage(args: {
         }
 
         // 1) Bayragi ac + orijinal siparis cumlesini sakla
-        await supa
+        const { error: orderPendingErr } = await supa
           .from('conversations')
           .update({ order_pending: true, order_pending_text: text })
           .eq('id', conversationId);
+        if (orderPendingErr) console.error('[order-pending] UPDATE hatasi:', orderPendingErr.message);
 
         // 2) Botun urettigi guzel cevabi gonder ("Tabii memnuniyetle...")
         await tg.sendMessage({ chat_id: chatId, text: finalResponseText });

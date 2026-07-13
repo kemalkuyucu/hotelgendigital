@@ -50,11 +50,12 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
   const conversationId = parts.slice(2).join(':');
 
   // conversation + guest bilgisi cek
-  const { data: conv } = await params.supa
+  const { data: conv, error: convErr } = await params.supa
     .from('conversations')
     .select('id, order_pending, order_pending_text, telegram_chat_id')
     .eq('id', conversationId)
     .maybeSingle();
+  if (convErr) console.error('[order-callback] conv lookup hatasi:', convErr.message);
 
   if (!conv) { await answer(params.botToken, params.callbackQueryId, 'Kayit bulunamadi.'); return; }
 
