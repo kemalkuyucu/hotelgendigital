@@ -2462,6 +2462,49 @@ async function handleMessage(args: {
     skipForward = true;
   }
 
+  // ── RS-KOD KAPISI (deterministik, intent'in USTUNDE) ────────────────────────
+  // Misafir menu kodu yazdiysa (RS01, "2 RS01") urun menu_items ile KESIN eslesmistir.
+  // LLM bunu bazen housekeeping/knowledge_query sanip siparisi yanlis departmana
+  // dusuruyor. Kod yakalandiginda intent'i F&B'ye ZORLA; kod yoksa hicbir sey degismez.
+  // Safety kurali tetiklendiyse DOKUNMA — guvenlik her zaman ustte kalir.
+  if (aiResult?.safetyTriggered !== true) {
+    const rsParsed = await parseOrder(text, supa);
+    if (rsParsed.lines.length > 0) {
+      finalIntent = 'fb';
+      skipForward = false;
+      // buildForwardableItems classifiedIntents doluysa finalIntent'e BAKMAZ →
+      // item listesini de F&B'ye cevir (aiResult null ise legacy fallback zaten
+      // finalIntent'i kullanir, dokunmaya gerek yok).
+      if (aiResult) {
+        aiResult.classifiedIntents = [
+          {
+            department: 'fb',
+            requestText: text,
+            shouldForward: true,
+            rawDepartment: 'room_service',
+            messageType: 'TALEP',
+            withButtons: true,
+            createsSlaEvent: true,
+          },
+        ];
+      }
+      // AI'in urettigi cevap ("havlu getiriyoruz") bu yolda alakasiz olabilir —
+      // teyit kartindan onceki ara mesaji sabitle. Fiyatsiz ozet + onay butonu
+      // F&B teyit kapisinda gonderiliyor.
+      finalResponseText =
+        language === 'en'
+          ? 'Preparing your order.'
+          : language === 'de'
+            ? 'Ich bereite Ihre Bestellung vor.'
+            : 'Siparişinizi hazırlıyorum.';
+      console.log('[rs-code-gate] kod yakalandi, fb ye zorlandi', {
+        codes: rsParsed.lines.map((l) => l.code),
+        finalIntent,
+      });
+    }
+  }
+  // ── /RS-KOD KAPISI ──────────────────────────────────────────────────────────
+
   // ============================================================
   // PERSISTENT VERIFICATION CHECK (Modül 10.2)
   // ============================================================
