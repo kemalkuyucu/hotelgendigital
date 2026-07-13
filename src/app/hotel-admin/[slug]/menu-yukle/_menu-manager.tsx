@@ -11,6 +11,8 @@ interface MenuItem {
   is_paid: boolean;
   is_active: boolean;
   display_order: number;
+  item_code?: string | null;
+  image_url?: string | null;
 }
 
 const NO_CATEGORY = '__none__';
@@ -100,6 +102,9 @@ export default function MenuManager({ slug }: { slug: string }) {
   const [addPrice, setAddPrice] = useState('');
   const [addCurrency, setAddCurrency] = useState('TRY');
   const [addIsPaid, setAddIsPaid] = useState(true);
+  const [addCode, setAddCode] = useState('');
+  const [addImageUrl, setAddImageUrl] = useState('');
+  const [addUploading, setAddUploading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -218,6 +223,25 @@ export default function MenuManager({ slug }: { slug: string }) {
     }
   }
 
+  async function uploadImage(file: File) {
+    setAddUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/hotel-admin/${slug}/menu/upload-image`, {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Görsel yüklenemedi');
+      setAddImageUrl(data.image_url);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setAddUploading(false);
+    }
+  }
+
   async function addItem() {
     if (!addName.trim()) {
       setError('Ürün adı zorunlu');
@@ -237,6 +261,8 @@ export default function MenuManager({ slug }: { slug: string }) {
           price: addPrice,
           currency: addCurrency,
           is_paid: addIsPaid,
+          item_code: addCode,
+          image_url: addImageUrl || null,
         }),
       });
       const data = await res.json();
@@ -248,6 +274,8 @@ export default function MenuManager({ slug }: { slug: string }) {
       setAddPrice('');
       setAddCurrency('TRY');
       setAddIsPaid(true);
+      setAddCode('');
+      setAddImageUrl('');
       setShowAdd(false);
       await load();
     } catch (e) {
@@ -295,6 +323,11 @@ export default function MenuManager({ slug }: { slug: string }) {
               <input value={addName} onChange={(e) => setAddName(e.target.value)} style={inputStyle} placeholder="Örn. Klasik Burger" />
             </label>
 
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: '0 1 120px' }}>
+              <span style={{ color: '#94a3b8', fontSize: 12 }}>Ürün Kodu</span>
+              <input value={addCode} onChange={(e) => setAddCode(e.target.value)} style={inputStyle} placeholder="ör. 101" />
+            </label>
+
             <label style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: '1 1 170px' }}>
               <span style={{ color: '#94a3b8', fontSize: 12 }}>Kategori</span>
               <select value={addCategory} onChange={(e) => setAddCategory(e.target.value)} style={inputStyle}>
@@ -339,8 +372,42 @@ export default function MenuManager({ slug }: { slug: string }) {
               Ücretli
             </label>
           </div>
+
+          {/* Gorsel yukleme */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 16, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: '1 1 240px' }}>
+              <span style={{ color: '#94a3b8', fontSize: 12 }}>Görsel (PNG/JPEG/WebP, maks. 5 MB)</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={addUploading}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadImage(f);
+                }}
+                style={{ ...inputStyle, padding: '7px 9px', fontSize: 12.5 }}
+              />
+            </label>
+
+            {addUploading && (
+              <span style={{ color: '#a5b4fc', fontSize: 13 }}>Yükleniyor…</span>
+            )}
+
+            {!addUploading && addImageUrl && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={addImageUrl}
+                  alt="Ürün görseli önizleme"
+                  style={{ maxWidth: 80, maxHeight: 80, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)' }}
+                />
+                <span style={{ color: '#86efac', fontSize: 13 }}>Görsel yüklendi ✓</span>
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-            <button onClick={addItem} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>
+            <button onClick={addItem} disabled={busy || addUploading} style={{ ...primaryBtn, opacity: busy || addUploading ? 0.6 : 1 }}>
               {busy ? 'Ekleniyor…' : 'Ekle'}
             </button>
             <button onClick={() => setShowAdd(false)} disabled={busy} style={ghostBtn}>İptal</button>
