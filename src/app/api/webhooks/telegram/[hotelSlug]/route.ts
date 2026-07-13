@@ -2467,9 +2467,11 @@ async function handleMessage(args: {
   // LLM bunu bazen housekeeping/knowledge_query sanip siparisi yanlis departmana
   // dusuruyor. Kod yakalandiginda intent'i F&B'ye ZORLA; kod yoksa hicbir sey degismez.
   // Safety kurali tetiklendiyse DOKUNMA — guvenlik her zaman ustte kalir.
+  let rsCodeMatched = false;
   if (aiResult?.safetyTriggered !== true) {
     const rsParsed = await parseOrder(text, supa);
     if (rsParsed.lines.length > 0) {
+      rsCodeMatched = true;
       finalIntent = 'fb';
       skipForward = false;
       // buildForwardableItems classifiedIntents doluysa finalIntent'e BAKMAZ →
@@ -2504,6 +2506,74 @@ async function handleMessage(args: {
     }
   }
   // ── /RS-KOD KAPISI ──────────────────────────────────────────────────────────
+
+  // ── MENU GORSEL KAPISI (deterministik) ──────────────────────────────────────
+  // "menu goster / room service / ne yiyebilirim" = SIPARIS DEGIL, menu GORME istegi.
+  // LLM bunu bazen fb sanip siparis teyit kartina, bazen knowledge_query sanip fiyat
+  // listesi metnine ceviriyordu. Keyword eslesirse katalog gorselini gonder ve CIK.
+  // Kod yakalandiysa (rsCodeMatched) siparis akisi onceliklidir — bu kapi atlanir.
+  // Otel gorsel yuklemediyse hicbir sey yapma: eski akis (AI metin cevabi) sursun.
+  const MENU_VIEW_KEYWORDS = [
+    'menu',
+    'menuyu',
+    'menuyu goster',
+    'menu goster',
+    'oda servisi',
+    'room service',
+    'roomservice',
+    'ne yiyebilir',
+    'ne yesem',
+    'yemek listesi',
+    'yiyecek listesi',
+    'fiyat listesi',
+    'yiyecek ne var',
+    'yemek ne var',
+    'ne var yemek',
+  ];
+  if (!rsCodeMatched) {
+    const tMenu = normalizeTr(text);
+    const wantsMenu = MENU_VIEW_KEYWORDS.some((kw) => tMenu.includes(kw));
+    if (wantsMenu) {
+      const { data: msRow } = await supa
+        .from('hotel_settings')
+        .select('menu_image_urls')
+        .limit(1)
+        .maybeSingle();
+      const menuImages: string[] = Array.isArray(msRow?.menu_image_urls)
+        ? (msRow.menu_image_urls as string[]).filter((u) => typeof u === 'string' && u.trim() !== '')
+        : [];
+
+      if (menuImages.length > 0) {
+        const menuCaption =
+          language === 'en'
+            ? 'Here is our room-service menu 📋 To order, just send the item code and quantity (e.g. 2 RS01).'
+            : language === 'de'
+              ? 'Hier ist unsere Room-Service-Speisekarte 📋 Zum Bestellen senden Sie einfach den Artikelcode und die Menge (z.B. 2 RS01).'
+              : 'Room-service menümüz ekte 📋 Sipariş vermek için ürün kodunu ve adedini yazmanız yeterli (ör. 2 RS01).';
+
+        try {
+          await sendPhotos({
+            channel: 'telegram',
+            req: { roomName: 'Menü', imageUrls: menuImages, caption: menuCaption },
+            telegram: { botToken, chatId },
+          });
+        } catch (e) {
+          console.error('[menu-image] gonderim hatasi', e instanceof Error ? e.message : e);
+        }
+
+        await supa.from('bot_messages').insert({
+          conversation_id: conversationId,
+          direction: 'outbound',
+          text: menuCaption,
+          message_type: 'text',
+        });
+
+        console.log('[menu-image] menu gorseli gonderildi', { count: menuImages.length });
+        return NextResponse.json({ ok: true });
+      }
+    }
+  }
+  // ── /MENU GORSEL KAPISI ─────────────────────────────────────────────────────
 
   // ============================================================
   // PERSISTENT VERIFICATION CHECK (Modül 10.2)
