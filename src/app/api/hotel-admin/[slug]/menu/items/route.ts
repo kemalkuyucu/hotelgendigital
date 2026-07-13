@@ -93,6 +93,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         is_paid: isPaid,
         is_active: true,
         display_order: nextOrder,
+        item_code: String(body.item_code ?? '').trim() || null,
+        image_url: body.image_url ?? null,
+        description: body.description ?? null,
       })
       .select('*')
       .single();
@@ -134,6 +137,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     if (body.price !== undefined) patch.price = parsePrice(body.price);
     // is_paid=false geldiyse fiyati sifirla (import mantigiyla tutarli)
     if (patch.is_paid === false) patch.price = 0;
+
+    // Katalog alanlari (023_menu_catalog): bos string -> null (unique index bos kodu saymaz)
+    if (body.item_code !== undefined) patch.item_code = String(body.item_code ?? '').trim() || null;
+    if (body.image_url !== undefined) patch.image_url = body.image_url ?? null;
+    if (body.description !== undefined) patch.description = body.description ?? null;
 
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: 'Guncellenecek alan yok' }, { status: 400 });
