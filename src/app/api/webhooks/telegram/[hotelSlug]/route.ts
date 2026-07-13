@@ -29,6 +29,7 @@ import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
 import { handleSlaCallback } from '@/lib/sla/handle-callback';
 import { handleOrderCallback } from '@/lib/sla/handle-order-callback';
 import { handleMenuOfferCallback } from '@/lib/sla/handle-menu-offer-callback';
+import { parseOrder } from '@/lib/menu/parse-order';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
 import { getTurkeyToday } from '@/lib/date/turkeyTime'; // Modül 18: timezone fix
 import { sendForwardWithSlaButtons } from '@/lib/sla/send-forward-with-buttons';
@@ -3106,8 +3107,14 @@ async function handleMessage(args: {
         (it) => (it.dept ?? '').toLowerCase().trim() === 'fb' && it.createsSlaEvent,
       );
       if (fbOrderItem) {
-        // MENUDE YOK KONTROLU — listede olmayan urun: teyit YOK, kart YOK, nazik red
-        const inMenu = await isOrderInMenu(text, supa);
+        // KOD BAZLI SIPARIS: metinden urun kodlarini + adetleri deterministik cikar.
+        // Kod yakalandiysa urunler zaten menu_items'tan eslesmistir -> Haiku menu
+        // kontrolune gerek yok (kodu urun adi sanip "menude yok" diyebilir).
+        const parsed = await parseOrder(text, supa);
+        const hasCodes = parsed.lines.length > 0;
+
+        // MENUDE YOK KONTROLU — sadece serbest metin yolunda (kod yoksa)
+        const inMenu = hasCodes ? true : await isOrderInMenu(text, supa);
         if (!inMenu) {
           // KADEMELI MENU ONERISI: tum listeyi hemen dokme. Once nazik red + "bakmak ister misiniz?" + buton.
           // Beynin urettigi "yok + liste" cevabini (finalResponseText) sakla, misafir EVET derse callback gonderir.
@@ -3151,10 +3158,19 @@ async function handleMessage(args: {
           return NextResponse.json({ ok: true });
         }
 
-        // 1) Bayragi ac + orijinal siparis cumlesini sakla
+        // 1) Bayragi ac + siparisi sakla. Kod yakalandiysa yapilandirilmis ozet (JSON —
+        //    callback fiyat/adet icin okur), aksi halde eski davranis: ham cumle.
+        const pendingText = hasCodes
+          ? JSON.stringify({
+              raw: text,
+              lines: parsed.lines,
+              total: parsed.total,
+              currency: parsed.currency,
+            })
+          : text;
         const { error: orderPendingErr } = await supa
           .from('conversations')
-          .update({ order_pending: true, order_pending_text: text })
+          .update({ order_pending: true, order_pending_text: pendingText })
           .eq('id', conversationId);
         if (orderPendingErr) console.error('[order-pending] UPDATE hatasi:', orderPendingErr.message);
 
@@ -3162,8 +3178,16 @@ async function handleMessage(args: {
         await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
 
         // 3) Nazik teyit + butonlar (ham fetch — reply_markup gerekiyor)
-        const confirmText =
-          language === 'en'
+        //    Kod yakalandiysa urunleri isim+adet ile listele. FIYAT MISAFIRE GOSTERILMEZ
+        //    (Yol 1 — tutar sadece personel kartinda).
+        const itemsBlock = parsed.lines.map((l) => `• ${l.name} × ${l.qty}`).join('\n');
+        const confirmText = hasCodes
+          ? language === 'en'
+            ? `Your order:\n${itemsBlock}\n\nDo you confirm?`
+            : language === 'de'
+              ? `Ihre Bestellung:\n${itemsBlock}\n\nBestaetigen Sie?`
+              : `Siparişiniz:\n${itemsBlock}\n\nOnaylıyor musunuz?`
+          : language === 'en'
             ? 'I am creating your order. To proceed, could you please confirm?'
             : language === 'de'
               ? 'Ich erstelle Ihre Bestellung. Bitte bestaetigen Sie zur Fortsetzung.'

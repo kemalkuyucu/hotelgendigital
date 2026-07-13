@@ -32,6 +32,48 @@ async function editCard(token: string, chatId: number | string, msgId: number, l
   }).catch(() => {});
 }
 
+// order_pending_text iki formatta olabilir:
+//  - YENI: parseOrder ozeti (JSON) — kod bazli siparis, fiyat/adet belli
+//  - ESKI: ham misafir cumlesi (serbest metin siparisi veya eski kayitlar)
+// Guvenli ayrim: '{' ile basliyorsa JSON dene; parse patlarsa/lines yoksa ham muamelesi.
+type StructuredOrderLine = {
+  code: string;
+  name: string;
+  unitPrice: number;
+  qty: number;
+  lineTotal: number;
+};
+type StructuredOrder = {
+  raw: string;
+  lines: StructuredOrderLine[];
+  total: number;
+  currency: string;
+};
+
+function parsePendingOrder(raw: string): StructuredOrder | null {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    const obj = JSON.parse(trimmed) as Partial<StructuredOrder>;
+    if (!obj || !Array.isArray(obj.lines) || obj.lines.length === 0) return null;
+    return {
+      raw: obj.raw ?? '',
+      lines: obj.lines as StructuredOrderLine[],
+      total: Number(obj.total ?? 0),
+      currency: obj.currency || 'TRY',
+    };
+  } catch {
+    return null; // bozuk JSON => ham metin gibi davran
+  }
+}
+
+/** Personel kartinda gorunen ozet — fiyat SADECE burada. */
+function formatOrderSummary(order: StructuredOrder): string {
+  const cur = order.currency === 'TRY' ? 'TL' : order.currency;
+  const lines = order.lines.map((l) => `• ${l.name} × ${l.qty} = ${l.lineTotal} ${cur}`);
+  return `${lines.join('\n')}\n💰 Toplam: ${order.total} ${cur}`;
+}
+
 const msgConfirmed = (lang: string) =>
   lang === 'en' ? 'Your order has been sent to our team. They will assist you shortly.'
   : lang === 'de' ? 'Ihre Bestellung wurde an unser Team gesendet. Wir kuemmern uns gleich darum.'
@@ -69,6 +111,10 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
 
   const guestChatId = conv.telegram_chat_id as string;
   const orderText = (conv.order_pending_text as string) || '';
+  const structured = parsePendingOrder(orderText);
+  // Kartta ve sla_events.request_text'te gorunecek metin: kod bazliysa fiyatli ozet,
+  // degilse eski davranis (ham cumle).
+  const requestText = structured ? formatOrderSummary(structured) : orderText;
 
   if (action === 'cancel') {
     await params.supa.from('conversations')
@@ -127,7 +173,7 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
         inhouse_guest_id: null,
         department_code: 'fb',
         department_chat_id: fbChatId,
-        request_text: orderText,
+        request_text: requestText,
         room_number: roomNumber,
         guest_full_name: guestName,
         forwarded_at: now.toISOString(),
@@ -142,12 +188,32 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
       return;
     }
 
+    // Kod bazli siparis: siparis kalemlerini + tutari kaydet (kayit IKINCIL — hata
+    // akisi kesmez, kart yine de gider). Serbest metinde kalem yok => yazma.
+    if (structured) {
+      const { error: orderErr } = await params.supa.from('room_service_orders').insert({
+        conversation_id: conversationId,
+        room_number: roomNumber,
+        guest_name: guestName,
+        platform: 'telegram',
+        platform_user_id: String(guestChatId),
+        items: structured.lines,
+        total_amount: structured.total,
+        currency: structured.currency,
+        status: 'confirmed',
+      });
+      if (orderErr) console.error('[order-confirm] room_service_orders INSERT hatasi:', orderErr.message);
+    }
+
     const esc = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const roomTxt = roomNumber ? `${esc(roomNumber)} numarali oda` : 'Oda bilinmiyor';
+    const body = structured
+      ? esc(formatOrderSummary(structured))
+      : `<b>Talep:</b> ${esc(orderText)}`;
     const html =
       `🍽 <b>Room Service Siparisi</b>\n\n` +
       `<b>${esc(guestName || 'Misafir')}</b> — ${roomTxt}\n\n` +
-      `<b>Talep:</b> ${esc(orderText)}`;
+      body;
 
     const { messageId, ok } = await sendForwardWithSlaButtons({
       botToken: params.botToken,
