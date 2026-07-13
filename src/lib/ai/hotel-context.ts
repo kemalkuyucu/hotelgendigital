@@ -244,7 +244,7 @@ function buildSystemDefaultFacts(existingKeys: Set<string>): string {
 async function fetchMenuItems(supabase: SupabaseClient): Promise<string> {
   const { data } = await supabase
     .from('menu_items')
-    .select('item_name, category, price, currency, is_paid')
+    .select('item_code, item_name, category, price, currency, is_paid')
     .eq('is_active', true)
     .order('display_order', { ascending: true });
 
@@ -255,10 +255,16 @@ async function fetchMenuItems(supabase: SupabaseClient): Promise<string> {
       ? `${row.price ?? 0} ${row.currency ?? 'TRY'} (UCRETLI)`
       : 'UCRETSIZ';
     const kat = row.category ? ` [${row.category}]` : '';
-    return `- ${row.item_name}${kat}: ${ucret}`;
+    const kod = String(row.item_code ?? '').trim();
+    const ad = kod ? `${kod} - ${row.item_name}` : `${row.item_name}`;
+    return `- ${ad}${kat}: ${ucret}`;
   });
 
-  return `ROOM-SERVICE MENUSU (oda servisi siparis edilebilir kalemler ve fiyatlari):\n${lines.join('\n')}`;
+  return (
+    `ROOM-SERVICE MENUSU (oda servisi siparis edilebilir kalemler ve fiyatlari):\n` +
+    `NOT: Misafir siparişte ürün kodunu kullanabilir (ör. "RS01", "2 RS01"). Kod = ürün eşleşmesi kesindir.\n` +
+    `${lines.join('\n')}`
+  );
 }
 
 async function fetchSpaServices(supabase: SupabaseClient): Promise<string> {
