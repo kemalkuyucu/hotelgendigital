@@ -23,6 +23,27 @@ import {
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { dispatchToDepartmentBrain } from '@/lib/ai/department-brains';
 
+// ── ÇOK DİLLİ ALERJİ KÖK-KELİMELERİ (tek kaynak) ───────────────────────────
+// Bu liste iki yerde kullanılır: (1) saglik kapisi alerji istisnasi (satir ~107),
+// (2) alerji guvenlik-agi (satir ~289). ASLA yerinde kopyalanmaz — ucuncu kopya
+// gecmiste RU alerjisini saglik disclaimer'ina dusurdu (iki liste desenkronize).
+// normalizeTr Latin/TR diyakritigini katlar + toLowerCase uygular (Kiril/Yunanca
+// da kuculur) ama transliterasyon YAPMAZ → Latin-disi scriptler kendi alfabesiyle.
+// Yasamsal guvenlik: yuksek recall onceligi, yanlis-pozitif kabul (guvenli taraf).
+export const ALLERGY_KEYWORDS = [
+  'alerj',    // TR (alerji)
+  'allerg',   // EN/DE/FR/IT: allergy/Allergie/allergie/allergia (cift-L)
+  'alerg',    // ES/PT: alergia (tek-L)
+  'intoleran',// EN/ES/DE/IT/TR intolerance/intolerancia/Intoleranz...
+  'аллерг',   // RU/BG: аллергия (cift-L Kiril)
+  'алерг',    // UK: алергія (tek-L Kiril)
+  'αλλεργ',   // EL: αλλεργία
+  'حساسي',    // AR: حساسية
+  '过敏',      // ZH: guomin
+  'アレルギ',  // JA
+  '알레르기',  // KO
+] as const;
+
 export interface ConversationContextMessage {
   direction: 'inbound' | 'outbound';
   text: string;
@@ -104,7 +125,7 @@ async function _classifyAndRespondImpl(
   const allergyOverridesHealthMedical =
     safetyResult.matched &&
     safetyResult.category.toLowerCase() === 'health_medical' &&
-    ['alerj', 'allerg', 'intoleran'].some((kw) => normalizeTr(input.guestMessage).includes(kw));
+    ALLERGY_KEYWORDS.some((kw) => normalizeTr(input.guestMessage).includes(kw));
 
   if (safetyResult.matched && !allergyOverridesHealthMedical) {
     // Safety kural tetiklendi — hafif, odakli bir AI cagrisi yap
@@ -287,23 +308,7 @@ async function _classifyAndRespondImpl(
   // ile aynı department/messageType/flag) bir allergy intent EKLENİR. LLM yolu zayıflatılmaz
   // — keyword OR model → allergy. Çoklu-intent korunur (mevcut intent'ler silinmez).
   const normalizedGuestMsg = normalizeTr(input.guestMessage);
-  // Cok dilli alerji kok-kelimeleri. normalizeTr Latin/TR diyakritigini katlar +
-  // toLowerCase uygular (Kiril/Yunanca da kuculur), ama transliterasyon YAPMAZ →
-  // Latin-disi scriptler burada dogrudan kendi alfabesiyle eslenir. Yasamsal
-  // guvenlik: yuksek recall onceligi, yanlis-pozitif kabul (guvenli taraf).
-  const ALLERGY_KEYWORDS = [
-    'alerj',    // TR (alerji)
-    'allerg',   // EN/DE/FR/IT: allergy/Allergie/allergie/allergia (cift-L)
-    'alerg',    // ES/PT: alergia (tek-L)
-    'intoleran',// EN/ES/DE/IT/TR intolerance/intolerancia/Intoleranz...
-    'аллерг',   // RU/BG: аллергия (cift-L Kiril)
-    'алерг',    // UK: алергія (tek-L Kiril)
-    'αλλεργ',   // EL: αλλεργία
-    'حساسي',    // AR: حساسية
-    '过敏',      // ZH: guomin
-    'アレルギ',  // JA
-    '알레르기',  // KO
-  ];
+  // ALLERGY_KEYWORDS module-level tek kaynaktan gelir (dosya basi).
   const hasAllergyKeyword = ALLERGY_KEYWORDS.some((kw) => normalizedGuestMsg.includes(kw));
   const llmTaggedAllergy = classifiedIntents.some(
     (i) => (i.rawDepartment ?? '').toLowerCase().trim() === 'allergy',
