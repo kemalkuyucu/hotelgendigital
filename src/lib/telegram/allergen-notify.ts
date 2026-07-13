@@ -21,6 +21,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { TelegramClient } from './client';
+import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 
 // ─── Input / Output Tipleri ──────────────────────────────────────────────────
 
@@ -237,6 +238,19 @@ export async function sendAllergenNotifications(
   // ── Inhouse eşleşme kontrolü ───────────────────────────────────────────────
   const inhouseMatch = await checkInhouseMatch(hotelSupa, room);
 
+  // ── ALERJEN TÜRKÇE ÇEVİRİ SATIRI (personel yaşamsal-güvenlik için) ──────────
+  // allergenText misafirin HAM dilinde (RU/AR/DE...). Mutfak/GR personeli yabancı
+  // dil bilmek zorunda değil → Türkçe çeviri satırı EKLENİR, bold + belirgin.
+  // SLA kart deseninin birebir aynısı: çevir, eşitse (zaten Türkçe) satır ekleme.
+  // BİR KEZ hesaplanır (döngü içinde DEĞİL) — alıcı sayısı kadar AI çağrısı olmasın.
+  // translateToTurkish asla throw etmez (iç try/catch) → en kötü ihtimalle orijinal.
+  const allergenTr = await translateToTurkish(allergenText);
+  const needsAllergenTr =
+    !!allergenTr.trim() && allergenTr.trim() !== allergenText.trim();
+  const allergenLine = needsAllergenTr
+    ? `🤧 <b>Alerji:</b> ${escHtml(allergenText)}\n🇹🇷 <b>TÜRKÇE:</b> <b>${escHtml(allergenTr)}</b>`
+    : `🤧 <b>Alerji:</b> ${escHtml(allergenText)}`;
+
   // ── Personel çekme: FB (allergen flags) ────────────────────────────────────
   const { data: fbStaffData } = await hotelSupa
     .from('department_staff')
@@ -270,7 +284,7 @@ export async function sendAllergenNotifications(
       `━━━━━━━━━━\n` +
       `🛏 <b>Oda:</b> ${escHtml(room)}\n` +
       `👤 <b>Misafir:</b> ${escHtml(name)}\n` +
-      `🤧 <b>Alerji:</b> ${escHtml(allergenText)}\n` +
+      `${allergenLine}\n` +
       `━━━━━━━━━━\n` +
       `🕐 ${trTimeStr}`;
 
@@ -280,7 +294,7 @@ export async function sendAllergenNotifications(
       `━━━━━━━━━━\n` +
       `🛏 <b>Oda:</b> ${escHtml(room)}\n` +
       `👤 <b>Misafir:</b> ${escHtml(name)}\n` +
-      `🤧 <b>Alerji:</b> ${escHtml(allergenText)}\n` +
+      `${allergenLine}\n` +
       `━━━━━━━━━━\n` +
       `ℹ️ Lütfen misafir ile ilgilenin.\n` +
       `🕐 ${trTimeStr}`;
@@ -316,7 +330,7 @@ export async function sendAllergenNotifications(
         `━━━━━━━━━━\n` +
         `🛏 <b>Oda:</b> ${escHtml(room)}\n` +
         `👤 <b>Misafir:</b> ${escHtml(name)}\n` +
-        `🤧 <b>Alerji:</b> ${escHtml(allergenText)}\n` +
+        `${allergenLine}\n` +
         `━━━━━━━━━━\n` +
         `📌 GR şu an mesai dışı. Lütfen GR'ye not bırakın.\n` +
         `🕐 ${trTimeStr}`;
@@ -346,7 +360,7 @@ export async function sendAllergenNotifications(
     `━━━━━━━━━━\n` +
     `👤 <b>Misafir:</b> ${escHtml(name)}\n` +
     `🛏 <b>Belirtilen oda:</b> ${escHtml(room)}\n` +
-    `🤧 <b>Alerji:</b> ${escHtml(allergenText)}\n` +
+    `${allergenLine}\n` +
     `━━━━━━━━━━\n` +
     `📌 Misafir henüz oda almamış. Oda alınınca lütfen ilgilenin.\n` +
     `🕐 ${trTimeStr}`;
