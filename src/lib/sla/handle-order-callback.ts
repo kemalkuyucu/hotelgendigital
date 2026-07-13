@@ -12,8 +12,6 @@ interface OrderCallbackParams {
   callbackMessageId: number;
 }
 
-const FB_CHAT_ID = '-5401380483'; // Regnum F&B dept grubu
-
 async function answer(token: string, id: string, text: string) {
   await fetch(TG(token, 'answerCallbackQuery'), {
     method: 'POST',
@@ -91,6 +89,20 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
       .update({ order_pending: false, order_pending_text: null })
       .eq('id', conversationId);
 
+    // F&B grup chat_id — departments tablosundan (otel-bazli; hardcode YOK).
+    // sla_events.department_chat_id NOT NULL → chat_id yoksa insert'e hic girme.
+    const { data: fbDept } = await params.supa
+      .from('departments')
+      .select('telegram_chat_id')
+      .eq('code', 'fb')
+      .maybeSingle();
+    const fbChatId = (fbDept?.telegram_chat_id as string | null) ?? null;
+    if (!fbChatId) {
+      console.error('[order-confirm] departments.fb telegram_chat_id yok — siparis iletilemedi');
+      await answer(params.botToken, params.callbackQueryId, 'Bir sorun olustu, tekrar deneyin.');
+      return;
+    }
+
     // guest oda/isim — inhouse_guests_v2'den (telegram_id ile)
     let roomNumber: string | null = null;
     let guestName = '';
@@ -114,7 +126,7 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
         conversation_id: conversationId,
         inhouse_guest_id: null,
         department_code: 'fb',
-        department_chat_id: FB_CHAT_ID,
+        department_chat_id: fbChatId,
         request_text: orderText,
         room_number: roomNumber,
         guest_full_name: guestName,
@@ -139,7 +151,7 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
 
     const { messageId, ok } = await sendForwardWithSlaButtons({
       botToken: params.botToken,
-      chatId: FB_CHAT_ID,
+      chatId: fbChatId,
       html,
       slaEventId: slaEvent.id as string,
       variant: 'normal',
