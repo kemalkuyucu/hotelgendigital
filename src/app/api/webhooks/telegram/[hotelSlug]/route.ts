@@ -2800,7 +2800,7 @@ async function handleMessage(args: {
   };
   const currentVerifiedGuest: VerifiedGuestShape | null = persistentVerifiedGuest as VerifiedGuestShape | null;
 
-  if (currentVerifiedGuest && aiShouldForward) {
+  if (currentVerifiedGuest && aiShouldForward && !rsCodeMatched) {
     const reParsed = parseVerificationInput(text);
     if (
       !reParsed.hasEmbeddedRequest &&  // BEYINCIK: mesajda talep varsa re-verify YOK; dogrulanmis misafir "eslesme bulamadim" duymaz, talep normal akar (dedup ikinci karti keser)
