@@ -68,6 +68,21 @@ function parsePendingOrder(raw: string): StructuredOrder | null {
   }
 }
 
+// raw siparis metninden urun kodlarini + adet ifadelerini temizler, geriye
+// misafirin serbest notunu birakir ("2 RS01, sogansiz olsun" -> "sogansiz olsun").
+// Not yoksa bos string doner. Regex parse-order.ts ORDER_TOKEN_RE ile ayni mantik.
+function extractOrderNote(raw: string): string {
+  if (!raw) return '';
+  const cleaned = raw
+    .replace(/(?:(?:\d{1,3})\s*[x*]?\s*)?\b[a-z]{1,4}\d{1,4}(?!\d)(?:\s*[x*]\s*(?:\d{1,3}))?/gi, ' ')
+    .replace(/[,;.\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  // Cok kisa artiklar (tek harf, baglac) not sayilmaz
+  if (cleaned.length < 3) return '';
+  return cleaned;
+}
+
 /** Personel kartinda gorunen ozet — fiyat SADECE burada. */
 function formatOrderSummary(order: StructuredOrder): string {
   const cur = order.currency === 'TRY' ? 'TL' : order.currency;
@@ -238,10 +253,26 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     const body = structured
       ? esc(formatOrderSummary(structured))
       : `<b>Talep:</b> ${esc(orderText)}`;
+
+    // MISAFIR NOTU: kod bazli siparise eklenen serbest not ( or. "sogansiz olsun").
+    // raw'dan kodlar temizlenir, kalan not varsa Turkce'ye cevrilip karta eklenir.
+    let orderNoteHtml = '';
+    if (structured) {
+      const note = extractOrderNote(structured.raw);
+      if (note) {
+        const escN = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const trNote = await translateToTurkish(note).catch(() => note);
+        orderNoteHtml =
+          `\n\n📝 <b>Misafir notu:</b> ${escN(note)}` +
+          (trNote && trNote !== note ? `\n🇹🇷 <b>${escN(trNote)}</b>` : '');
+      }
+    }
+
     const html =
       `🍽 <b>Room Service Siparisi</b>\n\n` +
       `<b>${esc(guestName || 'Misafir')}</b> — ${roomTxt}\n\n` +
       body +
+      orderNoteHtml +
       allergenWarnHtml;
 
     const { messageId, ok } = await sendForwardWithSlaButtons({
