@@ -140,10 +140,11 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     // sla_events.department_chat_id NOT NULL → chat_id yoksa insert'e hic girme.
     const { data: fbDept } = await params.supa
       .from('departments')
-      .select('telegram_chat_id')
+      .select('telegram_chat_id, sla_minutes')
       .eq('code', 'fb')
       .maybeSingle();
     const fbChatId = (fbDept?.telegram_chat_id as string | null) ?? null;
+    const fbSlaMinutes = (fbDept?.sla_minutes as number | null) ?? 15;
     if (!fbChatId) {
       console.error('[order-confirm] departments.fb telegram_chat_id yok — siparis iletilemedi');
       await answer(params.botToken, params.callbackQueryId, 'Bir sorun olustu, tekrar deneyin.');
@@ -191,7 +192,7 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     }
 
     const now = new Date();
-    const deadline = new Date(now.getTime() + 15 * 60 * 1000); // 15 dk SLA
+    const deadline = new Date(now.getTime() + fbSlaMinutes * 60 * 1000); // departments.sla_minutes
 
     const { data: slaEvent, error: slaErr } = await params.supa
       .from('sla_events')
