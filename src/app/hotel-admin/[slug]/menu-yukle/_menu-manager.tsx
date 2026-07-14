@@ -285,6 +285,25 @@ export default function MenuManager({ slug }: { slug: string }) {
     }
   }
 
+  async function purgeItem(id: string) {
+    if (!window.confirm('Bu ürün KALICI olarak silinecek. Geri alınamaz. Emin misiniz?')) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/hotel-admin/${slug}/menu/items`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, hard: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Kalıcı silinemedi');
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function uploadImage(file: File) {
     setAddUploading(true);
     try {
@@ -643,9 +662,12 @@ export default function MenuManager({ slug }: { slug: string }) {
                                     <button onClick={() => removeItem(it.id)} disabled={busy} style={dangerBtn}>Menüden Kaldır</button>
                                   </>
                                 ) : (
-                                  <button onClick={() => restoreItem(it.id)} disabled={busy} style={{ ...smallBtn, color: '#86efac', borderColor: 'rgba(52,211,153,0.3)', background: 'rgba(52,211,153,0.1)' }}>
-                                    Geri Getir
-                                  </button>
+                                  <>
+                                    <button onClick={() => restoreItem(it.id)} disabled={busy} style={{ ...smallBtn, color: '#86efac', borderColor: 'rgba(52,211,153,0.3)', background: 'rgba(52,211,153,0.1)' }}>
+                                      Geri Getir
+                                    </button>
+                                    <button onClick={() => purgeItem(it.id)} disabled={busy} style={dangerBtn}>Sil</button>
+                                  </>
                                 )}
                               </div>
                             </>

@@ -164,7 +164,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
   }
 }
 
-// DELETE → soft delete (is_active=false). ASLA gercek delete kullanma
+// DELETE → soft delete (is_active=false). hard=true ise SADECE zaten pasif urunu gercekten sil
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
@@ -174,8 +174,33 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
 
     const body = await req.json();
     const id = body.id;
+    const hard = body.hard === true;
     if (!id) {
       return NextResponse.json({ error: 'id zorunlu' }, { status: 400 });
+    }
+
+    if (hard) {
+      // Guvenlik: sadece ZATEN soft-delete edilmis (is_active=false) urun kalici silinebilir
+      const { data: existing, error: fetchErr } = await supa
+        .from('menu_items')
+        .select('id, is_active')
+        .eq('id', id)
+        .maybeSingle();
+      if (fetchErr) {
+        return NextResponse.json({ error: 'Kayit okunamadi: ' + fetchErr.message }, { status: 500 });
+      }
+      if (!existing) {
+        return NextResponse.json({ error: 'Kayit bulunamadi' }, { status: 404 });
+      }
+      if (existing.is_active) {
+        return NextResponse.json({ error: 'Once menuden kaldirin, sonra kalici silin' }, { status: 400 });
+      }
+      const { error: delErr } = await supa.from('menu_items').delete().eq('id', id);
+      if (delErr) {
+        return NextResponse.json({ error: 'Kalici silinemedi: ' + delErr.message }, { status: 500 });
+      }
+      invalidateSummary(hotelId);
+      return NextResponse.json({ ok: true, hard: true });
     }
 
     const { error } = await supa
