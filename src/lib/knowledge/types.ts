@@ -16,6 +16,7 @@ export const FACT_CATEGORIES = [
   'beach',
   'wifi',
   'contact',
+  'laundry_ironing',
   'other',
 ] as const;
 
@@ -30,6 +31,7 @@ export const FACT_CATEGORY_LABELS: Record<FactCategory, string> = {
   beach: 'Plaj',
   wifi: 'Wi-Fi',
   contact: 'İletişim',
+  laundry_ironing: 'Çamaşır & Ütü',
   other: 'Diğer',
 };
 

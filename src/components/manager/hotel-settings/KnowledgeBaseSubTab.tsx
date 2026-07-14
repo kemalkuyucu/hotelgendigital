@@ -70,11 +70,12 @@ const CATEGORY_LABELS: Record<FactCategory, string> = {
   transport:          'Ulaşım',
   children:           'Çocuklar',
   policies:           'Politikalar',
+  laundry_ironing:    'Çamaşır & Ütü',
 };
 
 const ALL_FACT_CATEGORIES: FactCategory[] = [
   'general','food_beverage','pool_beach','spa_wellness',
-  'activity_animation','rooms','transport','children','policies',
+  'activity_animation','rooms','transport','children','policies','laundry_ironing',
 ];
 
 const STATUS_CHIPS: { id: FilterStatus; label: string }[] = [

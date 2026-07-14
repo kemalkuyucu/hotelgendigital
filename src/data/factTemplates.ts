@@ -17,7 +17,8 @@ export type FactCategory =
   | 'rooms'
   | 'transport'
   | 'children'
-  | 'policies';
+  | 'policies'
+  | 'laundry_ironing';
 
 export interface FactTemplate {
   fact_key: string;
@@ -172,6 +173,24 @@ export const FACT_TEMPLATES: FactTemplate[] = [
     placeholder: 'welcome2024',
     hint: 'Misafir WiFi şifresi; periyodik değişebilir',
     display_order: 90,
+  },
+  {
+    fact_key: 'iron_in_room',
+    fact_label: 'Odada Ütü ve Ütü Masası',
+    category: 'laundry_ironing',
+    tier: 'critical',
+    applies_to_concepts: 'all',
+    placeholder: 'Odada ütü ve ütü masası mevcut / Talep üzerine gönderilir / Yok',
+    display_order: 10,
+  },
+  {
+    fact_key: 'ironing_service_paid',
+    fact_label: 'Ütü Hizmeti Ücretli mi?',
+    category: 'laundry_ironing',
+    tier: 'critical',
+    applies_to_concepts: 'all',
+    placeholder: 'Ücretsiz / Ücretli (fiyat listesine bakınız)',
+    display_order: 20,
   },
   // ─── RECOMMENDED (40 facts) ──────────────────────────────────────────────────
   // food_beverage — concept-based
@@ -696,6 +715,24 @@ export const FACT_TEMPLATES: FactTemplate[] = [
     placeholder: '100 TL / saat, resepsiyondan',
     display_order: 80,
   },
+  {
+    fact_key: 'laundry_price_list',
+    fact_label: 'Çamaşırhane Fiyat Listesi',
+    category: 'laundry_ironing',
+    tier: 'recommended',
+    applies_to_concepts: 'all',
+    placeholder: 'Gömlek 50 TL, Pantolon 60 TL, Elbise 80 TL, Takım 120 TL',
+    display_order: 30,
+  },
+  {
+    fact_key: 'laundry_hours',
+    fact_label: 'Çamaşırhane Çalışma Saatleri',
+    category: 'laundry_ironing',
+    tier: 'recommended',
+    applies_to_concepts: 'all',
+    placeholder: '08:00 - 18:00',
+    display_order: 40,
+  },
   // ─── DETAILED (30 facts) ─────────────────────────────────────────────────────
   // rooms — all
   {
@@ -966,6 +1003,15 @@ export const FACT_TEMPLATES: FactTemplate[] = [
     placeholder: 'TR12 0001 0234 5678 9012 3456 78 (Garanti BBVA)',
     hint: 'Ekstra hizmet ödemeleri için banka hesabı',
     display_order: 180,
+  },
+  {
+    fact_key: 'laundry_delivery_time',
+    fact_label: 'Çamaşır Teslim Süresi',
+    category: 'laundry_ironing',
+    tier: 'detailed',
+    applies_to_concepts: 'all',
+    placeholder: 'Aynı gün / 24 saat içinde',
+    display_order: 50,
   },
 ];
 
