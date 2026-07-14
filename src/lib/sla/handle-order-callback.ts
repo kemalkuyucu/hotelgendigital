@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { sendForwardWithSlaButtons } from './send-forward-with-buttons';
+import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 
 const TG = (token: string, m: string) => `https://api.telegram.org/bot${token}/${m}`;
 
@@ -163,6 +164,32 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
       guestName = (inhouse.guest_name as string) ?? '';
     }
 
+    // ALERJEN UYARISI (Modul 4 kapsam): guest_allergens'te aktif kayit varsa
+    // personel kartina uyari satiri eklenir. Alici/forward mantigina DOKUNMAZ,
+    // sadece kart icerigini zenginlestirir. Sorgu hatasi akisi kesmez.
+    let allergenWarnHtml = '';
+    try {
+      const { data: allergenRow } = await params.supa
+        .from('guest_allergens')
+        .select('allergen_text')
+        .eq('platform', 'telegram')
+        .eq('platform_user_id', String(guestChatId))
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const allergenText = (allergenRow?.allergen_text as string | undefined)?.trim();
+      if (allergenText) {
+        const escA = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const trAllergen = await translateToTurkish(allergenText).catch(() => allergenText);
+        allergenWarnHtml =
+          `\n\n⚠️ <b>ALERJI UYARISI:</b> ${escA(allergenText)}` +
+          (trAllergen && trAllergen !== allergenText ? `\n🇹🇷 <b>${escA(trAllergen)}</b>` : '');
+      }
+    } catch (e) {
+      console.error('[order-confirm] allergen lookup hatasi:', (e as Error).message);
+    }
+
     const now = new Date();
     const deadline = new Date(now.getTime() + 15 * 60 * 1000); // 15 dk SLA
 
@@ -213,7 +240,8 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     const html =
       `🍽 <b>Room Service Siparisi</b>\n\n` +
       `<b>${esc(guestName || 'Misafir')}</b> — ${roomTxt}\n\n` +
-      body;
+      body +
+      allergenWarnHtml;
 
     const { messageId, ok } = await sendForwardWithSlaButtons({
       botToken: params.botToken,
