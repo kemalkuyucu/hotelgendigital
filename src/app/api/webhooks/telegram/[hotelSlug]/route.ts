@@ -3345,12 +3345,20 @@ async function handleMessage(args: {
               .update({ note_pending: true, note_pending_order: orderJson })
               .eq('id', conversationId);
 
+            // Birden fazla yiyecek varsa: her urun icin ayri not istendigini belirt.
+            const foodCount = parsed.lines.filter((l) => !l.isBeverage).length;
             const noteAskText =
               language === 'en'
-                ? 'Would you like to add a note to your order (e.g. no onions)?'
+                ? foodCount > 1
+                  ? 'Would you like to add a note to your order? You have more than one dish, please specify separately for each item (e.g. fries without onion, toast lightly browned). Your satisfaction matters to us.'
+                  : 'Would you like to add a note to your order (e.g. no onions)?'
                 : language === 'de'
-                  ? 'Moechten Sie Ihrer Bestellung eine Notiz hinzufuegen (z.B. ohne Zwiebeln)?'
-                  : 'Siparişinize eklemek istediğiniz bir not var mı (ör. soğansız olsun)?';
+                  ? foodCount > 1
+                    ? 'Möchten Sie Ihrer Bestellung eine Notiz hinzufügen? Sie haben mehr als ein Gericht, bitte geben Sie für jeden Artikel separat an (z.B. Pommes ohne Zwiebel, Toast leicht getoastet). Ihre Zufriedenheit ist uns wichtig.'
+                    : 'Möchten Sie Ihrer Bestellung eine Notiz hinzufügen (z.B. ohne Zwiebeln)?'
+                  : foodCount > 1
+                    ? 'Siparişinize eklemek istediğiniz bir not var mı? Birden fazla yemeğiniz var, lütfen her ürün için ayrı belirtin (ör. patates soğansız, tost az kızarmış). Memnuniyetiniz bizim için önemli.'
+                    : 'Siparişinize eklemek istediğiniz bir not var mı (ör. soğansız olsun)?';
             const noteYesLabel = language === 'en' ? 'Add a note' : language === 'de' ? 'Notiz hinzufuegen' : 'Not var';
             const noteNoLabel = language === 'en' ? 'No note' : language === 'de' ? 'Keine Notiz' : 'Notum yok';
 
