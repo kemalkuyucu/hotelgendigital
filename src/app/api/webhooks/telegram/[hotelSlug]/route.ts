@@ -28,8 +28,9 @@ import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
 // Modül 11: SLA imports
 import { handleSlaCallback } from '@/lib/sla/handle-callback';
 import { handleOrderCallback } from '@/lib/sla/handle-order-callback';
+import { handleNoteCallback } from '@/lib/sla/handle-note-callback';
 import { handleMenuOfferCallback } from '@/lib/sla/handle-menu-offer-callback';
-import { parseOrder } from '@/lib/menu/parse-order';
+import { parseOrder, extractOrderNote } from '@/lib/menu/parse-order';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
 import { getTurkeyToday } from '@/lib/date/turkeyTime'; // Modül 18: timezone fix
 import { sendForwardWithSlaButtons } from '@/lib/sla/send-forward-with-buttons';
@@ -376,6 +377,26 @@ export async function POST(
         return NextResponse.json({ ok: true });
       }
 
+      if (cq.data === 'note:noop') {
+        await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu adim zaten islendi' }),
+        });
+        return NextResponse.json({ ok: true });
+      }
+      if (cq.data?.startsWith('note:')) {
+        await handleNoteCallback({
+          supa,
+          botToken,
+          callbackQueryId: cq.id,
+          callbackData: cq.data,
+          callbackChatId: cq.message?.chat?.id ?? 0,
+          callbackMessageId: cq.message?.message_id ?? 0,
+        });
+        return NextResponse.json({ ok: true });
+      }
+
       // menu: F&B kademeli menu onerisi butonlari
       if (cq.data?.startsWith('menu:')) {
         await handleMenuOfferCallback({
@@ -671,6 +692,9 @@ interface ConversationState {
   allergen_verify_pending: boolean;       // Oda no + isim doğrulaması bekleniyor (allergen_room_verify mini flow)
   allergen_verify_pending_at: string | null; // TTL timestamp — 24h sonra otomatik temizlenir
   allergen_verify_attempts: number;         // Max 3 deneme
+  // Iki asamali not akisi (025_note_pending)
+  note_pending: boolean;
+  note_pending_order: string | null;
 }
 
 interface VerificationFlowResult {
@@ -1628,6 +1652,81 @@ async function handleMessage(args: {
       return await handleMessage(args);
     }
   }
+
+  // ── NOT YAKALAMA (iki asamali not akisi) ────────────────────────────
+  // Misafir "Not var" butonuna basti, note_pending acik. Simdiki mesaji NOT
+  // olarak al: note_pending_order JSON'una ekle, order_pending akisina devret,
+  // onay kartini gonder.
+  if (conversation.note_pending) {
+    // Bayragi HEMEN kapat (takili kalmasin)
+    await supa
+      .from('conversations')
+      .update({ note_pending: false })
+      .eq('id', conversationId);
+
+    const noteText = text.trim();
+    let orderObj: { raw: string; lines: Array<{ code: string; name: string; unitPrice: number; qty: number; lineTotal: number }>; total: number; currency: string } | null = null;
+    try {
+      const stored = conversation.note_pending_order;
+      if (stored && stored.trim().startsWith('{')) orderObj = JSON.parse(stored);
+    } catch { orderObj = null; }
+
+    // JSON kayipsa (kolon bos vs) guvenli cikis: normal akisa don
+    if (!orderObj || !Array.isArray(orderObj.lines) || orderObj.lines.length === 0) {
+      await supa.from('conversations').update({ note_pending_order: null }).eq('id', conversationId);
+      return await handleMessage(args);
+    }
+
+    // Notu raw'a ekle (order kartinda extractOrderNote ile gosterilecek)
+    const mergedRaw = noteText ? `${orderObj.raw} ${noteText}` : orderObj.raw;
+    const orderJson = JSON.stringify({
+      raw: mergedRaw,
+      lines: orderObj.lines,
+      total: orderObj.total,
+      currency: orderObj.currency,
+    });
+
+    // order_pending akisina devret
+    await supa
+      .from('conversations')
+      .update({ order_pending: true, order_pending_text: orderJson, note_pending_order: null })
+      .eq('id', conversationId);
+
+    // Onay karti (fiyatsiz ozet + butonlar) — handle-note-callback ile ayni desen
+    const noteLang = detectLanguage(msg);
+    const itemsBlock = orderObj.lines.map((l) => `• ${l.name} × ${l.qty}`).join('\n');
+    const confirmText =
+      noteLang === 'en'
+        ? `Your order:\n${itemsBlock}\n\nDo you confirm?`
+        : noteLang === 'de'
+          ? `Ihre Bestellung:\n${itemsBlock}\n\nBestaetigen Sie?`
+          : `Siparişiniz:\n${itemsBlock}\n\nOnaylıyor musunuz?`;
+    const yesLabel = noteLang === 'en' ? 'Yes, confirm' : noteLang === 'de' ? 'Ja, bestaetigen' : 'Evet, onayliyorum';
+    const noLabel = noteLang === 'en' ? 'Cancel' : noteLang === 'de' ? 'Abbrechen' : 'Vazgectim';
+
+    await supa.from('bot_messages').insert({
+      conversation_id: conversationId,
+      direction: 'inbound',
+      text: noteText,
+      message_type: 'text',
+    });
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: confirmText,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: yesLabel, callback_data: `order:confirm:${conversationId}` }],
+            [{ text: noLabel, callback_data: `order:cancel:${conversationId}` }],
+          ],
+        },
+      }),
+    });
+    return NextResponse.json({ ok: true });
+  }
+  // ── /NOT YAKALAMA ───────────────────────────────────────────────────
 
   if (conversation.allergen_pending) {
     console.log(`[allergen-sc] allergen_pending=true — short-circuit başlıyor. text="${text.slice(0, 80)}"`);
@@ -3226,6 +3325,60 @@ async function handleMessage(args: {
         const parsed = await parseOrder(text, supa);
         const hasCodes = parsed.lines.length > 0;
 
+        // ── IKI ASAMALI NOT KAPISI ─────────────────────────────────────
+        // Kod yakalandi ama misafir mesaja not eklemediyse: once "not var mi?"
+        // diye sor. Not zaten varsa (or. "2 RS01, sogansiz olsun") bu adimi
+        // atla, dogrudan onay kartina devam et (mevcut davranis).
+        if (hasCodes) {
+          const embeddedNote = extractOrderNote(text);
+          if (!embeddedNote) {
+            // Siparisin JSON'unu note_pending_order'a sakla, not cevabi bekle.
+            const orderJson = JSON.stringify({
+              raw: text,
+              lines: parsed.lines,
+              total: parsed.total,
+              currency: parsed.currency,
+            });
+            await supa
+              .from('conversations')
+              .update({ note_pending: true, note_pending_order: orderJson })
+              .eq('id', conversationId);
+
+            const noteAskText =
+              language === 'en'
+                ? 'Would you like to add a note to your order (e.g. no onions)?'
+                : language === 'de'
+                  ? 'Moechten Sie Ihrer Bestellung eine Notiz hinzufuegen (z.B. ohne Zwiebeln)?'
+                  : 'Siparişinize eklemek istediğiniz bir not var mı (ör. soğansız olsun)?';
+            const noteYesLabel = language === 'en' ? 'Add a note' : language === 'de' ? 'Notiz hinzufuegen' : 'Not var';
+            const noteNoLabel = language === 'en' ? 'No note' : language === 'de' ? 'Keine Notiz' : 'Notum yok';
+
+            await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: noteAskText,
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: noteYesLabel, callback_data: `note:add:${conversationId}` }],
+                    [{ text: noteNoLabel, callback_data: `note:none:${conversationId}` }],
+                  ],
+                },
+              }),
+            });
+            await supa.from('bot_messages').insert({
+              conversation_id: conversationId,
+              direction: 'outbound',
+              text: noteAskText,
+              message_type: 'text',
+            });
+            return NextResponse.json({ ok: true });
+          }
+        }
+        // ── /IKI ASAMALI NOT KAPISI ────────────────────────────────────
+
         // MENUDE YOK KONTROLU — sadece serbest metin yolunda (kod yoksa)
         const inMenu = hasCodes ? true : await isOrderInMenu(text, supa);
         if (!inMenu) {
@@ -3843,7 +3996,7 @@ async function upsertGuestAndConversation(args: {
   // Conversation upsert — doğrulama state sütunlarını da çek
   const { data: existingConv, error: convSelErr } = await supa
     .from('conversations')
-    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text, allergen_asked, allergen_pending, allergen_verify_pending, allergen_verify_pending_at, allergen_verify_attempts, detail_pending, detail_pending_text')
+    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text, allergen_asked, allergen_pending, allergen_verify_pending, allergen_verify_pending_at, allergen_verify_attempts, detail_pending, detail_pending_text, note_pending, note_pending_order')
     .eq('telegram_chat_id', chatId)
     .order('created_at', { ascending: true })
     .limit(1)
@@ -3864,6 +4017,8 @@ async function upsertGuestAndConversation(args: {
       pending_request_text: (existingConv.pending_request_text as string | null) ?? null, // Modül 10.4
       detail_pending: (existingConv.detail_pending as boolean) ?? false,             // v5 detay follow-up
       detail_pending_text: (existingConv.detail_pending_text as string | null) ?? null, // v5 detay follow-up
+      note_pending: (existingConv.note_pending as boolean) ?? false,                 // 025 iki asamali not
+      note_pending_order: (existingConv.note_pending_order as string | null) ?? null, // 025 iki asamali not
       allergen_asked: (existingConv.allergen_asked as boolean) ?? false,             // Modül 3
       allergen_pending: (existingConv.allergen_pending as boolean) ?? false,         // Modül 3
       allergen_verify_pending: (existingConv.allergen_verify_pending as boolean) ?? false,         // Modül 3 izolasyon
@@ -3896,6 +4051,8 @@ async function upsertGuestAndConversation(args: {
       pending_request_text: null,          // Modül 10.4
       detail_pending: false,
       detail_pending_text: null,
+      note_pending: false,                 // 025 iki asamali not
+      note_pending_order: null,            // 025 iki asamali not
       allergen_asked: false,               // Modül 3
       allergen_pending: false,             // Modül 3
       allergen_verify_pending: false,      // Modül 3 izolasyon

@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { sendForwardWithSlaButtons } from './send-forward-with-buttons';
 import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
+import { extractOrderNote } from '@/lib/menu/parse-order';
 
 const TG = (token: string, m: string) => `https://api.telegram.org/bot${token}/${m}`;
 
@@ -66,21 +67,6 @@ function parsePendingOrder(raw: string): StructuredOrder | null {
   } catch {
     return null; // bozuk JSON => ham metin gibi davran
   }
-}
-
-// raw siparis metninden urun kodlarini + adet ifadelerini temizler, geriye
-// misafirin serbest notunu birakir ("2 RS01, sogansiz olsun" -> "sogansiz olsun").
-// Not yoksa bos string doner. Regex parse-order.ts ORDER_TOKEN_RE ile ayni mantik.
-function extractOrderNote(raw: string): string {
-  if (!raw) return '';
-  const cleaned = raw
-    .replace(/(?:(?:\d{1,3})\s*[x*]?\s*)?\b[a-z]{1,4}\d{1,4}(?!\d)(?:\s*[x*]\s*(?:\d{1,3}))?/gi, ' ')
-    .replace(/[,;.\n]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  // Cok kisa artiklar (tek harf, baglac) not sayilmaz
-  if (cleaned.length < 3) return '';
-  return cleaned;
 }
 
 /** Personel kartinda gorunen ozet — fiyat SADECE burada. */

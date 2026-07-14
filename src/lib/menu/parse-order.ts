@@ -91,3 +91,19 @@ export async function parseOrder(text: string, supa: SupabaseClient): Promise<Pa
   const total = lines.reduce((sum, line) => sum + line.lineTotal, 0);
   return { lines, total, currency: currency || 'TRY', unmatched };
 }
+
+/**
+ * Ham siparis metninden urun kodlarini + adet ifadelerini temizler, geriye
+ * misafirin serbest notunu birakir ("2 RS01, sogansiz olsun" -> "sogansiz olsun").
+ * Not yoksa bos string doner. Regex ORDER_TOKEN_RE ile ayni temizleme mantigi.
+ */
+export function extractOrderNote(raw: string): string {
+  if (!raw) return '';
+  const cleaned = raw
+    .replace(/(?:(?:\d{1,3})\s*[x*]?\s*)?\b[a-z]{1,4}\d{1,4}(?!\d)(?:\s*[x*]\s*(?:\d{1,3}))?/gi, ' ')
+    .replace(/[,;.\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (cleaned.length < 3) return '';
+  return cleaned;
+}
