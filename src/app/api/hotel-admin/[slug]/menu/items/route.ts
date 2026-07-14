@@ -74,6 +74,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       ? String(body.category).trim()
       : null;
     const isPaid = body.is_paid === undefined ? true : Boolean(body.is_paid);
+    const isBeverage = body.is_beverage === undefined ? false : Boolean(body.is_beverage);
     const price = isPaid ? parsePrice(body.price) : 0; // ucretsiz ise fiyat 0
     const currency = normalizeCurrency(body.currency);
 
@@ -91,6 +92,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         price,
         currency,
         is_paid: isPaid,
+        is_beverage: isBeverage,
         is_active: true,
         display_order: nextOrder,
         item_code: String(body.item_code ?? '').trim() || null,
@@ -134,6 +136,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     if (body.currency !== undefined) patch.currency = normalizeCurrency(body.currency);
     if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
     if (body.is_paid !== undefined) patch.is_paid = Boolean(body.is_paid);
+    if (body.is_beverage !== undefined) patch.is_beverage = Boolean(body.is_beverage);
     if (body.price !== undefined) patch.price = parsePrice(body.price);
     // is_paid=false geldiyse fiyati sifirla (import mantigiyla tutarli)
     if (patch.is_paid === false) patch.price = 0;

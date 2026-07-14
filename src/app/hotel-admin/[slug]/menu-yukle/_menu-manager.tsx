@@ -9,6 +9,7 @@ interface MenuItem {
   price: number;
   currency: string;
   is_paid: boolean;
+  is_beverage: boolean;
   is_active: boolean;
   display_order: number;
   item_code?: string | null;
@@ -102,6 +103,7 @@ export default function MenuManager({ slug }: { slug: string }) {
   const [addPrice, setAddPrice] = useState('');
   const [addCurrency, setAddCurrency] = useState('TRY');
   const [addIsPaid, setAddIsPaid] = useState(true);
+  const [addIsBeverage, setAddIsBeverage] = useState(false);
   const [addCode, setAddCode] = useState('');
   const [addImageUrl, setAddImageUrl] = useState('');
   const [addUploading, setAddUploading] = useState(false);
@@ -285,6 +287,24 @@ export default function MenuManager({ slug }: { slug: string }) {
     }
   }
 
+  async function toggleBeverage(it: MenuItem) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/hotel-admin/${slug}/menu/items`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: it.id, is_beverage: !it.is_beverage }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Guncellenemedi');
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function purgeItem(id: string) {
     if (!window.confirm('Bu ürün KALICI olarak silinecek. Geri alınamaz. Emin misiniz?')) return;
     setBusy(true);
@@ -342,6 +362,7 @@ export default function MenuManager({ slug }: { slug: string }) {
           price: addPrice,
           currency: addCurrency,
           is_paid: addIsPaid,
+          is_beverage: addIsBeverage,
           item_code: addCode,
           image_url: addImageUrl || null,
         }),
@@ -355,6 +376,7 @@ export default function MenuManager({ slug }: { slug: string }) {
       setAddPrice('');
       setAddCurrency('TRY');
       setAddIsPaid(true);
+      setAddIsBeverage(false);
       setAddCode('');
       setAddImageUrl('');
       setShowAdd(false);
@@ -506,6 +528,11 @@ export default function MenuManager({ slug }: { slug: string }) {
               <input type="checkbox" checked={addIsPaid} onChange={(e) => setAddIsPaid(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer' }} />
               Ücretli
             </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, flex: '0 0 auto', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', paddingBottom: 9 }}>
+              <input type="checkbox" checked={addIsBeverage} onChange={(e) => setAddIsBeverage(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+              İçecek
+            </label>
           </div>
 
           {/* Gorsel yukleme */}
@@ -653,6 +680,23 @@ export default function MenuManager({ slug }: { slug: string }) {
                                 }}
                               >
                                 {it.is_paid ? 'Ücretli' : 'Ücretsiz'}
+                              </span>
+
+                              <span
+                                onClick={() => it.is_active && !busy && toggleBeverage(it)}
+                                title="Yiyecek/İçecek değiştir"
+                                style={{
+                                  fontSize: 11.5,
+                                  fontWeight: 500,
+                                  padding: '3px 10px',
+                                  borderRadius: 999,
+                                  cursor: it.is_active ? 'pointer' : 'default',
+                                  color: it.is_beverage ? '#60a5fa' : '#94a3b8',
+                                  background: it.is_beverage ? 'rgba(96,165,250,0.12)' : 'rgba(148,163,184,0.10)',
+                                  border: `1px solid ${it.is_beverage ? 'rgba(96,165,250,0.30)' : 'rgba(148,163,184,0.22)'}`,
+                                }}
+                              >
+                                {it.is_beverage ? 'İçecek' : 'Yiyecek'}
                               </span>
 
                               <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
