@@ -3345,19 +3345,21 @@ async function handleMessage(args: {
               .update({ note_pending: true, note_pending_order: orderJson })
               .eq('id', conversationId);
 
-            // Birden fazla yiyecek varsa: her urun icin ayri not istendigini belirt.
-            const foodCount = parsed.lines.filter((l) => !l.isBeverage).length;
+            // Birden fazla yiyecek varsa: numarali liste + "numarasiyla yaz" formati.
+            const foodLines = parsed.lines.filter((l) => !l.isBeverage);
+            const foodCount = foodLines.length;
+            const numberedList = foodLines.map((l, i) => `${i + 1}. ${l.name}`).join('\n');
             const noteAskText =
               language === 'en'
                 ? foodCount > 1
-                  ? 'Would you like to add a note to your order? You have more than one dish, please specify separately for each item (e.g. fries without onion, toast lightly browned). Your satisfaction matters to us.'
+                  ? `Would you like to add a note to your order?\n\n${numberedList}\n\nPlease specify by number for each item (e.g. "1: no onions, 2: lightly browned")`
                   : 'Would you like to add a note to your order (e.g. no onions)?'
                 : language === 'de'
                   ? foodCount > 1
-                    ? 'Möchten Sie Ihrer Bestellung eine Notiz hinzufügen? Sie haben mehr als ein Gericht, bitte geben Sie für jeden Artikel separat an (z.B. Pommes ohne Zwiebel, Toast leicht getoastet). Ihre Zufriedenheit ist uns wichtig.'
+                    ? `Möchten Sie Ihrer Bestellung eine Notiz hinzufügen?\n\n${numberedList}\n\nBitte geben Sie für jeden Artikel mit Nummer an (z.B. "1: ohne Zwiebeln, 2: leicht getoastet")`
                     : 'Möchten Sie Ihrer Bestellung eine Notiz hinzufügen (z.B. ohne Zwiebeln)?'
                   : foodCount > 1
-                    ? 'Siparişinize eklemek istediğiniz bir not var mı? Birden fazla yemeğiniz var, lütfen her ürün için ayrı belirtin (ör. patates soğansız, tost az kızarmış). Memnuniyetiniz bizim için önemli.'
+                    ? `Siparişinize not eklemek ister misiniz?\n\n${numberedList}\n\nHer ürün için numarasıyla yazın (ör. "1: soğansız, 2: az kızarmış")`
                     : 'Siparişinize eklemek istediğiniz bir not var mı (ör. soğansız olsun)?';
             const noteYesLabel = language === 'en' ? 'Add a note' : language === 'de' ? 'Notiz hinzufuegen' : 'Not var';
             const noteNoLabel = language === 'en' ? 'No note' : language === 'de' ? 'Keine Notiz' : 'Notum yok';
