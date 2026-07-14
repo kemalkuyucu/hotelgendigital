@@ -3331,7 +3331,8 @@ async function handleMessage(args: {
         // atla, dogrudan onay kartina devam et (mevcut davranis).
         if (hasCodes) {
           const embeddedNote = extractOrderNote(text);
-          if (!embeddedNote) {
+          const hasFood = parsed.lines.some((l) => !l.isBeverage);
+          if (!embeddedNote && hasFood) {
             // Siparisin JSON'unu note_pending_order'a sakla, not cevabi bekle.
             const orderJson = JSON.stringify({
               raw: text,

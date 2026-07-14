@@ -14,6 +14,7 @@ export type ParsedOrderLine = {
   unitPrice: number;
   qty: number;
   lineTotal: number;
+  isBeverage: boolean;
 };
 
 export type ParsedOrder = {
@@ -54,10 +55,10 @@ export async function parseOrder(text: string, supa: SupabaseClient): Promise<Pa
 
   const { data } = await supa
     .from('menu_items')
-    .select('item_code, item_name, price, currency, is_active')
+    .select('item_code, item_name, price, currency, is_active, is_beverage')
     .eq('is_active', true);
 
-  const catalog = new Map<string, { name: string; price: number; currency: string }>();
+  const catalog = new Map<string, { name: string; price: number; currency: string; isBeverage: boolean }>();
   for (const row of data ?? []) {
     const code = String(row.item_code ?? '').trim().toUpperCase();
     if (!code) continue;
@@ -65,6 +66,7 @@ export async function parseOrder(text: string, supa: SupabaseClient): Promise<Pa
       name: row.item_name ?? code,
       price: Number(row.price ?? 0),
       currency: row.currency ?? 'TRY',
+      isBeverage: Boolean(row.is_beverage),
     });
   }
 
@@ -85,6 +87,7 @@ export async function parseOrder(text: string, supa: SupabaseClient): Promise<Pa
       unitPrice: item.price,
       qty,
       lineTotal: item.price * qty,
+      isBeverage: item.isBeverage,
     });
   }
 
