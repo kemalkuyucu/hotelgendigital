@@ -31,6 +31,7 @@ import { handleOrderCallback } from '@/lib/sla/handle-order-callback';
 import { handleNoteCallback } from '@/lib/sla/handle-note-callback';
 import { handleMenuOfferCallback } from '@/lib/sla/handle-menu-offer-callback';
 import { handleHousekeepingCallback, advanceHousekeeping } from '@/lib/sla/handle-housekeeping-callback';
+import { notifyDuplicateRequest } from '@/lib/sla/notify-duplicate';
 import { parseOrder, extractOrderNote } from '@/lib/menu/parse-order';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
 import { getTurkeyToday } from '@/lib/date/turkeyTime'; // Modül 18: timezone fix
@@ -3733,7 +3734,7 @@ async function handleMessage(args: {
           const dedupSince = new Date(Date.now() - dedupWindowMs).toISOString();
           const { data: openDupEvents } = await supa
             .from('sla_events')
-            .select('id, request_text')
+            .select('id, request_text, department_chat_id, department_message_id')
             .eq('conversation_id', conversationId)
             .eq('department_code', targetDept)
             .is('responded_at', null)
@@ -3743,7 +3744,7 @@ async function handleMessage(args: {
             .limit(5);
           if (openDupEvents && openDupEvents.length > 0) {
             const newSet = new Set(dedupNorm(fwdItem.requestText));
-            const isDuplicate = openDupEvents.some((ev) => {
+            const dupEvent = openDupEvents.find((ev) => {
               const oldSet = new Set(dedupNorm(String(ev.request_text ?? '')));
               if (newSet.size === 0 || oldSet.size === 0) return false;
               let inter = 0;
@@ -3751,8 +3752,19 @@ async function handleMessage(args: {
               const uni = new Set([...newSet, ...oldSet]).size;
               return uni > 0 && inter / uni >= 0.5;
             });
-            if (isDuplicate) {
-              console.log(`[dedup] Acik ayni talep var, ikinci kart atlandi [item: ${targetDept}] req="${fwdItem.requestText.slice(0, 60)}"`);
+            if (dupEvent) {
+              const dupChatId = (dupEvent.department_chat_id as string) ?? '';
+              if (dupChatId) {
+                const dupTr = await translateToTurkish(fwdItem.requestText);
+                await notifyDuplicateRequest({
+                  botToken,
+                  chatId: dupChatId,
+                  messageId: (dupEvent.department_message_id as number | null) ?? null,
+                  repeatText: fwdItem.requestText,
+                  repeatTextTr: dupTr,
+                });
+              }
+              console.log(`[dedup] Acik ayni talep var, ikinci kart atlandi, tekrar bildirimi gonderildi [item: ${targetDept}]`);
               continue;
             }
           }

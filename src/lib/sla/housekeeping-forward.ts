@@ -2,6 +2,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { sendForwardWithSlaButtons } from './send-forward-with-buttons';
 import { labelForHousekeepingCode, type HkItem } from '@/lib/ai/department-brains';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { notifyDuplicateRequest } from './notify-duplicate';
 
 // Housekeeping COKLU esya forward'i. handle-housekeeping-callback.ts'in eski
 // 4-9. adimlari (DEDUP + sla_events INSERT + kart + rollback) buraya tasindi ve
@@ -73,7 +74,7 @@ export async function forwardHousekeepingItems(p: {
   const dedupSince = new Date(Date.now() - dedupWindowMs).toISOString();
   const { data: openDupEvents } = await supa
     .from('sla_events')
-    .select('id, request_text')
+    .select('id, request_text, department_chat_id, department_message_id')
     .eq('conversation_id', convId)
     .eq('department_code', 'housekeeping')
     .is('responded_at', null)
@@ -83,7 +84,7 @@ export async function forwardHousekeepingItems(p: {
     .limit(5);
   if (openDupEvents && openDupEvents.length > 0) {
     const newSet = new Set(dedupNorm(requestText));
-    const isDuplicate = openDupEvents.some((ev) => {
+    const dupEvent = openDupEvents.find((ev) => {
       const oldSet = new Set(dedupNorm(String(ev.request_text ?? '')));
       if (newSet.size === 0 || oldSet.size === 0) return false;
       let inter = 0;
@@ -91,8 +92,14 @@ export async function forwardHousekeepingItems(p: {
       const uni = new Set([...newSet, ...oldSet]).size;
       return uni > 0 && inter / uni >= 0.5;
     });
-    if (isDuplicate) {
-      console.log('[hk-fwd] dedup: acik ayni talep var, kart atlandi.');
+    if (dupEvent) {
+      await notifyDuplicateRequest({
+        botToken: p.botToken,
+        chatId: (dupEvent.department_chat_id as string) ?? hkChatId,
+        messageId: (dupEvent.department_message_id as number | null) ?? null,
+        repeatText: requestText,
+      });
+      console.log('[hk-fwd] dedup: kart acilmadi, tekrar bildirimi gonderildi');
       return { ok: true, duplicate: true };
     }
   }
