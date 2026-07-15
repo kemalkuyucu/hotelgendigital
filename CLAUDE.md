@@ -1,10 +1,22 @@
-# CLAUDE.md
+# CLAUDE.md — HotelGen Digital
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Working Principles (read this first)
+## 0. ONCE OKU
+- Bu dosya her oturumda okunur. Talimat disina cikma.
+- Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
+- Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
 
-Behavioral rules for any agent editing this repo. They bias toward caution over speed; for trivial tasks use judgment.
+## 1. CALISMA PRENSIPLERI
+- **Reconnaissance-first:** Edit'ten once ilgili dosyalari OKU. Varsayimla kod yazma.
+- **Canli kanit tek gercek:** "type-check gecti" / "deploy ready" KANIT DEGILDIR.
+  Kanit = gercek bot davranisi, Vercel log satiri, SQL sonucu.
+- **Kok neden:** Semptomu bastirma. Neden oldugunu bulamadiysan DUR ve raporla.
+- **Kucuk yuzey:** Her fix cerrahi. Ilgisiz refactor YASAK.
+- **Emin degilsen DEBUG log koy**, tahmin etme.
+
+Asagidaki uzun-form prensipler yukaridaki 5 maddenin gerekcesidir; ihlal noktalarini
+somutlastirir — koru:
 
 **Think before coding.** Don't assume — if a request is ambiguous, surface interpretations or ask; don't pick silently. If a simpler approach exists, say so. If something is unclear, stop and name it.
 
@@ -20,19 +32,21 @@ Behavioral rules for any agent editing this repo. They bias toward caution over 
 
 ---
 
-## What this is
+## 2. MIMARI HARITASI
+
+### Ne insa ediyoruz (What this is)
 
 **HotelGen v2** — a multi-tenant hotel guest-assistant SaaS built on **Next.js 16 (App Router) + TypeScript + Supabase**. Guests message a hotel over **Telegram** (and ManyChat = WhatsApp/Instagram); an AI orchestrator (Claude) answers from the hotel's knowledge base, runs guest verification, and forwards actionable requests to the right hotel department over Telegram, with SLA escalation. Staff/owners manage everything through role-based admin panels.
 
 The codebase and all guest-facing strings are **Turkish**. Guests are served in TR/EN/DE/RU/AR (+FR/IT in some prompts). Work is organized into numbered "Modüller" (M1–M22); commit messages and code comments reference them.
 
-## Commands
+### Komutlar (Commands) — package.json'dan dogrulandi
 
 ```bash
 npm run dev            # next dev --port 3000
 npm run build          # next build
 npm start              # next start
-npm run lint           # next lint (eslint 9)
+npm run lint           # eslint .   (eslint 9)  — NOT "next lint"
 npm run type-check     # tsc --noEmit  ← run this to validate TS; there is no test suite
 
 npm run seed:demo-knowledge   # tsx scripts/seed-demo-knowledge.ts (needs DEMO_HOTEL_SUPABASE_* env)
@@ -44,7 +58,43 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
 - **Migrations do NOT run via npm.** They run from inside the app (admin UI / API routes) per-hotel. See *Migrations* below.
 - Node 20+. Deployed on **Vercel** (`hotelgen-v2.vercel.app`); env vars live in the Vercel dashboard, locally in `.env.local`.
 
-## Multi-tenant architecture (the core mental model)
+### Housekeeping akisi
+| Dosya | Sorumluluk |
+|---|---|
+| src/lib/ai/department-brains.ts | pattern listesi + matchHousekeepingItems + extractQtyBefore + brain |
+| src/lib/ai/classify-and-respond.ts | hk-gate (department zorlama) + shouldForward kapisi |
+| src/app/api/webhooks/telegram/[hotelSlug]/route.ts | hkItems -> state kurulumu + advanceHousekeeping + callback dispatch |
+| src/lib/sla/handle-housekeeping-callback.ts | hk:s / hk:q + advanceHousekeeping (pax lookup, butonlar, kuyruk) |
+| src/lib/sla/housekeeping-forward.ts | DEDUP + sla_events + kart + rollback + pax esigi |
+| src/lib/sla/notify-duplicate.ts | dedup tekrar bildirimi (acik kartin altina reply) |
+
+### Room-service akisi
+| Dosya | Sorumluluk |
+|---|---|
+| src/lib/menu/parse-order.ts | parseOrder regex kod+adet, extractOrderNote (DIKKAT: src/lib/ai/ ALTINDA DEGIL) |
+| src/lib/sla/handle-order-callback.ts | parsePendingOrder -> kart -> room_service_orders INSERT |
+
+### Ortak
+| Dosya | Sorumluluk |
+|---|---|
+| src/lib/ai/anthropic-client.ts | callAI wrapper, AI_PROVIDER env toggle (anthropic <-> openai) |
+| src/lib/ai/translate-to-turkish.ts | personel karti TR ceviri |
+| src/lib/ai/hotel-context.ts | buildHotelContext / formatContextForPrompt -> prompt bilgi tabani blogu (DIKKAT: src/lib/knowledge/ ALTINDA DEGIL) |
+
+### src/lib/ai/ tam dosya listesi (ADIM 2'de dogrulandi — 16 dosya)
+`social-intent-override.ts`, `safety-classifier.ts`, `verification-intents.ts`,
+`message-types.ts`, `system-prompts.ts`, `anthropic-client.ts`, `parse-stay-query.ts`,
+`detect-room-detail-intent.ts`, `detect-price-intent.ts`, `barboon-live.ts`,
+`room-price-tool.ts`, `translate-to-turkish.ts`, `enforce-reply-language.ts`,
+`hotel-context.ts`, `classify-and-respond.ts`, `department-brains.ts`
+
+### src/lib/sla/ tam dosya listesi (ADIM 2'de dogrulandi — 10 dosya)
+`handle-reception-reply.ts`, `check-runner.ts`, `handle-callback.ts`,
+`handle-menu-offer-callback.ts`, `send-forward-with-buttons.ts`, `handle-order-callback.ts`,
+`handle-note-callback.ts`, `handle-housekeeping-callback.ts`, `housekeeping-forward.ts`,
+`notify-duplicate.ts`
+
+### Multi-tenant architecture (the core mental model)
 
 There is **one Central Supabase DB** ("ours") and **one separate Supabase DB per hotel**. Hotel data (guests, conversations, requests, departments, knowledge, SLA events) lives in the *hotel's own* DB — never in Central.
 
@@ -58,7 +108,7 @@ There is **one Central Supabase DB** ("ours") and **one separate Supabase DB per
 
 **Implication:** almost every server action/route first resolves the hotel, then does all data work through that hotel's `SupabaseClient`. Never query hotel data on the Central client.
 
-## Inbound message pipeline (Telegram guest webhook)
+### Inbound message pipeline (Telegram guest webhook)
 
 Entry point: `src/app/api/webhooks/telegram/[hotelSlug]/route.ts` (~2600 lines — the heart of the guest flow). `runtime = 'nodejs'`, `dynamic = 'force-dynamic'`. Sibling webhooks: `manychat/[hotelSlug]` (WhatsApp/Instagram via ManyChat; returns ManyChat's `{version:'v2', content:{messages}}` shape) and `telegram-manager/[hotelSlug]` (the manager bot — slash commands like `/durum`, `/rapor`, handled by `src/lib/telegram/commands/*`).
 
@@ -87,27 +137,27 @@ Two-stage, both Anthropic but different models:
 
 `buildHotelContext()` assembles the AI's grounding from the hotel DB: `hotel_settings` (name, address, phone, check-in/out, wifi, `meeting_rooms`/`meeting_equipment` JSONB), `hotel_facts`, `hotel_documents` (delivery policy: `auto_text`/`auto_file`/`manual_only`), `location_info`, and `perplexity_discoveries`. Safety rules come from Central. A **knowledge summary** is cached 5 min (`src/lib/knowledge/cache.ts`, `getCachedSummary`) — **every knowledge CRUD endpoint must call `invalidateSummary(hotelId)`** or the bot serves stale info for up to 5 min. **Perplexity** is on-demand "discovery" of nearby places keyed by an interest tag from `detectInterestTag()` (multilingual keyword map) and surfaced as `perplexity_discoveries` rows; managers trigger discovery from the panel (`/api/manager/perplexity/discover`). Uploaded documents (PDF/DOCX/XLSX) are parsed in `src/lib/documents/parser.ts` and summarized by `ai-summarizer.ts`.
 
-## Department forwarding & SLA (`src/lib/telegram/`, `src/lib/sla/`)
+### Department forwarding & SLA (`src/lib/telegram/`, `src/lib/sla/`)
 
 - `forward-to-department.ts` posts the request to the department's Telegram group **and** DMs on-shift staff (`getActiveStaffNow`), writing `forwarded_messages` rows. `off-hours.ts` (`resolveTargetDepartment`) reroutes to reception when a department has `off_hours_behavior='forward_to_reception'` and is outside `working_hours` (Europe/Istanbul time).
 - SLA flow (Module 11): forwards can be sent with inline buttons (`send-forward-with-buttons.ts`); button presses → `handle-callback.ts`; reception replying to an escalation message → `handle-reception-reply.ts`.
 - `src/lib/sla/check-runner.ts` (`runSlaCheck`) scans each hotel's `sla_events`: overdue dept events → escalate to front office and set a reception deadline; overdue reception → auto-close as `no_response`.
 
-## Cron jobs (`vercel.json`, `src/app/api/cron/`)
+### Cron jobs (`vercel.json`, `src/app/api/cron/`)
 
 Two Vercel Cron jobs, both daily at 00:00 (`vercel.json`), authed by `Authorization: Bearer ${CRON_SECRET}`:
 - `/api/cron/health-check` — bridge health check for all active hotels **and** runs `runSlaCheck` (SLA scan is piggybacked here to stay within the Vercel Hobby 2-cron limit; the comment says "her dakika" but the schedule is currently daily — adjust the schedule if you need minute-level SLA).
 - `/api/cron/archive-checked-out` — archives checked-out guests.
 
-## Migrations (`src/lib/migrations/`, `migrations/`)
+### Migrations (`src/lib/migrations/`, `migrations/`)
 
 Versioned, idempotent SQL applied **per hotel DB at runtime** — not a CLI step.
-- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
+- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (ADIM 2'de dogrulandi): `027_hk_pending.sql`.** (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
 - `runMigrations({ hotelSlug })` (`runMigrations.ts`) decrypts the hotel bridge, builds a tenant client, ensures `schema_migrations`, and runs unapplied files via the **`exec_sql` RPC** (SQL executed through a Postgres function, not the JS query builder).
 - Triggered from admin UI / API: `/api/admin/migrations` (tenant), `/api/admin/central-migrations`, `/api/admin/hotels/[id]/run-migrations`, with a `migrations` admin page. Also `seedBaseline` / `runBootstrap`.
 - **Single source of truth for tenant schema = `migrations/tenant/*`.** The legacy `sql/0x` hotel-side files (`05_hotel_schema` … `12_*`) are DEPRECATED/archive only — pre-migration manual "Supabase SQL Editor" bootstrap; never re-run them. (A15/AUDIT D7, resolved 2026-06-01: a read-only probe of both live tenants — demo-hotel + green-park-test — confirmed **no schema drift**; both are pure 001-chain. Only live difference: `match_documents()` RPC present on demo, absent on green-park → a Phase-C/RAG follow-up, not a schema conflict.)
 
-## Auth, roles & route structure
+### Auth, roles & route structure
 
 Three independent auth systems, three cookies, enforced in `src/middleware.ts` (file MUST be named `src/middleware.ts` — renaming it disables all protection; the file header documents a prior incident where it was `proxy.ts` and `/admin/*` was unprotected):
 
@@ -121,8 +171,40 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - `getManagerOrHotelAdmin()` (dual-auth) lets routes accept either the manager session or a hotel-admin JWT.
 - App Router groups: `src/app/admin/(protected)/*`, `src/app/hotel-admin/[slug]/*`, `src/app/group-admin/[slug]/*`, `src/app/manager/*`, plus the public landing (`src/components/landing/*`). API under `src/app/api/{admin,hotel-admin,manager,group-admin,webhooks,cron,auth,health-check}/`.
 
-## Conventions & gotchas
+## 3. KALICI KARARLAR (IHLAL EDILEMEZ)
+- **#3 DETERMINISTIK KAPI:** Sayisal/esik/yonlendirme kararlari KODDA.
+  LLM'e uygun: dil tespiti, intent etiketi. LLM'e YASAK: forward karari,
+  esikler, esya/adet, alerjen karari, onay.
+- **SESSIZ YUTMA YASAGI:** Bir talep herhangi bir kapida dusuruluyorsa
+  (dedup/gate/filtre) personel veya misafir MUTLAKA haberdar edilir.
+  Sessiz continue/return = kayip.
+- **OTOMATIK ONAY YASAGI:** SLA zincirini otomatik "cevaplanmis" saymak YASAK.
+  responded_at'i sistem dolduramaz. Ihmal gorunur kalmali.
+- **ESIK-ARAYUZ BIRLIKTELIGI:** Bir esigi degistirirken misafirin o esige
+  ULASABILDIGINI dogrula. Buton araligi esigin altindaysa esik olu koddur.
+- **PROMPT CAKISMA KONTROLU:** Kod esigi degistiginde prompt'ta ayni konuyu
+  anlatan satir var mi TARA. Celisiyorsa duzelt.
+- **GECMIS TARANMAZ:** Housekeeping esya kararlari SADECE guncel mesajdan.
+- **hkItems dalinda LLM cevabi KULLANILMAZ** (replyText:'').
+- **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
+## 4. TUZAKLAR (defalarca saat kaybettirdi)
+- **Migration klasoru:** migrations/tenant/ — `supabase/migrations` YOKTUR.
+  Kod var + migration yok = sessiz no-op. information_schema ile teyit sart.
+- **Supabase:** .maybeSingle() yerine .order('created_at').limit(1).maybeSingle()
+  — PGRST116 onler.
+- **PowerShell:** && desteklemez, komutlar ayri satir.
+  Select-String -Path src\**\*.ts subdirectory'e GIRMEZ.
+  Dogru: Get-ChildItem -Path src -Recurse -Filter *.ts | Select-String "..."
+- **Commit mesaji ASCII only.** Turkce karakter YASAK.
+- **Misafire donuk metinler TAM Turkce karakterli.**
+- **callback_data 64 byte siniri.** Asarsan state DB'ye.
+- **Bot kimligi:** setWebhook ONCESI getMe ile token dogrula.
+- **Vercel:** "Deploy Ready" yetmez. vercel --prod + Production teyidi.
+  vercel logs CLI ECONNRESET verir — log web panelinden okunur.
+- **Scratchpad scriptleri repo root'a YAZILMAZ.** Ayri dizin kullan.
+
+### Korunmus: Conventions & gotchas (orijinal — ustteki maddelerle celismez, tamamlar)
 - **Turkish normalization:** use the shared `normalizeTr()` (`src/lib/utils/normalize-tr.ts`) for any keyword/name matching — verification and interest-tag detection both depend on it. Don't roll a second normalizer (some older code inlines `.replace(/İ/g,'i')…` chains; prefer the shared util).
 - **Timezone:** all "now"/off-hours/SLA logic is **Europe/Istanbul** (`src/lib/date/turkeyTime.ts`, e.g. `getTurkeyToday`). Never use raw local server time for business hours.
 - **Guest table is `inhouse_guests_v2`** (TEXT `room_number`, single `guest_name`, `status='active'`, `check_out_date`). Legacy `inhouse_guests` exists only as a fallback in `verify-guest.ts`. New code should target v2.
@@ -130,3 +212,19 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - **Webhooks must return 200** and degrade gracefully; services return `{ success, error }` / log-and-continue rather than throwing across the message path.
 - **Markdown is stripped** from guest replies (Telegram) and the AI is instructed to emit plain text only.
 - Generated Supabase types: `src/types/database-central.ts`, `src/types/database-hotel.ts`.
+
+## 5. DEGISIKLIK DONGUSU (her fix icin)
+1. Ilgili dosyalari OKU
+2. Cerrahi degisiklik
+3. `npm run type-check`  (gercek script: `tsc --noEmit` — package.json'da dogrulandi)
+4. `git diff --stat` ciktisini raporla
+5. Commit ATMA — Claude/Kemal soyleyecek
+6. Rapor: ne degisti, hangi satir, ne dogrulanmadi
+
+## 6. RAPORLAMA FORMATI
+Her is sonunda:
+- DEGISEN DOSYALAR: dosya + satir araligi
+- YAPILMAYAN: talimatta olup yapamadiklarin + nedeni
+- FARK EDILEN RISK: dokunmadigin ama bozuk gordugun seyler
+- DOGRULANMAYAN: canli kanit gerektiren kisimlar
+Asla "tamamlandi, calisiyor" yazma. Neyin dogrulanmadigini yaz.
