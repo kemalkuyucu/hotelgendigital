@@ -21,7 +21,7 @@ import {
 } from './message-types';
 // Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
 import { normalizeTr } from '@/lib/utils/normalize-tr';
-import { dispatchToDepartmentBrain, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkAsk } from '@/lib/ai/department-brains';
+import { dispatchToDepartmentBrain, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkItem } from '@/lib/ai/department-brains';
 
 // ── ÇOK DİLLİ ALERJİ KÖK-KELİMELERİ (tek kaynak) ───────────────────────────
 // Bu liste iki yerde kullanılır: (1) saglik kapisi alerji istisnasi (satir ~107),
@@ -91,7 +91,7 @@ export interface ClassifyAndRespondOutput {
   overLimit?: boolean;
   reservationNotify?: boolean;
   normalizedRequest?: string;
-  hkAsk?: HkAsk;            // housekeeping deterministik buton sorusu (tip/adet)
+  hkItems?: HkItem[];       // housekeeping coklu esya (tip/adet butonlariyla sorulacak)
   mapsLink?: string;        // konum cevabına garanti link enjeksiyonu icin
   raw_response: string;
 }
@@ -402,11 +402,6 @@ async function _classifyAndRespondImpl(
     // zaman { handled: false } doner; akis asagidaki return'e devam eder.
     // Bayrak acildiginda buradan per-dept beyin devreye girer.
     const primaryIntent = classifiedIntents[0];
-    console.log('[DEBUG-UTU] intent:', JSON.stringify({
-      department: primaryIntent?.department,
-      rawDepartment: (primaryIntent as any)?.rawDepartment,
-      intentShouldForward: primaryIntent?.shouldForward,
-    }));
     if (primaryIntent) {
       const brainResult = await dispatchToDepartmentBrain({
         department: primaryIntent.department,
@@ -416,14 +411,7 @@ async function _classifyAndRespondImpl(
         hotelContext: hotelContext as Record<string, unknown> | null,
         conversationContext: (input.context ?? []).map((m) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.text ?? '' })),
       });
-      if (brainResult.handled && (brainResult.replyText || brainResult.hkAsk)) {
-        console.log('[DEBUG-UTU] brain:', JSON.stringify({
-          department: primaryIntent?.department,
-          hasQuantity: brainResult.hasQuantity,
-          requiresQuantity: brainResult.requiresQuantity,
-          overLimit: brainResult.overLimit,
-          isInfoOnly: brainResult.isInfoOnly,
-        }));
+      if (brainResult.handled && (brainResult.replyText || brainResult.hkItems?.length)) {
         return {
           classifiedIntents,
           department: primaryIntent.department,
@@ -431,9 +419,7 @@ async function _classifyAndRespondImpl(
             primaryIntent.department === 'spa'
               ? false
               : primaryIntent.department === 'housekeeping' &&
-                brainResult.requiresQuantity === true &&
-                brainResult.hasQuantity === false &&
-                brainResult.overLimit !== true
+                (brainResult.hkItems?.length ?? 0) > 0
               ? false
               : primaryIntent.department === 'fb' &&
                 brainResult.isInfoOnly === true
@@ -456,7 +442,7 @@ async function _classifyAndRespondImpl(
           overLimit: brainResult.overLimit ?? false,
           reservationNotify: brainResult.reservationNotify ?? false,
           normalizedRequest: brainResult.normalizedRequest,
-          hkAsk: brainResult.hkAsk,
+          hkItems: brainResult.hkItems,
           raw_response: brainResult.replyText ?? '',
         };
       }

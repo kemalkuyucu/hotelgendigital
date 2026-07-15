@@ -70,14 +70,11 @@ export interface DepartmentBrainInput {
   conversationContext?: { role: string; content: string }[] | null;
 }
 
-// Housekeeping deterministik buton sorusu (tip veya adet). Brain doldurur,
-// route.ts butonlari gonderir, forward YAPILMAZ.
-export interface HkAsk {
-  kind: 'item' | 'qty';
-  codes?: number[];   // kind='item' -> hangi tipler (1/2/3 = banyo/yuz/ayak)
-  code?: number;      // kind='qty'  -> hangi esya
-  qty?: number;       // kind='item' + adet zaten biliniyorsa tasinir
-}
+// Housekeeping coklu esya. Brain mesajdaki her esyayi (kod + per-item adet +
+// belirsizlik) cikarir; route.ts/callback state kurup butonla tip/adet sorar,
+// forward YAPILMAZ. code=belirlenmis esya kodu; qty=adet (null -> sorulacak);
+// ambiguous=tip belirsiz (havlu); typeCodes=belirsizse secilecek tipler.
+export interface HkItem { code: number; qty: number | null; ambiguous: boolean; typeCodes?: number[] }
 
 export interface DepartmentBrainResult {
   handled: boolean;        // false -> orkestratorun kendi yaniti kullanilir
@@ -88,7 +85,7 @@ export interface DepartmentBrainResult {
   requiresQuantity?: boolean;
   normalizedRequest?: string;
   isInfoOnly?: boolean;
-  hkAsk?: HkAsk;
+  hkItems?: HkItem[];
 }
 
 // ── DIL KURALI — tum beyinlerde ortak ────────────────────────────────────────
@@ -128,12 +125,12 @@ const TR_SAYI_KELIMELERI: Record<string, number> = {
   yirmi: 20, otuz: 30, 'kırk': 40, kirk: 40, elli: 50,
 };
 
-export type HousekeepingItem = { re: RegExp; label: string; code: number; ambiguous: boolean };
+export type HousekeepingItem = { re: RegExp; label: string; code: number; ambiguous: boolean; typeCodes?: number[] };
 export const HOUSEKEEPING_ITEM_PATTERNS: HousekeepingItem[] = [
   { re: /banyo\s*havlu/i, label: 'banyo havlusu', code: 1, ambiguous: false },
   { re: /(yuz|yüz)\s*havlu/i, label: 'yuz havlusu', code: 2, ambiguous: false },
   { re: /ayak\s*havlu/i, label: 'ayak havlusu', code: 3, ambiguous: false },
-  { re: /havlu/i, label: 'havlu', code: 4, ambiguous: true },
+  { re: /havlu/i, label: 'havlu', code: 4, ambiguous: true, typeCodes: [1, 2, 3] },
   { re: /(nevresim|yorgan)/i, label: 'nevresim', code: 5, ambiguous: false },
   { re: /(carsaf|çarşaf)/i, label: 'carsaf', code: 6, ambiguous: false },
   { re: /yastik|yastık/i, label: 'yastik', code: 7, ambiguous: false },
@@ -200,6 +197,81 @@ function extractMaxItemQuantity(text: string): number | null {
   return max;
 }
 
+// Bir esyanin start'indan ONCEKI son 20 karakterdeki EN SON sayiyi cikarir (per-item adet).
+// once /\d+/g son eslesme; yoksa TR_SAYI_KELIMELERI kelime siniri regexi ile son eslesme.
+// extractMaxItemQuantity DEGIL (o global max doner) — coklu esyada her esyanin kendi adedi.
+function extractQtyBefore(text: string, start: number): number | null {
+  const window = String(text ?? '').slice(Math.max(0, start - 20), start);
+  const lower = window.toLocaleLowerCase('tr-TR');
+  const digitMatches = lower.match(/\d+/g);
+  if (digitMatches && digitMatches.length > 0) {
+    const n = parseInt(digitMatches[digitMatches.length - 1], 10);
+    if (!Number.isNaN(n)) return n;
+  }
+  let last: number | null = null;
+  let lastPos = -1;
+  for (const [kelime, deger] of Object.entries(TR_SAYI_KELIMELERI)) {
+    const re = new RegExp(`(^|[^a-zçğıöşü])${kelime}([^a-zçğıöşü]|$)`, 'gi');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(lower)) !== null) {
+      if (m.index > lastPos) {
+        lastPos = m.index;
+        last = deger;
+      }
+      if (m.index === re.lastIndex) re.lastIndex++;
+    }
+  }
+  return last;
+}
+
+// Bir metindeki TUM housekeeping esyalarini per-item adetle cikarir (coklu esya).
+// - Her pattern icin global regex ile TUM occurrence'lari topla (start/end ile).
+// - ORTUSME ELEME: daha UZUN bir bulusla kesisen KISA bulus atilir (banyo havlusu -> code 1,
+//   code 4 elenir).
+// - start'a gore sirala; AYNI code birden fazla kalirsa ILKINI tut.
+// - Her bulus icin start oncesi 20 karakterden per-item adet (extractQtyBefore).
+export function matchHousekeepingItems(text: string): HkItem[] {
+  const src = String(text ?? '');
+  type Found = { code: number; ambiguous: boolean; typeCodes?: number[]; start: number; end: number };
+  const found: Found[] = [];
+  for (const p of HOUSEKEEPING_ITEM_PATTERNS) {
+    const re = new RegExp(p.re.source, 'gi');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src)) !== null) {
+      found.push({
+        code: p.code,
+        ambiguous: p.ambiguous,
+        typeCodes: p.typeCodes,
+        start: m.index,
+        end: m.index + m[0].length,
+      });
+      if (m.index === re.lastIndex) re.lastIndex++; // sifir-uzunluk korumasi
+    }
+  }
+  // ORTUSME ELEME: a, kendisinden daha UZUN bir b ile kesisiyorsa (kisa) a atilir.
+  const kept = found.filter((a) =>
+    !found.some((b) => {
+      if (b === a) return false;
+      const overlap = a.start < b.end && b.start < a.end;
+      if (!overlap) return false;
+      return b.end - b.start > a.end - a.start;
+    }),
+  );
+  kept.sort((x, y) => x.start - y.start);
+  const seen = new Set<number>();
+  const uniq = kept.filter((f) => {
+    if (seen.has(f.code)) return false;
+    seen.add(f.code);
+    return true;
+  });
+  return uniq.map((f) => ({
+    code: f.code,
+    ambiguous: f.ambiguous,
+    typeCodes: f.typeCodes,
+    qty: extractQtyBefore(src, f.start),
+  }));
+}
+
 async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
@@ -232,15 +304,8 @@ KAPANIS KURALI:
 - Yanitlarinda hicbir emoji kullanma.
 - Yaniti kisa ve sicak bir cumleyle bitir.
 - "Ihtiyaciniz olursa bildirin", "baska bir sey olursa soyleyin" gibi bos/dolgu/tekrarli kapanis cumlesi EKLEME; misafir zaten talebini iletti. Kapanis dolu ve baglama uygun olsun.`;
-  // Deterministik asiri talep kapisi: miktar karari kodda, LLM'de DEGIL.
+  // overLimit (adet>=3) karari artik esya bazinda kart katmaninda (housekeeping-forward.ts).
   const maxQty = extractMaxItemQuantity(input.guestMessage);
-  if (maxQty !== null && maxQty >= 3) {
-    return {
-      handled: true,
-      replyText: 'Talebinizi ekibimize ilettim, en kısa sürede değerlendirip size dönüş yapacaklardır.',
-      overLimit: true,
-    };
-  }
 
   const recent = (input.conversationContext ?? [])
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -264,31 +329,20 @@ KAPANIS KURALI:
     : undefined;
   // Adet kapisi yalnizca SAYILABILIR esyalar icin gecerli olsun — sadece guncel mesaj.
   const requiresQuantity = matchHousekeepingItem(input.guestMessage) !== null;
-  // DETERMINISTIK BUTON KAPISI: sayilabilir esya var. Tip belirsiz (havlu) veya adet
-  // eksikse LLM cevabi KULLANILMAZ; route.ts'in buton sordurmasi icin hkAsk dondur.
+  // DETERMINISTIK COKLU-ESYA KAPISI: mesajdaki TUM esyalari cikar. En az bir esya
+  // varsa LLM cevabi KULLANILMAZ; route.ts state kurup butonla tip/adet sorar.
   // Forward zaten kesiliyor (requiresQuantity=true + hasQuantity=false -> shouldForward=false).
-  const matchedItem = matchHousekeepingItem(input.guestMessage);
-  if (matchedItem) {
-    let hkAsk: HkAsk | undefined;
-    if (matchedItem.ambiguous && maxQty === null) {
-      hkAsk = { kind: 'item', codes: [1, 2, 3] };                  // (a) once tip sor
-    } else if (matchedItem.ambiguous && maxQty !== null) {
-      hkAsk = { kind: 'item', codes: [1, 2, 3], qty: maxQty };     // (b) tip sor + adet tasi
-    } else if (!matchedItem.ambiguous && maxQty === null) {
-      hkAsk = { kind: 'qty', code: matchedItem.code };             // (c) adet sor
-    }
-    // (d) !ambiguous && adet var -> hkAsk yok -> normal return (kart duser)
-    if (hkAsk) {
-      return {
-        handled: true,
-        replyText: '',
-        overLimit: false,
-        hasQuantity: false,
-        requiresQuantity: true,
-        normalizedRequest: undefined,
-        hkAsk,
-      };
-    }
+  const hkItems = matchHousekeepingItems(input.guestMessage);
+  if (hkItems.length > 0) {
+    return {
+      handled: true,
+      replyText: '',
+      overLimit: false,
+      hasQuantity: false,
+      requiresQuantity: true,
+      normalizedRequest: undefined,
+      hkItems,
+    };
   }
   return { handled: true, replyText, overLimit: false, hasQuantity: maxQty !== null, requiresQuantity, normalizedRequest };
 }

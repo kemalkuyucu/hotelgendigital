@@ -1,18 +1,27 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { sendForwardWithSlaButtons } from './send-forward-with-buttons';
 import { labelForHousekeepingCode } from '@/lib/ai/department-brains';
-import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { forwardHousekeepingItems } from './housekeeping-forward';
 
-// Housekeeping esya talebi buton callback'i. handle-order-callback.ts sablonu:
-// self-contained (kendi supa/botToken alir), departments'ten chat_id+sla_minutes,
-// inhouse_guests_v2'den oda/isim, sla_events insert + rollback, sendForwardWithSlaButtons.
+// Housekeeping COKLU esya buton callback'i. State conversations.hk_pending (bool) +
+// hk_pending_text (JSON): { items: [{ c, q, a }], i }
+//   c=code, q=qty|null, a=ambiguous, i=su an sorulan esyanin index'i.
 //
 // callback_data:
-//   hk:t:<code>:<convId>          -> tip secildi, adet yok  -> adet butonlari gonder
-//   hk:c:<code>:<qty>:<convId>    -> TAM -> kart + SLA olustur
-//   hk:noop                       -> zaten islendi (dispatch'te ele alinir)
+//   hk:s:<code>:<convId>   -> aktif esyanin TIPI secildi
+//   hk:q:<qty>:<convId>    -> aktif esyanin ADEDI secildi
+//   hk:noop                -> route.ts'te ele aliniyor (buraya gelmez)
 
 const TG = (token: string, m: string) => `https://api.telegram.org/bot${token}/${m}`;
+
+interface HkStateItem {
+  c: number;
+  q: number | null;
+  a: boolean;
+}
+interface HkState {
+  items: HkStateItem[];
+  i: number;
+}
 
 interface HkCallbackParams {
   supa: SupabaseClient;
@@ -52,207 +61,164 @@ async function sendGuest(token: string, chatId: string, text: string) {
   }).catch(() => {});
 }
 
-export async function handleHousekeepingCallback(params: HkCallbackParams): Promise<void> {
-  const parts = params.callbackData.split(':');
-  const action = parts[1]; // 't' | 'c'
-  console.log('[hk-cb] START', { action, data: params.callbackData });
+// State'i i'den bagimsiz olarak tarar: once cozulmemis ilk TIP (a===true), sonra
+// ilk ADET (q===null) icin butonla sorar; hepsi tamsa forwardHousekeepingItems.
+// route.ts (ilk soru — language TR/EN/DE) ve callback (sonraki sorular — TR) cagirir.
+export async function advanceHousekeeping(p: {
+  supa: SupabaseClient;
+  botToken: string;
+  convId: string;
+  guestChatId: string | number;
+  state: HkState;
+  language?: string;
+}): Promise<void> {
+  const { supa, botToken, convId, guestChatId, state } = p;
+  const lang = p.language ?? 'tr';
+  const multi = state.items.length > 1;
+  const prefixFor = (idx: number) => (multi ? `(${idx + 1}/${state.items.length}) ` : '');
 
-  // ── hk:t:<code>:<convId> -> tip secildi, adet butonlarini gonder ──────────────
-  if (action === 't') {
-    const code = parseInt(parts[2], 10);
-    const convId = parts.slice(3).join(':');
-    if (Number.isNaN(code) || !convId) {
-      await answer(params.botToken, params.callbackQueryId, 'Gecersiz secim.');
-      return;
-    }
-    const askText = 'Kac adet istersiniz?';
-    await fetch(TG(params.botToken, 'sendMessage'), {
+  // 1) tip gerektiren ilk esya -> TIP butonlari (havlu tipleri)
+  const typeIdx = state.items.findIndex((it) => it.a === true);
+  if (typeIdx !== -1) {
+    state.i = typeIdx;
+    await supa.from('conversations').update({ hk_pending_text: JSON.stringify(state) }).eq('id', convId);
+    const askText =
+      prefixFor(typeIdx) +
+      (lang === 'en'
+        ? 'Which towel would you like?'
+        : lang === 'de'
+          ? 'Welches Handtuch möchten Sie?'
+          : 'Hangi havlu istersiniz?');
+    const lbl = (en: string, de: string, tr: string) => (lang === 'en' ? en : lang === 'de' ? de : tr);
+    await fetch(TG(botToken, 'sendMessage'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: params.callbackChatId,
+        chat_id: guestChatId,
+        text: askText,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: lbl('Bath towel', 'Badetuch', 'Banyo havlusu'), callback_data: `hk:s:1:${convId}` }],
+            [{ text: lbl('Face towel', 'Gesichtstuch', 'Yuz havlusu'), callback_data: `hk:s:2:${convId}` }],
+            [{ text: lbl('Foot towel', 'Fußtuch', 'Ayak havlusu'), callback_data: `hk:s:3:${convId}` }],
+          ],
+        },
+      }),
+    }).catch(() => {});
+    await supa.from('bot_messages').insert({
+      conversation_id: convId, direction: 'outbound', text: askText, message_type: 'text',
+    });
+    console.log('[hk-cb] tip soruldu', { convId, i: typeIdx });
+    return;
+  }
+
+  // 2) adet gerektiren ilk esya -> ADET butonlari [1][2][3]
+  const qtyIdx = state.items.findIndex((it) => it.q === null);
+  if (qtyIdx !== -1) {
+    state.i = qtyIdx;
+    await supa.from('conversations').update({ hk_pending_text: JSON.stringify(state) }).eq('id', convId);
+    const label = labelForHousekeepingCode(state.items[qtyIdx].c) ?? '';
+    const askText =
+      prefixFor(qtyIdx) +
+      (lang === 'en'
+        ? 'How many would you like?'
+        : lang === 'de'
+          ? 'Wie viele möchten Sie?'
+          : `Kac adet ${label} istersiniz?`);
+    await fetch(TG(botToken, 'sendMessage'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: guestChatId,
         text: askText,
         reply_markup: {
           inline_keyboard: [[
-            { text: '1', callback_data: `hk:c:${code}:1:${convId}` },
-            { text: '2', callback_data: `hk:c:${code}:2:${convId}` },
-            { text: '3', callback_data: `hk:c:${code}:3:${convId}` },
+            { text: '1', callback_data: `hk:q:1:${convId}` },
+            { text: '2', callback_data: `hk:q:2:${convId}` },
+            { text: '3', callback_data: `hk:q:3:${convId}` },
           ]],
         },
       }),
     }).catch(() => {});
-    const lbl = labelForHousekeepingCode(code);
-    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, lbl ? `Secildi: ${lbl}` : 'Secildi');
-    await answer(params.botToken, params.callbackQueryId, 'Adet secin.');
-    console.log('[hk-cb] tip secildi, adet butonlari gonderildi', { code, convId });
-    return;
-  }
-
-  // ── hk:c:<code>:<qty>:<convId> -> TAM: kart + SLA olustur ─────────────────────
-  if (action === 'c') {
-    const code = parseInt(parts[2], 10);
-    const qty = parseInt(parts[3], 10);
-    const convId = parts.slice(4).join(':');
-    if (Number.isNaN(code) || Number.isNaN(qty) || !convId) {
-      await answer(params.botToken, params.callbackQueryId, 'Gecersiz secim.');
-      return;
-    }
-    console.log('[hk-cb] c START', { code, qty, convId });
-
-    // 0) conversation -> guest chat id
-    const { data: conv, error: convErr } = await params.supa
-      .from('conversations')
-      .select('id, telegram_chat_id')
-      .eq('id', convId)
-      .maybeSingle();
-    if (convErr) console.error('[hk-cb] conv lookup hatasi:', convErr.message);
-    if (!conv) {
-      await answer(params.botToken, params.callbackQueryId, 'Kayit bulunamadi.');
-      return;
-    }
-    const guestChatId = conv.telegram_chat_id as string;
-
-    // 1) departments housekeeping -> chat_id + sla_minutes
-    const { data: hkDept } = await params.supa
-      .from('departments')
-      .select('telegram_chat_id, sla_minutes')
-      .eq('code', 'housekeeping')
-      .maybeSingle();
-    const hkChatId = (hkDept?.telegram_chat_id as string | null) ?? null;
-    const hkSlaMinutes = (hkDept?.sla_minutes as number | null) ?? 15;
-    if (!hkChatId) {
-      console.error('[hk-cb] departments.housekeeping telegram_chat_id yok — talep iletilemedi');
-      await answer(params.botToken, params.callbackQueryId, 'Bir sorun olustu, tekrar deneyin.');
-      return;
-    }
-    console.log('[hk-cb] dept resolved', { hkChatId, hkSlaMinutes });
-
-    // 2) inhouse_guests_v2 -> oda + isim
-    let roomNumber: string | null = null;
-    let guestName = '';
-    const { data: inhouse } = await params.supa
-      .from('inhouse_guests_v2')
-      .select('room_number, guest_name')
-      .eq('telegram_id', String(guestChatId))
-      .eq('status', 'active')
-      .maybeSingle();
-    if (inhouse) {
-      roomNumber = (inhouse.room_number as string) ?? null;
-      guestName = (inhouse.guest_name as string) ?? '';
-    }
-
-    // 3) requestText
-    const label = labelForHousekeepingCode(code) ?? 'talep';
-    const requestText = `${qty} ${label}`;
-    console.log('[hk-cb] requestText', { requestText, roomNumber });
-
-    // 4) DEDUP (route.ts [sla-forward] blogu ile AYNEN ayni: son 10 dk + acik event + Jaccard>=0.5)
-    const dedupNorm = (s: string): string[] =>
-      normalizeTr(String(s ?? ''))
-        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-        .split(/\s+/)
-        .filter((w) => w.length >= 3);
-    const dedupWindowMs = 10 * 60 * 1000;
-    const dedupSince = new Date(Date.now() - dedupWindowMs).toISOString();
-    const { data: openDupEvents } = await params.supa
-      .from('sla_events')
-      .select('id, request_text')
-      .eq('conversation_id', convId)
-      .eq('department_code', 'housekeeping')
-      .is('responded_at', null)
-      .is('closed_at', null)
-      .gte('created_at', dedupSince)
-      .order('created_at', { ascending: false })
-      .limit(5);
-    if (openDupEvents && openDupEvents.length > 0) {
-      const newSet = new Set(dedupNorm(requestText));
-      const isDuplicate = openDupEvents.some((ev) => {
-        const oldSet = new Set(dedupNorm(String(ev.request_text ?? '')));
-        if (newSet.size === 0 || oldSet.size === 0) return false;
-        let inter = 0;
-        for (const t of newSet) if (oldSet.has(t)) inter++;
-        const uni = new Set([...newSet, ...oldSet]).size;
-        return uni > 0 && inter / uni >= 0.5;
-      });
-      if (isDuplicate) {
-        console.log('[hk-cb] dedup: acik ayni talep var, kart atlandi. Misafire onay verilir.');
-        await sendGuest(params.botToken, guestChatId, 'Talebiniz zaten ilgili ekibe iletildi, en kisa surede ilgileniyoruz.');
-        await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, '✅ Secildi');
-        await answer(params.botToken, params.callbackQueryId, 'Talebiniz alindi.');
-        return;
-      }
-    }
-
-    // 5) deadline
-    const now = new Date();
-    const deadline = new Date(now.getTime() + hkSlaMinutes * 60 * 1000);
-
-    // 6) sla_events INSERT
-    const { data: slaEvent, error: slaErr } = await params.supa
-      .from('sla_events')
-      .insert({
-        conversation_id: convId,
-        inhouse_guest_id: null, // FK drift — order-callback ile ayni: null gec
-        department_code: 'housekeeping',
-        department_chat_id: hkChatId,
-        request_text: requestText,
-        room_number: roomNumber,
-        guest_full_name: guestName,
-        forwarded_at: now.toISOString(),
-        sla_deadline: deadline.toISOString(),
-      })
-      .select('id')
-      .single();
-    if (slaErr || !slaEvent) {
-      console.error('[hk-cb] sla_events INSERT FAILED', slaErr);
-      await answer(params.botToken, params.callbackQueryId, 'Bir sorun olustu, tekrar deneyin.');
-      return;
-    }
-    console.log('[hk-cb] sla inserted', { slaEventId: slaEvent.id });
-
-    // 7) kart html — qty>=3 ise overlimit (brain overLimit davranisiyla ayni)
-    const esc = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const roomTxt = roomNumber ? `${esc(roomNumber)} numarali oda` : 'Oda bilinmiyor';
-    const isOver = qty >= 3;
-    const html = isOver
-      ? `⚠️ <b>Standart Disi Talep</b>\n\n` +
-        `<b>${esc(guestName || 'Misafir')}</b> — ${roomTxt}\n\n` +
-        `📝 <b>Talep:</b> ${esc(requestText)}\n\n` +
-        `Standart hak (kisi basi): 1 banyo + 1 yuz + 1 ayak havlusu.\n` +
-        `Lutfen odadaki kisi sayisina gore degerlendirip misafire donus yapin.`
-      : `🛎 <b>Misafir Talebi</b>\n\n` +
-        `<b>${esc(guestName || 'Misafir')}</b> — ${roomTxt}\n\n` +
-        `📝 <b>Talep:</b> ${esc(requestText)}`;
-
-    const { messageId, ok } = await sendForwardWithSlaButtons({
-      botToken: params.botToken,
-      chatId: hkChatId,
-      html,
-      slaEventId: slaEvent.id as string,
-      variant: isOver ? 'overlimit' : 'normal',
+    await supa.from('bot_messages').insert({
+      conversation_id: convId, direction: 'outbound', text: askText, message_type: 'text',
     });
-    console.log('[hk-cb] card sent', { messageId, ok });
-
-    // 8) ok degilse ROLLBACK (order-callback deseni)
-    if (ok && messageId) {
-      await params.supa
-        .from('sla_events')
-        .update({ department_message_id: messageId })
-        .eq('id', slaEvent.id as string);
-    } else {
-      console.error('[hk-cb] forward FAILED, rollback', { ok, messageId });
-      await params.supa.from('sla_events').delete().eq('id', slaEvent.id as string);
-      await answer(params.botToken, params.callbackQueryId, 'Iletim basarisiz, tekrar deneyin.');
-      return;
-    }
-
-    // 9) misafire onay + kart edit '✅ Secildi'
-    await sendGuest(params.botToken, guestChatId, 'Talebiniz ilgili ekibe iletildi. En kisa surede ilgileniyoruz.');
-    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, '✅ Secildi');
-    await answer(params.botToken, params.callbackQueryId, 'Talebiniz iletildi.');
-    console.log('[hk-cb] DONE', { slaEventId: slaEvent.id, requestText });
+    console.log('[hk-cb] adet soruldu', { convId, i: qtyIdx });
     return;
   }
 
-  await answer(params.botToken, params.callbackQueryId, 'Bilinmeyen islem.');
+  // 3) hepsi tamam -> forward
+  await supa.from('conversations').update({ hk_pending: false, hk_pending_text: null }).eq('id', convId);
+  const items = state.items.map((it) => ({ code: it.c, qty: it.q, ambiguous: it.a }));
+  const res = await forwardHousekeepingItems({ supa, botToken, convId, items });
+  const msg = res.duplicate
+    ? 'Talebiniz zaten ilgili ekibe iletildi, en kisa surede ilgileniyoruz.'
+    : res.ok
+      ? 'Talebiniz ilgili ekibe iletildi. En kisa surede ilgileniyoruz.'
+      : 'Bir sorun olustu, lutfen tekrar deneyin.';
+  await sendGuest(botToken, String(guestChatId), msg);
+  console.log('[hk-cb] forward sonucu', { convId, ok: res.ok, duplicate: res.duplicate });
+}
+
+export async function handleHousekeepingCallback(params: HkCallbackParams): Promise<void> {
+  const parts = params.callbackData.split(':');
+  const action = parts[1]; // 's' | 'q'
+  const value = parseInt(parts[2], 10);
+  const convId = parts.slice(3).join(':');
+  console.log('[hk-cb] START', { action, data: params.callbackData });
+
+  if ((action !== 's' && action !== 'q') || Number.isNaN(value) || !convId) {
+    await answer(params.botToken, params.callbackQueryId, 'Gecersiz secim.');
+    return;
+  }
+
+  // conv + state oku
+  const { data: conv, error: convErr } = await params.supa
+    .from('conversations')
+    .select('id, telegram_chat_id, hk_pending, hk_pending_text')
+    .eq('id', convId)
+    .maybeSingle();
+  if (convErr) console.error('[hk-cb] conv lookup hatasi:', convErr.message);
+  if (!conv || conv.hk_pending !== true || !conv.hk_pending_text) {
+    await answer(params.botToken, params.callbackQueryId, 'Bu adim zaten islendi.');
+    return;
+  }
+  const guestChatId = conv.telegram_chat_id as string;
+
+  let state: HkState;
+  try {
+    state = JSON.parse(conv.hk_pending_text as string) as HkState;
+  } catch {
+    await answer(params.botToken, params.callbackQueryId, 'Bu adim zaten islendi.');
+    return;
+  }
+  if (!state?.items?.length || typeof state.i !== 'number' || !state.items[state.i]) {
+    await answer(params.botToken, params.callbackQueryId, 'Bu adim zaten islendi.');
+    return;
+  }
+
+  // aktif esyayi guncelle
+  if (action === 's') {
+    state.items[state.i].c = value;
+    state.items[state.i].a = false;
+  } else {
+    state.items[state.i].q = value;
+  }
+  await params.supa
+    .from('conversations')
+    .update({ hk_pending_text: JSON.stringify(state) })
+    .eq('id', convId);
+
+  // basilan butonu isaretle + answer
+  await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, '✅ Secildi');
+  await answer(params.botToken, params.callbackQueryId, 'Secildi.');
+
+  // sonraki adim / forward
+  await advanceHousekeeping({
+    supa: params.supa,
+    botToken: params.botToken,
+    convId,
+    guestChatId,
+    state,
+  });
 }
