@@ -123,17 +123,38 @@ export const HOUSEKEEPING_ITEM_PATTERNS: Array<{ re: RegExp; label: string }> = 
   { re: /(yuz|yüz)\s*havlu/i, label: 'yuz havlusu' },
   { re: /ayak\s*havlu/i, label: 'ayak havlusu' },
   { re: /havlu/i, label: 'havlu' },
-  { re: /(carsaf|çarşaf|nevresim)/i, label: 'carsaf' },
+  { re: /(nevresim|yorgan)/i, label: 'nevresim' },
+  { re: /(carsaf|çarşaf)/i, label: 'carsaf' },
   { re: /yastik|yastık/i, label: 'yastik' },
   { re: /battaniye/i, label: 'battaniye' },
   { re: /(sabun|sampuan|şampuan|dus jeli|duş jeli)/i, label: 'banyo malzemesi' },
   { re: /(tuvalet kagidi|tuvalet kağıdı)/i, label: 'tuvalet kagidi' },
 ];
 
-function buildHousekeepingSummary(convText: string, qty: number | null): string | null {
-  if (qty === null) return null;
+// Tek bir metinde HOUSEKEEPING_ITEM_PATTERNS icinden ILK eslesen etiketi bulur (liste sirasi).
+function matchHousekeepingLabel(text: string): string | null {
   for (const p of HOUSEKEEPING_ITEM_PATTERNS) {
-    if (p.re.test(convText)) return `${qty} ${p.label}`;
+    if (p.re.test(text)) return p.label;
+  }
+  return null;
+}
+
+// Iki asamali ozet: (1) GUNCEL misafir mesaji her zaman kazanir; (2) guncelde eslesme
+// YOKSA SADECE misafir gecmisi (bot cevaplari HARIC) en yeniden eskiye taranir. Bu,
+// "havlu istiyorum" -> "kac adet?" -> "2 tane" akisinda esyayi yakalamak icin sart.
+function buildHousekeepingSummary(
+  currentMessage: string,
+  guestHistory: string[],
+  qty: number | null,
+): string | null {
+  if (qty === null) return null;
+  // ASAMA 1 — guncel misafir mesaji
+  const currentLabel = matchHousekeepingLabel(currentMessage);
+  if (currentLabel) return `${qty} ${currentLabel}`;
+  // ASAMA 2 — misafir gecmisi (en yeniden eskiye), bot mesajlari HARIC
+  for (let i = guestHistory.length - 1; i >= 0; i--) {
+    const label = matchHousekeepingLabel(guestHistory[i]);
+    if (label) return `${qty} ${label}`;
   }
   return null;
 }
@@ -216,17 +237,19 @@ KAPANIS KURALI:
   });
   const replyText = response.text;
   // Adet netleştiyse kart metnini deterministik uret (ham son mesaj yerine "2 yuz havlusu").
-  // Tum konusma + son mesaj birlesik taranir; tur kelimesi + adet eslestirilir.
-  const convForSummary = [
-    ...(input.conversationContext ?? []).map((m) => m.content),
-    input.guestMessage,
-  ].join(' ');
+  // Ozet taramasi: GUNCEL misafir mesaji + SADECE misafir gecmisi. Bot cevaplari
+  // (role === 'assistant') taramaya GIRMEZ — bot "kac havlu?" derse stale esya kazanmasin.
+  const guestHistory = (input.conversationContext ?? [])
+    .filter((m) => m.role === 'user' && typeof m.content === 'string' && m.content.trim().length > 0)
+    .map((m) => m.content);
   const normalizedRequest = maxQty !== null
-    ? (buildHousekeepingSummary(convForSummary, maxQty) ?? undefined)
+    ? (buildHousekeepingSummary(input.guestMessage, guestHistory, maxQty) ?? undefined)
     : undefined;
-  // Adet kapisi yalnizca SAYILABILIR esyalar icin gecerli olsun. Eslesme kontrolu
-  // buildHousekeepingSummary ile BIREBIR ayni: ayni pattern listesi + ayni .re.test.
-  const requiresQuantity = HOUSEKEEPING_ITEM_PATTERNS.some((p) => p.re.test(convForSummary));
+  // Adet kapisi yalnizca SAYILABILIR esyalar icin gecerli olsun. Ayni kaynak
+  // (guncel mesaj + misafir gecmisi, bot HARIC) uzerinde pattern eslesmesi.
+  const requiresQuantity =
+    matchHousekeepingLabel(input.guestMessage) !== null ||
+    guestHistory.some((h) => matchHousekeepingLabel(h) !== null);
   return { handled: true, replyText, overLimit: false, hasQuantity: maxQty !== null, requiresQuantity, normalizedRequest };
 }
 
