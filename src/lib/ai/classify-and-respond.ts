@@ -365,6 +365,11 @@ async function _classifyAndRespondImpl(
     // zaman { handled: false } doner; akis asagidaki return'e devam eder.
     // Bayrak acildiginda buradan per-dept beyin devreye girer.
     const primaryIntent = classifiedIntents[0];
+    console.log('[DEBUG-UTU] intent:', JSON.stringify({
+      department: primaryIntent?.department,
+      rawDepartment: (primaryIntent as any)?.rawDepartment,
+      intentShouldForward: primaryIntent?.shouldForward,
+    }));
     if (primaryIntent) {
       const brainResult = await dispatchToDepartmentBrain({
         department: primaryIntent.department,
@@ -375,6 +380,12 @@ async function _classifyAndRespondImpl(
         conversationContext: (input.context ?? []).map((m) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.text ?? '' })),
       });
       if (brainResult.handled && brainResult.replyText) {
+        console.log('[DEBUG-UTU] brain:', JSON.stringify({
+          department: primaryIntent?.department,
+          hasQuantity: brainResult.hasQuantity,
+          overLimit: brainResult.overLimit,
+          isInfoOnly: brainResult.isInfoOnly,
+        }));
         return {
           classifiedIntents,
           department: primaryIntent.department,
