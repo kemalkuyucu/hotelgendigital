@@ -173,24 +173,13 @@ export function labelForHousekeepingCode(code: number): string | null {
   return HOUSEKEEPING_ITEM_PATTERNS.find((p) => p.code === code)?.label ?? null;
 }
 
-// Iki asamali ozet: (1) GUNCEL misafir mesaji her zaman kazanir; (2) guncelde eslesme
-// YOKSA SADECE misafir gecmisi (bot cevaplari HARIC) en yeniden eskiye taranir. Bu,
-// "havlu istiyorum" -> "kac adet?" -> "2 tane" akisinda esyayi yakalamak icin sart.
-function buildHousekeepingSummary(
-  currentMessage: string,
-  guestHistory: string[],
-  qty: number | null,
-): string | null {
+// Kart ozeti SADECE guncel misafir mesajindan uretilir. Gecmis TARANMAZ: butonlar
+// geldigi icin coklu-turlu metin akisi ("havlu" -> "kac adet?" -> "2 tane") artik
+// yok; gecmis fallback'i yalnizca stale eslesme (nevresim/temizlik bug'i) uretiyordu.
+function buildHousekeepingSummary(currentMessage: string, qty: number | null): string | null {
   if (qty === null) return null;
-  // ASAMA 1 — guncel misafir mesaji
-  const currentLabel = matchHousekeepingLabel(currentMessage);
-  if (currentLabel) return `${qty} ${currentLabel}`;
-  // ASAMA 2 — misafir gecmisi (en yeniden eskiye), bot mesajlari HARIC
-  for (let i = guestHistory.length - 1; i >= 0; i--) {
-    const label = matchHousekeepingLabel(guestHistory[i]);
-    if (label) return `${qty} ${label}`;
-  }
-  return null;
+  const label = matchHousekeepingLabel(currentMessage);
+  return label ? `${qty} ${label}` : null;
 }
 
 function extractMaxItemQuantity(text: string): number | null {
@@ -268,26 +257,17 @@ KAPANIS KURALI:
     messages: [{ role: 'user', content: userContent }],
   });
   const replyText = response.text;
-  // Adet netleştiyse kart metnini deterministik uret (ham son mesaj yerine "2 yuz havlusu").
-  // Ozet taramasi: GUNCEL misafir mesaji + SADECE misafir gecmisi. Bot cevaplari
-  // (role === 'assistant') taramaya GIRMEZ — bot "kac havlu?" derse stale esya kazanmasin.
-  const guestHistory = (input.conversationContext ?? [])
-    .filter((m) => m.role === 'user' && typeof m.content === 'string' && m.content.trim().length > 0)
-    .map((m) => m.content);
+  // Kart ozeti + esya kararlari SADECE guncel mesajdan. Gecmis TARANMAZ (butonlar
+  // geldigi icin coklu-turlu metin akisi yok; gecmis fallback'i stale esya uretiyordu).
   const normalizedRequest = maxQty !== null
-    ? (buildHousekeepingSummary(input.guestMessage, guestHistory, maxQty) ?? undefined)
+    ? (buildHousekeepingSummary(input.guestMessage, maxQty) ?? undefined)
     : undefined;
-  // Adet kapisi yalnizca SAYILABILIR esyalar icin gecerli olsun. Ayni kaynak
-  // (guncel mesaj + misafir gecmisi, bot HARIC) uzerinde pattern eslesmesi.
-  const requiresQuantity =
-    matchHousekeepingLabel(input.guestMessage) !== null ||
-    guestHistory.some((h) => matchHousekeepingLabel(h) !== null);
+  // Adet kapisi yalnizca SAYILABILIR esyalar icin gecerli olsun — sadece guncel mesaj.
+  const requiresQuantity = matchHousekeepingItem(input.guestMessage) !== null;
   // DETERMINISTIK BUTON KAPISI: sayilabilir esya var. Tip belirsiz (havlu) veya adet
   // eksikse LLM cevabi KULLANILMAZ; route.ts'in buton sordurmasi icin hkAsk dondur.
   // Forward zaten kesiliyor (requiresQuantity=true + hasQuantity=false -> shouldForward=false).
-  const matchedItem = matchHousekeepingItem(input.guestMessage)
-    ?? guestHistory.map((h) => matchHousekeepingItem(h)).find(Boolean)
-    ?? null;
+  const matchedItem = matchHousekeepingItem(input.guestMessage);
   if (matchedItem) {
     let hkAsk: HkAsk | undefined;
     if (matchedItem.ambiguous && maxQty === null) {
