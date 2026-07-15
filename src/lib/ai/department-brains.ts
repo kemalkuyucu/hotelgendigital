@@ -70,6 +70,15 @@ export interface DepartmentBrainInput {
   conversationContext?: { role: string; content: string }[] | null;
 }
 
+// Housekeeping deterministik buton sorusu (tip veya adet). Brain doldurur,
+// route.ts butonlari gonderir, forward YAPILMAZ.
+export interface HkAsk {
+  kind: 'item' | 'qty';
+  codes?: number[];   // kind='item' -> hangi tipler (1/2/3 = banyo/yuz/ayak)
+  code?: number;      // kind='qty'  -> hangi esya
+  qty?: number;       // kind='item' + adet zaten biliniyorsa tasinir
+}
+
 export interface DepartmentBrainResult {
   handled: boolean;        // false -> orkestratorun kendi yaniti kullanilir
   replyText?: string;
@@ -79,6 +88,7 @@ export interface DepartmentBrainResult {
   requiresQuantity?: boolean;
   normalizedRequest?: string;
   isInfoOnly?: boolean;
+  hkAsk?: HkAsk;
 }
 
 // ── DIL KURALI — tum beyinlerde ortak ────────────────────────────────────────
@@ -118,25 +128,49 @@ const TR_SAYI_KELIMELERI: Record<string, number> = {
   yirmi: 20, otuz: 30, 'kırk': 40, kirk: 40, elli: 50,
 };
 
-export const HOUSEKEEPING_ITEM_PATTERNS: Array<{ re: RegExp; label: string }> = [
-  { re: /banyo\s*havlu/i, label: 'banyo havlusu' },
-  { re: /(yuz|yüz)\s*havlu/i, label: 'yuz havlusu' },
-  { re: /ayak\s*havlu/i, label: 'ayak havlusu' },
-  { re: /havlu/i, label: 'havlu' },
-  { re: /(nevresim|yorgan)/i, label: 'nevresim' },
-  { re: /(carsaf|çarşaf)/i, label: 'carsaf' },
-  { re: /yastik|yastık/i, label: 'yastik' },
-  { re: /battaniye/i, label: 'battaniye' },
-  { re: /(sabun|sampuan|şampuan|dus jeli|duş jeli)/i, label: 'banyo malzemesi' },
-  { re: /(tuvalet kagidi|tuvalet kağıdı)/i, label: 'tuvalet kagidi' },
+export type HousekeepingItem = { re: RegExp; label: string; code: number; ambiguous: boolean };
+export const HOUSEKEEPING_ITEM_PATTERNS: HousekeepingItem[] = [
+  { re: /banyo\s*havlu/i, label: 'banyo havlusu', code: 1, ambiguous: false },
+  { re: /(yuz|yüz)\s*havlu/i, label: 'yuz havlusu', code: 2, ambiguous: false },
+  { re: /ayak\s*havlu/i, label: 'ayak havlusu', code: 3, ambiguous: false },
+  { re: /havlu/i, label: 'havlu', code: 4, ambiguous: true },
+  { re: /(nevresim|yorgan)/i, label: 'nevresim', code: 5, ambiguous: false },
+  { re: /(carsaf|çarşaf)/i, label: 'carsaf', code: 6, ambiguous: false },
+  { re: /yastik|yastık/i, label: 'yastik', code: 7, ambiguous: false },
+  { re: /battaniye/i, label: 'battaniye', code: 8, ambiguous: false },
+  { re: /sabun/i, label: 'sabun', code: 9, ambiguous: false },
+  { re: /(sampuan|şampuan)/i, label: 'sampuan', code: 10, ambiguous: false },
+  { re: /(dus jeli|duş jeli)/i, label: 'dus jeli', code: 11, ambiguous: false },
+  { re: /(tuvalet kagidi|tuvalet kağıdı)/i, label: 'tuvalet kagidi', code: 12, ambiguous: false },
 ];
 
-// Tek bir metinde HOUSEKEEPING_ITEM_PATTERNS icinden ILK eslesen etiketi bulur (liste sirasi).
-function matchHousekeepingLabel(text: string): string | null {
+// hk-gate SERVICE fiilleri: esya ICERMEYEN kat-hizmetleri talepleri (temizlik/toplama).
+// KRITIK: SADECE hk-gate'te kullanilir; requiresQuantity / matchHousekeepingLabel'a
+// ASLA girmez (yoksa "kac adet temizlik?" der).
+export const HOUSEKEEPING_SERVICE_PATTERNS: RegExp[] = [
+  /oda(m|mi|nin)?\s*temizl/i,
+  /temizlik\s*(istiyorum|talep|gonder)/i,
+  /odam(i)?\s*(toplay|duzelt)/i,
+  /çarşaf\s*degis/i,
+  /carsaf\s*degis/i,
+];
+
+// Tek bir metinde HOUSEKEEPING_ITEM_PATTERNS icinden ILK eslesen PATTERN'i doner (liste sirasi).
+function matchHousekeepingItem(text: string): HousekeepingItem | null {
   for (const p of HOUSEKEEPING_ITEM_PATTERNS) {
-    if (p.re.test(text)) return p.label;
+    if (p.re.test(text)) return p;
   }
   return null;
+}
+
+// Etiket kestirmesi (buildHousekeepingSummary / requiresQuantity icin).
+function matchHousekeepingLabel(text: string): string | null {
+  return matchHousekeepingItem(text)?.label ?? null;
+}
+
+// Kod -> etiket (housekeeping callback'te kart metni icin).
+export function labelForHousekeepingCode(code: number): string | null {
+  return HOUSEKEEPING_ITEM_PATTERNS.find((p) => p.code === code)?.label ?? null;
 }
 
 // Iki asamali ozet: (1) GUNCEL misafir mesaji her zaman kazanir; (2) guncelde eslesme
@@ -191,7 +225,6 @@ Gorev: Misafirin temizlik, havlu, carsaf, oda duzeni, ekstra malzeme (sabun, sam
 
 HAVLU/MALZEME KURALI:
 - Standart hak (kisi basi): 1 banyo (buyuk) + 1 yuz (kucuk) + 1 ayak havlusu. Bir turden kisi basi 1 veya 2 adet normaldir.
-- Misafir tur veya adet belirtmediyse, once nazikce hangi turden kac adet istedigini sor.
 - Net ve makul talebi sicak, kisa, net karsila. Miktar/adet pazarligi YAPMA; miktarin asiri olup olmadigina SEN karar verme, sadece talebi anlayip yanitla.
 
 TALEP CEVABI KURALI:
@@ -249,24 +282,33 @@ KAPANIS KURALI:
   const requiresQuantity =
     matchHousekeepingLabel(input.guestMessage) !== null ||
     guestHistory.some((h) => matchHousekeepingLabel(h) !== null);
-  // DETERMINISTIK ADET KAPISI: sayilabilir esya var ama adet yok -> LLM cevabi
-  // KULLANILMAZ (prompt "talebiniz alindi" diyebiliyordu; forward gate kesince
-  // misafire yalan olurdu). Kod dogrudan adeti sorar; forward zaten kesiliyor.
-  if (requiresQuantity && maxQty === null) {
-    const label = matchHousekeepingLabel(input.guestMessage)
-      ?? guestHistory.map(matchHousekeepingLabel).find(Boolean)
-      ?? null;
-    const askText = label
-      ? `Kac adet ${label} istersiniz?`
-      : 'Kac adet istersiniz?';
-    return {
-      handled: true,
-      replyText: askText,
-      overLimit: false,
-      hasQuantity: false,
-      requiresQuantity: true,
-      normalizedRequest: undefined,
-    };
+  // DETERMINISTIK BUTON KAPISI: sayilabilir esya var. Tip belirsiz (havlu) veya adet
+  // eksikse LLM cevabi KULLANILMAZ; route.ts'in buton sordurmasi icin hkAsk dondur.
+  // Forward zaten kesiliyor (requiresQuantity=true + hasQuantity=false -> shouldForward=false).
+  const matchedItem = matchHousekeepingItem(input.guestMessage)
+    ?? guestHistory.map((h) => matchHousekeepingItem(h)).find(Boolean)
+    ?? null;
+  if (matchedItem) {
+    let hkAsk: HkAsk | undefined;
+    if (matchedItem.ambiguous && maxQty === null) {
+      hkAsk = { kind: 'item', codes: [1, 2, 3] };                  // (a) once tip sor
+    } else if (matchedItem.ambiguous && maxQty !== null) {
+      hkAsk = { kind: 'item', codes: [1, 2, 3], qty: maxQty };     // (b) tip sor + adet tasi
+    } else if (!matchedItem.ambiguous && maxQty === null) {
+      hkAsk = { kind: 'qty', code: matchedItem.code };             // (c) adet sor
+    }
+    // (d) !ambiguous && adet var -> hkAsk yok -> normal return (kart duser)
+    if (hkAsk) {
+      return {
+        handled: true,
+        replyText: '',
+        overLimit: false,
+        hasQuantity: false,
+        requiresQuantity: true,
+        normalizedRequest: undefined,
+        hkAsk,
+      };
+    }
   }
   return { handled: true, replyText, overLimit: false, hasQuantity: maxQty !== null, requiresQuantity, normalizedRequest };
 }

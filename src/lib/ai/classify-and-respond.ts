@@ -21,7 +21,7 @@ import {
 } from './message-types';
 // Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
 import { normalizeTr } from '@/lib/utils/normalize-tr';
-import { dispatchToDepartmentBrain, HOUSEKEEPING_ITEM_PATTERNS } from '@/lib/ai/department-brains';
+import { dispatchToDepartmentBrain, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkAsk } from '@/lib/ai/department-brains';
 
 // ── ÇOK DİLLİ ALERJİ KÖK-KELİMELERİ (tek kaynak) ───────────────────────────
 // Bu liste iki yerde kullanılır: (1) saglik kapisi alerji istisnasi (satir ~107),
@@ -91,6 +91,7 @@ export interface ClassifyAndRespondOutput {
   overLimit?: boolean;
   reservationNotify?: boolean;
   normalizedRequest?: string;
+  hkAsk?: HkAsk;            // housekeeping deterministik buton sorusu (tip/adet)
   mapsLink?: string;        // konum cevabına garanti link enjeksiyonu icin
   raw_response: string;
 }
@@ -371,8 +372,12 @@ async function _classifyAndRespondImpl(
     // dogru); bu kapi onun ALTINDA. Allergy intent'lerine DOKUNULMAZ. Adet kapisi /
     // requiresQuantity / overLimit / forward gate'i (satir ~384) bu kapidan ETKILENMEZ;
     // burada yalnizca department etiketi (ve routing imzasi) zorlanir.
+    // ITEM pattern VEYA SERVICE pattern (esya icermeyen temizlik/toplama talebi)
+    // eslesirse department housekeeping'e zorlanir. SERVICE_PATTERNS SADECE burada
+    // kullanilir; requiresQuantity/matchHousekeepingLabel'a girmez.
     const matchedHkPattern = HOUSEKEEPING_ITEM_PATTERNS.find((p) => p.re.test(input.guestMessage));
-    if (matchedHkPattern) {
+    const matchedHkService = !matchedHkPattern && HOUSEKEEPING_SERVICE_PATTERNS.some((re) => re.test(input.guestMessage));
+    if (matchedHkPattern || matchedHkService) {
       const hkRouting = routeIntentToDepartment('housekeeping');
       let hkRedirected = false;
       for (const it of classifiedIntents) {
@@ -388,7 +393,7 @@ async function _classifyAndRespondImpl(
         }
       }
       if (hkRedirected) {
-        console.log('[hk-gate] housekeeping esya tespit edildi, department zorlandi:', matchedHkPattern.label);
+        console.log('[hk-gate] housekeeping tespit edildi, department zorlandi:', matchedHkPattern?.label ?? 'service');
       }
     }
 
@@ -411,7 +416,7 @@ async function _classifyAndRespondImpl(
         hotelContext: hotelContext as Record<string, unknown> | null,
         conversationContext: (input.context ?? []).map((m) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.text ?? '' })),
       });
-      if (brainResult.handled && brainResult.replyText) {
+      if (brainResult.handled && (brainResult.replyText || brainResult.hkAsk)) {
         console.log('[DEBUG-UTU] brain:', JSON.stringify({
           department: primaryIntent?.department,
           hasQuantity: brainResult.hasQuantity,
@@ -439,7 +444,7 @@ async function _classifyAndRespondImpl(
               : primaryIntent.shouldForward,
           confidence: 1,
           reasoning: 'department_brain',
-          response_to_guest: brainResult.replyText,
+          response_to_guest: brainResult.replyText ?? '',
           answered_from_knowledge: false,
           mapsLink: mapsLink ?? undefined,
           safetyTriggered: false,
@@ -451,7 +456,8 @@ async function _classifyAndRespondImpl(
           overLimit: brainResult.overLimit ?? false,
           reservationNotify: brainResult.reservationNotify ?? false,
           normalizedRequest: brainResult.normalizedRequest,
-          raw_response: brainResult.replyText,
+          hkAsk: brainResult.hkAsk,
+          raw_response: brainResult.replyText ?? '',
         };
       }
     }

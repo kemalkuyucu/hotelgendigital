@@ -30,6 +30,7 @@ import { handleSlaCallback } from '@/lib/sla/handle-callback';
 import { handleOrderCallback } from '@/lib/sla/handle-order-callback';
 import { handleNoteCallback } from '@/lib/sla/handle-note-callback';
 import { handleMenuOfferCallback } from '@/lib/sla/handle-menu-offer-callback';
+import { handleHousekeepingCallback } from '@/lib/sla/handle-housekeeping-callback';
 import { parseOrder, extractOrderNote } from '@/lib/menu/parse-order';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
 import { getTurkeyToday } from '@/lib/date/turkeyTime'; // Modül 18: timezone fix
@@ -400,6 +401,27 @@ export async function POST(
       // menu: F&B kademeli menu onerisi butonlari
       if (cq.data?.startsWith('menu:')) {
         await handleMenuOfferCallback({
+          supa,
+          botToken,
+          callbackQueryId: cq.id,
+          callbackData: cq.data,
+          callbackChatId: cq.message?.chat?.id ?? 0,
+          callbackMessageId: cq.message?.message_id ?? 0,
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // hk: housekeeping esya tip/adet butonlari
+      if (cq.data === 'hk:noop') {
+        await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu adim zaten islendi' }),
+        });
+        return NextResponse.json({ ok: true });
+      }
+      if (cq.data?.startsWith('hk:')) {
+        await handleHousekeepingCallback({
           supa,
           botToken,
           callbackQueryId: cq.id,
@@ -3239,6 +3261,75 @@ async function handleMessage(args: {
 
   // intentData artık array — ilk satırın id'si legacy aiIntentId olarak kullanılır
   const aiIntentId = (intentData as Array<{ id: string }> | null)?.[0]?.id as string | undefined;
+
+  // ── HOUSEKEEPING BUTON KAPISI (deterministik) ──────────────────────────────
+  // Brain hkAsk dondurduyse (belirsiz tip veya adet eksik) misafire buton sor ve
+  // ISI BITIR (return) — forward YAPMA. Forward bolumunden ONCE durur ki taze-dogrulama
+  // + gomulu talep gibi skipForward=false olan durumda cift aksiyon (kart+buton) olmasin.
+  // Bu turda dogrulama sorulduysa (verificationAskedThisRound) DOKUNMA — once kimlik.
+  // Butona basilinca handleHousekeepingCallback kart + SLA'yi olusturur.
+  if (aiResult?.hkAsk && !verificationAskedThisRound) {
+    const hk = aiResult.hkAsk;
+    if (hk.kind === 'item') {
+      const q = typeof hk.qty === 'number' ? hk.qty : null;
+      const askText =
+        language === 'en' ? 'Which towel would you like?'
+        : language === 'de' ? 'Welches Handtuch möchten Sie?'
+        : 'Hangi havlu istersiniz?';
+      const lbl = (en: string, de: string, tr: string) =>
+        language === 'en' ? en : language === 'de' ? de : tr;
+      const btn = (code: number, label: string) => ({
+        text: label,
+        callback_data: q !== null ? `hk:c:${code}:${q}:${conversationId}` : `hk:t:${code}:${conversationId}`,
+      });
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: askText,
+          reply_markup: {
+            inline_keyboard: [
+              [btn(1, lbl('Bath towel', 'Badetuch', 'Banyo havlusu'))],
+              [btn(2, lbl('Face towel', 'Gesichtstuch', 'Yuz havlusu'))],
+              [btn(3, lbl('Foot towel', 'Fußtuch', 'Ayak havlusu'))],
+            ],
+          },
+        }),
+      }).catch(() => {});
+      await supa.from('bot_messages').insert({
+        conversation_id: conversationId, direction: 'outbound', text: askText, message_type: 'text',
+      });
+      console.log(`[hk-ask] item butonlari gonderildi conv=${conversationId} qty=${q ?? 'yok'}`);
+      return;
+    }
+    if (hk.kind === 'qty' && typeof hk.code === 'number') {
+      const askText =
+        language === 'en' ? 'How many would you like?'
+        : language === 'de' ? 'Wie viele möchten Sie?'
+        : 'Kac adet istersiniz?';
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: askText,
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '1', callback_data: `hk:c:${hk.code}:1:${conversationId}` },
+              { text: '2', callback_data: `hk:c:${hk.code}:2:${conversationId}` },
+              { text: '3', callback_data: `hk:c:${hk.code}:3:${conversationId}` },
+            ]],
+          },
+        }),
+      }).catch(() => {});
+      await supa.from('bot_messages').insert({
+        conversation_id: conversationId, direction: 'outbound', text: askText, message_type: 'text',
+      });
+      console.log(`[hk-ask] qty butonlari gonderildi conv=${conversationId} code=${hk.code}`);
+      return;
+    }
+  }
 
   // ── KB cevabı veya doğrulama short-circuit → forward yapma ───────────────
   if (skipForward) {
