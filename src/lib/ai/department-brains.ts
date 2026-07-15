@@ -118,7 +118,7 @@ const TR_SAYI_KELIMELERI: Record<string, number> = {
   yirmi: 20, otuz: 30, 'kırk': 40, kirk: 40, elli: 50,
 };
 
-const HOUSEKEEPING_ITEM_PATTERNS: Array<{ re: RegExp; label: string }> = [
+export const HOUSEKEEPING_ITEM_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /banyo\s*havlu/i, label: 'banyo havlusu' },
   { re: /(yuz|yüz)\s*havlu/i, label: 'yuz havlusu' },
   { re: /ayak\s*havlu/i, label: 'ayak havlusu' },

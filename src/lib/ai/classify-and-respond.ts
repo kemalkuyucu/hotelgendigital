@@ -21,7 +21,7 @@ import {
 } from './message-types';
 // Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
 import { normalizeTr } from '@/lib/utils/normalize-tr';
-import { dispatchToDepartmentBrain } from '@/lib/ai/department-brains';
+import { dispatchToDepartmentBrain, HOUSEKEEPING_ITEM_PATTERNS } from '@/lib/ai/department-brains';
 
 // ── ÇOK DİLLİ ALERJİ KÖK-KELİMELERİ (tek kaynak) ───────────────────────────
 // Bu liste iki yerde kullanılır: (1) saglik kapisi alerji istisnasi (satir ~107),
@@ -357,6 +357,38 @@ async function _classifyAndRespondImpl(
         console.log(
           `[baggage-override] Bagaj talebi front_office'e yonlendirildi. msg="${input.guestMessage.slice(0, 60)}"`,
         );
+      }
+    }
+
+    // ── HOUSEKEEPING ESYA OVERRIDE (deterministik) ──────────────────────────────
+    // "2 havlu istiyorum" somut kat-hizmetleri esyasi talepleri LLM tarafindan bazen
+    // housekeeping bazen front_office etiketleniyordu → ayni cumle iki farkli sonuc
+    // (canli log: 07:25 housekeeping/kart dustu, 07:34 front_office/kart dusmedi).
+    // Yonlendirme LLM'e tek basina birakilmaz (bagaj/alerji dersi). Ham metinde
+    // HOUSEKEEPING_ITEM_PATTERNS'teki bir esya geciyorsa intent'in DEPARTMANI
+    // housekeeping'e zorlanir. Pattern taramasi buildHousekeepingSummary ile BIREBIR
+    // ayni (p.re.test, ayni liste). Bagaj override'i ONCE calisir (bagaj front_office'te
+    // dogru); bu kapi onun ALTINDA. Allergy intent'lerine DOKUNULMAZ. Adet kapisi /
+    // requiresQuantity / overLimit / forward gate'i (satir ~384) bu kapidan ETKILENMEZ;
+    // burada yalnizca department etiketi (ve routing imzasi) zorlanir.
+    const matchedHkPattern = HOUSEKEEPING_ITEM_PATTERNS.find((p) => p.re.test(input.guestMessage));
+    if (matchedHkPattern) {
+      const hkRouting = routeIntentToDepartment('housekeeping');
+      let hkRedirected = false;
+      for (const it of classifiedIntents) {
+        const rd = (it.rawDepartment ?? '').toLowerCase().trim();
+        if (rd === 'allergy') continue;
+        if (it.department !== 'housekeeping') {
+          it.department = 'housekeeping';
+          it.shouldForward = hkRouting.shouldForward;
+          it.messageType = hkRouting.messageType;
+          it.withButtons = hkRouting.withButtons;
+          it.createsSlaEvent = hkRouting.createsSlaEvent;
+          hkRedirected = true;
+        }
+      }
+      if (hkRedirected) {
+        console.log('[hk-gate] housekeeping esya tespit edildi, department zorlandi:', matchedHkPattern.label);
       }
     }
 
