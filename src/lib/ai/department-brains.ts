@@ -195,7 +195,6 @@ HAVLU/MALZEME KURALI:
 - Net ve makul talebi sicak, kisa, net karsila. Miktar/adet pazarligi YAPMA; miktarin asiri olup olmadigina SEN karar verme, sadece talebi anlayip yanitla.
 
 TALEP CEVABI KURALI:
-- Misafir bir TALEPTE bulunduysa cevap KISA ve NET olsun: talebin alindigini ve ekibin ilgilenecegini bildir, baska bilgi EKLEME.
 - Bilgi tabanindaki ek detaylari (standart donanim, adet politikasi, ucret vb.) SADECE misafir acikca sordugunda ver; talep cevabina kendiliginden EKLEME.
 - Ornek dogru talep cevabi: "Havlu talebiniz alindi, kat hizmetleri ekibimiz en kisa surede odaniza getirecektir."
 
@@ -250,6 +249,25 @@ KAPANIS KURALI:
   const requiresQuantity =
     matchHousekeepingLabel(input.guestMessage) !== null ||
     guestHistory.some((h) => matchHousekeepingLabel(h) !== null);
+  // DETERMINISTIK ADET KAPISI: sayilabilir esya var ama adet yok -> LLM cevabi
+  // KULLANILMAZ (prompt "talebiniz alindi" diyebiliyordu; forward gate kesince
+  // misafire yalan olurdu). Kod dogrudan adeti sorar; forward zaten kesiliyor.
+  if (requiresQuantity && maxQty === null) {
+    const label = matchHousekeepingLabel(input.guestMessage)
+      ?? guestHistory.map(matchHousekeepingLabel).find(Boolean)
+      ?? null;
+    const askText = label
+      ? `Kac adet ${label} istersiniz?`
+      : 'Kac adet istersiniz?';
+    return {
+      handled: true,
+      replyText: askText,
+      overLimit: false,
+      hasQuantity: false,
+      requiresQuantity: true,
+      normalizedRequest: undefined,
+    };
+  }
   return { handled: true, replyText, overLimit: false, hasQuantity: maxQty !== null, requiresQuantity, normalizedRequest };
 }
 
