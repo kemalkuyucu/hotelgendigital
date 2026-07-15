@@ -285,7 +285,7 @@ async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<Depart
 Gorev: Misafirin temizlik, havlu, carsaf, oda duzeni, ekstra malzeme (sabun, sampuan, tuvalet kagidi vb.) taleplerini nazikce, kisa ve net yanitla.
 
 HAVLU/MALZEME KURALI:
-- Standart hak (kisi basi): 1 banyo (buyuk) + 1 yuz (kucuk) + 1 ayak havlusu. Bir turden kisi basi 1 veya 2 adet normaldir.
+- Standart hak: kisi basi 1 adet.
 - Net ve makul talebi sicak, kisa, net karsila. Miktar/adet pazarligi YAPMA; miktarin asiri olup olmadigina SEN karar verme, sadece talebi anlayip yanitla.
 
 TALEP CEVABI KURALI:
@@ -304,7 +304,7 @@ KAPANIS KURALI:
 - Yanitlarinda hicbir emoji kullanma.
 - Yaniti kisa ve sicak bir cumleyle bitir.
 - "Ihtiyaciniz olursa bildirin", "baska bir sey olursa soyleyin" gibi bos/dolgu/tekrarli kapanis cumlesi EKLEME; misafir zaten talebini iletti. Kapanis dolu ve baglama uygun olsun.`;
-  // overLimit (adet>=3) karari artik esya bazinda kart katmaninda (housekeeping-forward.ts).
+  // overLimit karari kart katmaninda: qty > pax (kisi basi 1), housekeeping-forward.ts.
   const maxQty = extractMaxItemQuantity(input.guestMessage);
 
   const recent = (input.conversationContext ?? [])

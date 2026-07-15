@@ -13,8 +13,10 @@ export async function forwardHousekeepingItems(p: {
   botToken: string;
   convId: string;
   items: HkItem[];
+  pax: number;
+  paxKnown: boolean;
 }): Promise<{ ok: boolean; duplicate: boolean }> {
-  const { supa, convId, items } = p;
+  const { supa, convId, items, pax, paxKnown } = p;
   console.log('[hk-fwd] START', { convId, items: items.length });
 
   // 1) departments housekeeping -> chat_id + sla_minutes
@@ -95,8 +97,16 @@ export async function forwardHousekeepingItems(p: {
     }
   }
 
-  // 6) overlimit karari esya bazinda
-  const isOver = items.some((i) => (i.qty ?? 0) >= 3);
+  // 6) overlimit karari esya bazinda: kisi basi 1 adet, qty > pax -> standart disi
+  const isOver = items.some((i) => (i.qty ?? 0) > pax);
+  const overList = items
+    .filter((i) => (i.qty ?? 0) > pax)
+    .map((i) => `${i.qty} ${labelForHousekeepingCode(i.code)}`)
+    .join(', ');
+  const paxLine = paxKnown
+    ? `Odada kayitli kisi sayisi: ${pax}.`
+    : `Odada kayitli kisi sayisi bilinmiyor (${pax} varsayildi).`;
+  console.log('[hk-fwd] esik', { pax, paxKnown, isOver, overList });
 
   // 7) deadline + sla_events INSERT
   const now = new Date();
@@ -137,8 +147,9 @@ export async function forwardHousekeepingItems(p: {
     ? `⚠️ <b>Standart Disi Talep</b>\n\n` +
       `<b>${esc(guestName || 'Misafir')}</b> — ${roomTxt}\n\n` +
       `${talepBlock}\n\n` +
-      `Standart hak (kisi basi): 1 banyo + 1 yuz + 1 ayak havlusu.\n` +
-      `Lutfen odadaki kisi sayisina gore degerlendirip misafire donus yapin.`
+      `Standart hak: kisi basi 1 adet. ${paxLine}\n` +
+      `Standart disi: ${esc(overList)}\n` +
+      `Lutfen degerlendirip misafire donus yapin.`
     : `🛎 <b>Misafir Talebi</b>\n\n` +
       `<b>${esc(guestName || 'Misafir')}</b> — ${roomTxt}\n\n` +
       `${talepBlock}`;

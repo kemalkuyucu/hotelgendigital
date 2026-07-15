@@ -21,6 +21,8 @@ interface HkStateItem {
 interface HkState {
   items: HkStateItem[];
   i: number;
+  p?: number | null; // odadaki kisi sayisi (null = bilinmiyor)
+  pl?: boolean; // pax lookup yapildi mi
 }
 
 interface HkCallbackParams {
@@ -77,6 +79,22 @@ export async function advanceHousekeeping(p: {
   const multi = state.items.length > 1;
   const prefixFor = (idx: number) => (multi ? `(${idx + 1}/${state.items.length}) ` : '');
 
+  // Odadaki kisi sayisi (pax) — ilk cagride lookup, state'e cache'le.
+  if (state.pl !== true) {
+    const { data: ih } = await supa
+      .from('inhouse_guests_v2')
+      .select('guest_count')
+      .eq('telegram_id', String(guestChatId))
+      .eq('status', 'active')
+      .maybeSingle();
+    const raw = ih?.guest_count as number | null | undefined;
+    state.p = typeof raw === 'number' && raw >= 1 ? raw : null;
+    state.pl = true;
+    console.log('[hk-pax]', { convId, guest_count: raw ?? null, pax: state.p });
+  }
+  const pax = state.p ?? 2; // bilinmiyorsa 2 -> bugunku davranis BIREBIR korunur
+  const btnMax = Math.min(pax + 1, 6); // butonlar 1..btnMax (son buton = esik asimi)
+
   // 1) tip gerektiren ilk esya -> TIP butonlari (havlu tipleri)
   const typeIdx = state.items.findIndex((it) => it.a === true);
   if (typeIdx !== -1) {
@@ -125,19 +143,17 @@ export async function advanceHousekeeping(p: {
         : lang === 'de'
           ? 'Wie viele möchten Sie?'
           : `Kac adet ${label} istersiniz?`);
+    const nums = Array.from({ length: btnMax }, (_, i) => i + 1);
+    const rows: unknown[][] = [];
+    for (let i = 0; i < nums.length; i += 3)
+      rows.push(nums.slice(i, i + 3).map((n) => ({ text: String(n), callback_data: `hk:q:${n}:${convId}` })));
     await fetch(TG(botToken, 'sendMessage'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: guestChatId,
         text: askText,
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '1', callback_data: `hk:q:1:${convId}` },
-            { text: '2', callback_data: `hk:q:2:${convId}` },
-            { text: '3', callback_data: `hk:q:3:${convId}` },
-          ]],
-        },
+        reply_markup: { inline_keyboard: rows },
       }),
     }).catch(() => {});
     await supa.from('bot_messages').insert({
@@ -150,7 +166,7 @@ export async function advanceHousekeeping(p: {
   // 3) hepsi tamam -> forward
   await supa.from('conversations').update({ hk_pending: false, hk_pending_text: null }).eq('id', convId);
   const items = state.items.map((it) => ({ code: it.c, qty: it.q, ambiguous: it.a }));
-  const res = await forwardHousekeepingItems({ supa, botToken, convId, items });
+  const res = await forwardHousekeepingItems({ supa, botToken, convId, items, pax, paxKnown: state.p !== null });
   const msg = res.duplicate
     ? 'Talebiniz zaten ilgili ekibe iletildi, en kisa surede ilgileniyoruz.'
     : res.ok
