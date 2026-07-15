@@ -383,6 +383,7 @@ async function _classifyAndRespondImpl(
         console.log('[DEBUG-UTU] brain:', JSON.stringify({
           department: primaryIntent?.department,
           hasQuantity: brainResult.hasQuantity,
+          requiresQuantity: brainResult.requiresQuantity,
           overLimit: brainResult.overLimit,
           isInfoOnly: brainResult.isInfoOnly,
         }));
@@ -393,6 +394,7 @@ async function _classifyAndRespondImpl(
             primaryIntent.department === 'spa'
               ? false
               : primaryIntent.department === 'housekeeping' &&
+                brainResult.requiresQuantity === true &&
                 brainResult.hasQuantity === false &&
                 brainResult.overLimit !== true
               ? false

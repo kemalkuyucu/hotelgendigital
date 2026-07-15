@@ -76,6 +76,7 @@ export interface DepartmentBrainResult {
   overLimit?: boolean;
   reservationNotify?: boolean;
   hasQuantity?: boolean;
+  requiresQuantity?: boolean;
   normalizedRequest?: string;
   isInfoOnly?: boolean;
 }
@@ -218,7 +219,10 @@ KAPANIS KURALI:
   const normalizedRequest = maxQty !== null
     ? (buildHousekeepingSummary(convForSummary, maxQty) ?? undefined)
     : undefined;
-  return { handled: true, replyText, overLimit: false, hasQuantity: maxQty !== null, normalizedRequest };
+  // Adet kapisi yalnizca SAYILABILIR esyalar icin gecerli olsun. Eslesme kontrolu
+  // buildHousekeepingSummary ile BIREBIR ayni: ayni pattern listesi + ayni .re.test.
+  const requiresQuantity = HOUSEKEEPING_ITEM_PATTERNS.some((p) => p.re.test(convForSummary));
+  return { handled: true, replyText, overLimit: false, hasQuantity: maxQty !== null, requiresQuantity, normalizedRequest };
 }
 
 async function runAnimationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
