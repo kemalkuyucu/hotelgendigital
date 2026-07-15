@@ -42,6 +42,7 @@ export async function parseStayQuery(params: {
       messages: [{ role: 'user', content: userMsg }],
       maxTokens: 200,
       temperature: 0,
+      jsonMode: true,
     });
 
     let raw = (res.text || '').trim();

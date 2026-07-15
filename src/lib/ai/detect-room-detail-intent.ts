@@ -46,6 +46,7 @@ export async function detectRoomDetailIntent(params: {
       messages: [{ role: 'user', content: userMsg }],
       maxTokens: 40,
       temperature: 0,
+      jsonMode: true,
     });
     let raw = (res.text || '').trim();
     raw = raw.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();

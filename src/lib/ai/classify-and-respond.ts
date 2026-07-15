@@ -96,6 +96,11 @@ export interface ClassifyAndRespondOutput {
   raw_response: string;
 }
 
+// LLM ciktisindan ```json ... ``` fence'lerini soyar. classify parse + retry'da kullanilir.
+function stripFence(t: string): string {
+  return t.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+}
+
 async function _classifyAndRespondImpl(
   input: ClassifyAndRespondInput
 ): Promise<ClassifyAndRespondOutput> {
@@ -217,26 +222,11 @@ async function _classifyAndRespondImpl(
 
   const startedAt = Date.now();
 
-  // temperature: 0.3 — önceki: yok (SDK default 1.0)
-  // 0.3 → deterministik kalır, ama natural dil varyasyonlarını kabul eder
-  const response = await callAI({
-    tier: 'standard',
-    maxTokens: DEFAULT_MAX_TOKENS,
-    temperature: 0.3,
-    system: finalSystemPrompt,
-    messages,
-  });
-
-  const latency_ms = Date.now() - startedAt;
-
-  // Mikro Adım 5: Safety artık pre-classifier'da ele aliniyor; burada sadece ham metin al
-  const rawText = response.text;
-  if (!rawText) {
-    throw new Error('AI response içinde text bulunamadı');
-  }
-
-  // JSON parse — Claude bazen ```json fence ekler, temizle
-  const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+  // temperature: 0.3 — deterministik kalır, natural dil varyasyonlarını kabul eder.
+  // jsonMode: true — saglayici duzeyinde gecerli-JSON zorlanir (OpenAI response_format + system eki).
+  // response null kalabilir: hem ilk callAI hem retry API hatasi verirse guvenli fallback'e dusulur.
+  let response: Awaited<ReturnType<typeof callAI>> | null = null;
+  let rawText = '';
 
   // Yeni JSON şeması: reply_text + intent + confidence + reasoning + answered_from_knowledge
   // Geriye dönük uyum: response_to_guest ve department alanları da destekleniyor
@@ -251,22 +241,57 @@ async function _classifyAndRespondImpl(
     answered_from_knowledge?: boolean;
   };
 
+  // ILK DENEME: API cagrisi + parse AYNI try icinde. API hatasi (400/500/timeout) VEYA
+  // gecersiz JSON → ayni retry dalina duser; retry de patlarsa TEK guvenli fallback'e cikar.
   try {
-    parsed = JSON.parse(cleaned) as typeof parsed;
-  } catch (err) {
-    // FALLBACK: Model JSON yerine duz metin dondurduyse (uzun fiyat/rezervasyon cevaplarinda olur)
-    // patlatma — ham metni misafire cevap yap, HICBIR departmana forward etme.
+    response = await callAI({
+      tier: 'standard',
+      maxTokens: DEFAULT_MAX_TOKENS,
+      temperature: 0.3,
+      system: finalSystemPrompt,
+      messages,
+      jsonMode: true,
+    });
+    rawText = response.text;
+    if (!rawText) throw new Error('AI response içinde text bulunamadı');
+    parsed = JSON.parse(stripFence(rawText)) as typeof parsed;
+  } catch (firstErr) {
+    // Ilk deneme basarisiz (API VEYA parse) — 1 KEZ retry (system'e "gecerli JSON" eki + jsonMode).
     console.warn(
-      `[classify] JSON parse fallback devrede. Ham metin reply_text yapildi. Hata: ${err instanceof Error ? err.message : 'unknown'}. Raw: ${rawText.slice(0, 120)}`
+      `[classify] ilk callAI/parse basarisiz, retry deneniyor. Hata: ${firstErr instanceof Error ? firstErr.message : 'unknown'}`
     );
-    parsed = {
-      reply_text: rawText,
-      intents: [],
-      confidence: 0.5,
-      reasoning: 'JSON parse fallback - ham metin misafire iletildi, forward yok',
-      answered_from_knowledge: true,
-    };
+    try {
+      response = await callAI({
+        tier: 'standard',
+        maxTokens: DEFAULT_MAX_TOKENS,
+        temperature: 0.3,
+        system:
+          finalSystemPrompt +
+          '\n\nONCEKI CIKTIN GECERSIZ JSON IDI. SADECE JSON objesi dondur, { ile basla.',
+        messages,
+        jsonMode: true,
+      });
+      rawText = response.text;
+      if (!rawText) throw new Error('AI retry response içinde text bulunamadı');
+      parsed = JSON.parse(stripFence(rawText)) as typeof parsed;
+      console.warn('[classify] retry basarili');
+    } catch (retryErr) {
+      // Retry de basarisiz (API VEYA parse) — GUVENLI FALLBACK. Ham LLM metni ATILIR
+      // (misafire gitmez); talep front_office'e forward edilir ki sessizce dusmesin.
+      console.error(
+        `[classify] retry de basarisiz. Guvenli fallback: talep front_office ya forward ediliyor. Hata: ${retryErr instanceof Error ? retryErr.message : 'unknown'}`
+      );
+      parsed = {
+        reply_text: 'Talebinizi ilgili ekibimize ilettim, en kısa sürede size dönüş yapılacaktır.',
+        intents: [{ department: 'front_office', request_text: input.guestMessage }],
+        confidence: 0.5,
+        reasoning: 'JSON parse fallback - ham LLM metni ATILDI, talep front_office ya forward edildi',
+        answered_from_knowledge: false,
+      };
+    }
   }
+
+  const latency_ms = Date.now() - startedAt;
 
   // Yeni format öncelikli, legacy fallback
   const responseToGuest = parsed.reply_text ?? parsed.response_to_guest ?? '';
@@ -470,9 +495,9 @@ async function _classifyAndRespondImpl(
     answered_from_knowledge: answeredFromKnowledge,
     safetyTriggered: false,   // Normal akis: safety pre-classifier'da eslesme yoktu
     safetyCategory: null,
-    model: response.model,
-    prompt_tokens: response.inputTokens,
-    completion_tokens: response.outputTokens,
+    model: response?.model ?? 'classify-fallback',
+    prompt_tokens: response?.inputTokens ?? 0,
+    completion_tokens: response?.outputTokens ?? 0,
     latency_ms,
     mapsLink: mapsLink ?? undefined,
     raw_response: rawText,

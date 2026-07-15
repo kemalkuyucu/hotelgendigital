@@ -78,6 +78,7 @@ export interface CallAIParams {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   maxTokens?: number;
   temperature?: number;
+  jsonMode?: boolean;
 }
 
 export interface CallAIResult {
@@ -91,13 +92,19 @@ export async function callAI(params: CallAIParams): Promise<CallAIResult> {
   const provider = getActiveProvider();
   const model = MODEL_MAP[provider][params.tier];
 
+  // jsonMode: system'in sonuna gecerli-JSON talimati eklenir (her iki saglayici).
+  const system = params.jsonMode
+    ? params.system + '\n\nOutput format: valid JSON only. No prose.'
+    : params.system;
+
   if (provider === 'openai') {
     const client = getOpenAIClient();
     const resp = await client.chat.completions.create({
       model,
       max_completion_tokens: params.maxTokens ?? OPENAI_DEFAULT_MAX_TOKENS,
+      ...(params.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
       messages: [
-        { role: 'system', content: params.system },
+        { role: 'system', content: system },
         ...params.messages,
       ],
     });
@@ -118,7 +125,7 @@ export async function callAI(params: CallAIParams): Promise<CallAIResult> {
     model,
     max_tokens: params.maxTokens ?? DEFAULT_MAX_TOKENS,
     ...(acceptsSampling ? { temperature: params.temperature ?? 0.3 } : {}),
-    system: params.system,
+    system,
     messages: params.messages,
   });
   const textBlock = resp.content.find((b) => b.type === 'text');

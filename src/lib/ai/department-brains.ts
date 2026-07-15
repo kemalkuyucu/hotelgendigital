@@ -384,6 +384,7 @@ infoOnly=false: SADECE misafir somut bir aksiyon/ozel istek/sikayet iletiyorsa (
     maxTokens: 400,
     system,
     messages: [{ role: 'user', content: userContent }],
+    jsonMode: true,
   });
 
   const raw = response.text;
@@ -658,6 +659,7 @@ CIKTI BICIMI (COK ONEMLI):
     maxTokens: 400,
     system,
     messages: [{ role: 'user', content: userContent }],
+    jsonMode: true,
   });
   const raw = response.text;
   // Brain JSON dondurur: { reply, infoOnly }. infoOnly=true => saf bilgi/sohbet (kart dusmez).
