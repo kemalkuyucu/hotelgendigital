@@ -14,7 +14,6 @@
 
 import { listFacts, listSections } from './knowledge-client';
 import { FACT_CATEGORY_LABELS } from './types';
-import type { FactCategory } from './types';
 
 const MAX_CHARS = 30000;
 const SECTION_MAX_CHARS = 600;
@@ -25,17 +24,20 @@ export async function buildKnowledgeSummary(hotelId: string): Promise<string> {
     listSections(hotelId),
   ]);
 
-  // Facts: kategoriye göre gruplandır
-  const grouped = new Map<FactCategory, typeof facts>();
+  // Facts: kategoriye göre gruplandır (kategori serbest TEXT → Map<string>)
+  const grouped = new Map<string, typeof facts>();
   for (const fact of facts) {
     const list = grouped.get(fact.category) ?? [];
     list.push(fact);
     grouped.set(fact.category, list);
   }
 
+  // FACT_CATEGORY_LABELS Record<FactCategory,string>; cat serbest TEXT olduğundan
+  // string-index icin genisletilmis L uzerinden okunur (fallback yine ham cat — çıktı birebir aynı).
+  const L: Record<string, string> = FACT_CATEGORY_LABELS;
   const factsText = Array.from(grouped.entries())
     .map(([cat, list]) => {
-      const label = FACT_CATEGORY_LABELS[cat] ?? cat;
+      const label = L[cat] ?? cat;
       const rows = list.map((f) => `- ${f.fact_label}: ${f.fact_value}`).join('\n');
       return `[${label}]\n${rows}`;
     })

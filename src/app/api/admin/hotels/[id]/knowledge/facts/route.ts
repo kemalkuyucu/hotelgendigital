@@ -65,7 +65,7 @@ export async function POST(
     fact_key: b.fact_key as string,
     fact_value: b.fact_value as string,
     fact_label: b.fact_label as string,
-    category: b.category as HotelFactInput['category'],
+    category: b.category,
     display_order: typeof b.display_order === 'number' ? b.display_order : 0,
   };
 

@@ -41,7 +41,7 @@ export interface HotelFact {
   fact_key: string;
   fact_value: string;
   fact_label: string;
-  category: FactCategory;
+  category: string; // serbest TEXT — DB'de CHECK yok (canli teyit 2026-07-16)
   is_active: boolean;
   display_order: number;
   created_at: string;
@@ -52,7 +52,7 @@ export interface HotelFactInput {
   fact_key: string;
   fact_value: string;
   fact_label: string;
-  category: FactCategory;
+  category: string; // serbest TEXT — DB'de CHECK yok (canli teyit 2026-07-16)
   display_order?: number;
 }
 
@@ -73,9 +73,4 @@ export interface KnowledgeSectionInput {
   content: string;
   category?: string | null;
   display_order?: number;
-}
-
-// Type guard — DB'den gelen unknown veriyi FactCategory'ye doğrula
-export function isFactCategory(value: unknown): value is FactCategory {
-  return typeof value === 'string' && (FACT_CATEGORIES as readonly string[]).includes(value);
 }

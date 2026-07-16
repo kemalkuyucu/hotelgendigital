@@ -10,7 +10,7 @@ import {
   FactTemplate,
   getTemplatesForConcept,
 } from '@/data/factTemplates';
-import { prettify } from '@/lib/knowledge/format-category';
+import { categoryLabel } from '@/lib/knowledge/format-category';
 
 // (MeetingRoomsCard taşındı → MeetingRoomsSubTab.tsx)
 
@@ -73,12 +73,6 @@ const CATEGORY_LABELS: Record<FactCategory, string> = {
   policies:           'Politikalar',
   laundry_ironing:    'Çamaşır & Ütü',
 };
-
-// categoryLabel: bilinen key CATEGORY_LABELS'ten; degilse paylasimli prettify (format-category.ts).
-function categoryLabel(cat: string): string {
-  const labels: Record<string, string> = CATEGORY_LABELS;
-  return labels[cat] ?? prettify(cat);
-}
 
 const ALL_FACT_CATEGORIES: FactCategory[] = [
   'general','food_beverage','pool_beach','spa_wellness',
@@ -460,7 +454,7 @@ export default function KnowledgeBaseSubTab() {
         <button className={`knowledge-chip${filterCategory === null ? ' knowledge-chip--active' : ''}`} onClick={() => setFilterCategory(null)} aria-pressed={filterCategory === null}>Tümü</button>
         {availableCategories.map((cat) => (
           <button key={cat} className={`knowledge-chip${filterCategory === cat ? ' knowledge-chip--active' : ''}`} onClick={() => setFilterCategory(cat)} aria-pressed={filterCategory === cat}>
-            {categoryLabel(cat)}
+            {categoryLabel(cat, CATEGORY_LABELS)}
           </button>
         ))}
       </div>
@@ -486,7 +480,7 @@ export default function KnowledgeBaseSubTab() {
       {!loading && filteredSorted.length > 0 && (
         <ul className="knowledge-list" role="list">
           {filteredSorted.map((mf) => {
-            const catLabel = categoryLabel(mf.category);
+            const catLabel = categoryLabel(mf.category, CATEGORY_LABELS);
 
             // ── Empty placeholder card ──
             if (mf.status === 'empty') {

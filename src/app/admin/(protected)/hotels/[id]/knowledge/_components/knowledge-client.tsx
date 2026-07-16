@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PREDEFINED_FACTS } from '@/lib/knowledge/predefined-facts';
 import { FACT_CATEGORIES, FACT_CATEGORY_LABELS } from '@/lib/knowledge/types';
-import type { HotelFact, KnowledgeSection, FactCategory } from '@/lib/knowledge/types';
-import { prettify } from '@/lib/knowledge/format-category';
+import type { HotelFact, KnowledgeSection } from '@/lib/knowledge/types';
+import { categoryLabel } from '@/lib/knowledge/format-category';
 
 interface Props {
   hotelId: string;
@@ -19,7 +19,7 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
   const [sections, setSections] = useState<KnowledgeSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<FactCategory | 'all'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   // Modals
   const [factModal, setFactModal] = useState(false);
@@ -168,7 +168,7 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
     : facts.filter((f) => f.category === categoryFilter);
 
   // Filtre chip'leri: bilinen kategoriler (veride olanlar) once, canli ekstralar alfabetik sonda.
-  const availableCategories = useMemo<FactCategory[]>(() => {
+  const availableCategories = useMemo<string[]>(() => {
     const seen = new Set(facts.map((f) => f.category));
     const known = new Set<string>(FACT_CATEGORIES);
     const ordered = FACT_CATEGORIES.filter((c) => seen.has(c));
@@ -177,7 +177,7 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
   }, [facts]);
 
   // Edit dropdown: TUM bilinen kategoriler + canli ekstralar (fact'in mevcut kategorisi hep listede).
-  const dropdownCategories = useMemo<FactCategory[]>(() => {
+  const dropdownCategories = useMemo<string[]>(() => {
     const known = new Set<string>(FACT_CATEGORIES);
     const extra = [...new Set(facts.map((f) => f.category))].filter((c) => !known.has(c)).sort();
     return [...FACT_CATEGORIES, ...extra];
@@ -230,7 +230,7 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
                   onClick={() => setCategoryFilter(cat)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${categoryFilter === cat ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                 >
-                  {FACT_CATEGORY_LABELS[cat] ?? prettify(cat)} ({count})
+                  {categoryLabel(cat, FACT_CATEGORY_LABELS)} ({count})
                 </button>
               );
             })}
@@ -266,7 +266,7 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
                       <td className="px-4 py-3 text-gray-600 font-mono">{f.fact_value}</td>
                       <td className="px-4 py-3">
                         <span className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">
-                          {FACT_CATEGORY_LABELS[f.category] ?? prettify(f.category)}
+                          {categoryLabel(f.category, FACT_CATEGORY_LABELS)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -401,7 +401,7 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 {dropdownCategories.map((c) => (
-                  <option key={c} value={c}>{FACT_CATEGORY_LABELS[c] ?? prettify(c)}</option>
+                  <option key={c} value={c}>{categoryLabel(c, FACT_CATEGORY_LABELS)}</option>
                 ))}
               </select>
             </div>
