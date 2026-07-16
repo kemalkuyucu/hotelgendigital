@@ -262,7 +262,10 @@ async function fetchMenuItems(supabase: SupabaseClient): Promise<string> {
 
   return (
     `ROOM-SERVICE MENUSU (oda servisi siparis edilebilir kalemler ve fiyatlari):\n` +
-    `NOT: Misafir siparişte ürün kodunu kullanabilir (ör. "RS01", "2 RS01"). Kod = ürün eşleşmesi kesindir.\n` +
+    `NOT: Misafir siparişte ürün kodunu kullanabilir (ör. "RS01", "2 RS01").\n` +
+    `SADECE aşağıdaki listede birebir yazan kodlar geçerlidir.\n` +
+    `Misafirin yazdığı kod listede YOKSA: sipariş ALMA, "talebiniz alındı" DEME, kodu benzer bir koda EŞLEME, ürün adı UYDURMA.\n` +
+    `Bunun yerine kodun geçersiz olduğunu söyle ve geçerli kodları listele.\n` +
     `${lines.join('\n')}`
   );
 }

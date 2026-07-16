@@ -2629,6 +2629,54 @@ async function handleMessage(args: {
   }
   // ── /RS-KOD KAPISI ──────────────────────────────────────────────────────────
 
+  // ── GECERSIZ KOD IDDIASI KAPISI (deterministik, KALICI KARAR #3) ────────────
+  // rsCodeMatched=false + misafir "kod"/"code" + rakam + SIPARIS BAGLAMI yazdiysa:
+  // gecerli bir kod iddia etti ama parseOrder eslesme bulamadi (kod menude yok /
+  // gecersiz format). LLM'e birakilirsa kodu benzer bir koda esleyip siparis UYDURUYOR
+  // (canli 16 Tem: "1001 kod 2 adet" -> uydurma "2 adet RS01 patates kizartmasi").
+  // Deterministik: gecerli kod listesini gonder, forward YAPMA (misafir
+  // BILGILENDIRILDI -> sessiz yutma degil), CIK. Menu bossa kapiyi atla (normal akis).
+  // SIPARIS BAGLAMI sarti false-positive'i onler ("wifi kodu 2024 nedir", "oda kodu
+  // 1234" -> siparis degil -> kapi ATLANIR, A'daki prompt yasagi devreye girer).
+  const ORDER_CONTEXT_RE =
+    /\b(adet|tane|porsiyon|siparis|sipariş|istiyorum|istiyoruz|isterim|getir|gonder|gönder|odama|order|bring|bestell)\b/i;
+  if (
+    !rsCodeMatched &&
+    /\b(kod|kodu|kodla|code)\b/i.test(text) &&
+    /\d/.test(text) &&
+    ORDER_CONTEXT_RE.test(text)
+  ) {
+    const { data: codeRows } = await supa
+      .from('menu_items')
+      .select('item_code, item_name')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true });
+    const validCodes = (codeRows ?? []).filter(
+      (r) => String(r.item_code ?? '').trim() !== '',
+    );
+    if (validCodes.length > 0) {
+      const codeList = validCodes
+        .map((r) => `${String(r.item_code).trim()} - ${r.item_name}`)
+        .join('\n');
+      const invalidCodeMsg =
+        language === 'en'
+          ? `The code you entered is not in our menu. Valid codes:\n${codeList}`
+          : language === 'de'
+            ? `Der von Ihnen eingegebene Code ist nicht in unserer Speisekarte. Gueltige Codes:\n${codeList}`
+            : `Yazdığınız kod menümüzde yok. Geçerli kodlar:\n${codeList}`;
+      await tg.sendMessage({ chat_id: chatId, text: invalidCodeMsg });
+      await supa.from('bot_messages').insert({
+        conversation_id: conversationId,
+        direction: 'outbound',
+        text: invalidCodeMsg,
+        message_type: 'text',
+      });
+      console.log('[rs-code-gate] gecersiz kod iddiasi, misafire liste gonderildi');
+      return NextResponse.json({ ok: true });
+    }
+  }
+  // ── /GECERSIZ KOD IDDIASI KAPISI ────────────────────────────────────────────
+
   // ── MENU GORSEL KAPISI (deterministik) ──────────────────────────────────────
   // "menu goster / room service / ne yiyebilirim" = SIPARIS DEGIL, menu GORME istegi.
   // LLM bunu bazen fb sanip siparis teyit kartina, bazen knowledge_query sanip fiyat

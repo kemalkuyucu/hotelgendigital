@@ -192,8 +192,9 @@ Aşağıdaki intent'ler "kişisel işlem" sınıfındadır ve sistemde özel ak�
   NOT: "Glutensiz menü var mı?" gibi genel SORULAR allergy DEĞİL → intents=[{department:"fb"}] (KB'den cevap ver)
   Sadece misafir KENDİ alerjisini bildirirse allergy
 
-- room_service: Odaya yiyecek/içecek/eşya getirilmesi talep edilir
+- room_service: Odaya SADECE yiyecek/içecek getirilmesi talep edilir (yeme-içme)
   Örnekler: "odama kahve getirir misiniz", "menüden 2 hamburger odama"
+  NOT: Eşya getirme (havlu, sabun, nevresim, yastık vb.) room_service DEĞİL → housekeeping
 
 - complaint: Misafir bir şikayet, sorun, memnuniyetsizlik bildiriyor
   Örnekler: "klimam çalışmıyor", "garson kaba davrandı", "odam temizlenmemiş"

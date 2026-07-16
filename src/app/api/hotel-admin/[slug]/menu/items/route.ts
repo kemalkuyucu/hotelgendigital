@@ -20,6 +20,12 @@ function parsePrice(raw: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+// item_code format: parse-order.ts ORDER_TOKEN_RE ile AYNI kural (1-4 harf + 1-4 rakam).
+// Bos/null serbest (kod zorunlu degil); sadece DOLU kod dogrulanir. Salt sayisal ("1001")
+// kodlar parse-order regex'ine uymadigindan RS-kod kapisiyla ASLA eslesmez -> panelde engelle.
+const ITEM_CODE_RE = /^[A-Za-z]{1,4}\d{1,4}$/;
+const ITEM_CODE_ERROR = 'Urun kodu 1-4 harf + 1-4 rakam olmalidir (ornek: RS01). Sadece sayisal kodlar calismaz.';
+
 // auth + tenant cozumu; her metot bunu cagirir
 async function authAndTenant(slug: string) {
   const admin = await getHotelAdminFromCookie();
@@ -78,6 +84,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     const price = isPaid ? parsePrice(body.price) : 0; // ucretsiz ise fiyat 0
     const currency = normalizeCurrency(body.currency);
 
+    // item_code format dogrulamasi (dolu ise); bos serbest
+    const itemCode = String(body.item_code ?? '').trim() || null;
+    if (itemCode !== null && !ITEM_CODE_RE.test(itemCode)) {
+      return NextResponse.json({ error: ITEM_CODE_ERROR }, { status: 400 });
+    }
+
     // display_order = o kategorideki max display_order + 1
     let q = supa.from('menu_items').select('display_order').order('display_order', { ascending: false }).limit(1);
     q = category === null ? q.is('category', null) : q.eq('category', category);
@@ -95,7 +107,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         is_beverage: isBeverage,
         is_active: true,
         display_order: nextOrder,
-        item_code: String(body.item_code ?? '').trim() || null,
+        item_code: itemCode,
         image_url: body.image_url ?? null,
         description: body.description ?? null,
       })
@@ -142,7 +154,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     if (patch.is_paid === false) patch.price = 0;
 
     // Katalog alanlari (023_menu_catalog): bos string -> null (unique index bos kodu saymaz)
-    if (body.item_code !== undefined) patch.item_code = String(body.item_code ?? '').trim() || null;
+    if (body.item_code !== undefined) {
+      const itemCode = String(body.item_code ?? '').trim() || null;
+      if (itemCode !== null && !ITEM_CODE_RE.test(itemCode)) {
+        return NextResponse.json({ error: ITEM_CODE_ERROR }, { status: 400 });
+      }
+      patch.item_code = itemCode;
+    }
     if (body.image_url !== undefined) patch.image_url = body.image_url ?? null;
     if (body.description !== undefined) patch.description = body.description ?? null;
 
