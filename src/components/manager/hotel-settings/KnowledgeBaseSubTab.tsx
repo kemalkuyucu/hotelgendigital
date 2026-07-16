@@ -73,6 +73,20 @@ const CATEGORY_LABELS: Record<FactCategory, string> = {
   laundry_ironing:    'Çamaşır & Ütü',
 };
 
+function prettify(cat: string): string {
+  return cat
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+// Kategori etiketi: bilinen key CATEGORY_LABELS'ten, degilse ham key prettify edilir.
+function categoryLabel(cat: string): string {
+  const labels: Record<string, string> = CATEGORY_LABELS;
+  return labels[cat] ?? prettify(cat);
+}
+
 const ALL_FACT_CATEGORIES: FactCategory[] = [
   'general','food_beverage','pool_beach','spa_wellness',
   'activity_animation','rooms','transport','children','policies','laundry_ironing',
@@ -176,7 +190,7 @@ export default function KnowledgeBaseSubTab() {
   const [facts, setFacts] = useState<HotelFact[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('empty');
-  const [filterCategory, setFilterCategory] = useState<FactCategory | null>(null);
+  const [filterCategory, setFilterCategory] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<'new' | 'fill' | 'edit' | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -194,6 +208,16 @@ export default function KnowledgeBaseSubTab() {
   const factTemplates = useMemo<FactTemplate[]>(() => getTemplatesForConcept(conceptType), [conceptType]);
   const mergedFacts = useMemo<MergedFact[]>(() => mergeFactsWithTemplates(factTemplates, facts), [factTemplates, facts]);
   const progressStats = useMemo<ProgressStats>(() => computeProgress(mergedFacts), [mergedFacts]);
+
+  // Kategori filtre chip'leri CANLI veriden turer — panelde gorunen kategoriler kadar.
+  // ALL_FACT_CATEGORIES sirasini korur; sablonda olmayan (custom) kategoriler sona alfabetik.
+  const availableCategories = useMemo<string[]>(() => {
+    const seen = new Set(mergedFacts.map((m) => m.category));
+    const known = new Set<string>(ALL_FACT_CATEGORIES);
+    const ordered = ALL_FACT_CATEGORIES.filter((c) => seen.has(c));
+    const extra = [...seen].filter((c) => !known.has(c)).sort();
+    return [...ordered, ...extra];
+  }, [mergedFacts]);
 
   const fetchFacts = useCallback(async () => {
     try {
@@ -441,9 +465,9 @@ export default function KnowledgeBaseSubTab() {
       {/* ── Category filter ── */}
       <div className="knowledge-filter-bar" role="group" aria-label="Kategori filtresi">
         <button className={`knowledge-chip${filterCategory === null ? ' knowledge-chip--active' : ''}`} onClick={() => setFilterCategory(null)} aria-pressed={filterCategory === null}>Tümü</button>
-        {ALL_FACT_CATEGORIES.map((cat) => (
+        {availableCategories.map((cat) => (
           <button key={cat} className={`knowledge-chip${filterCategory === cat ? ' knowledge-chip--active' : ''}`} onClick={() => setFilterCategory(cat)} aria-pressed={filterCategory === cat}>
-            {CATEGORY_LABELS[cat]}
+            {categoryLabel(cat)}
           </button>
         ))}
       </div>
@@ -469,7 +493,7 @@ export default function KnowledgeBaseSubTab() {
       {!loading && filteredSorted.length > 0 && (
         <ul className="knowledge-list" role="list">
           {filteredSorted.map((mf) => {
-            const catLabel = CATEGORY_LABELS[mf.category as FactCategory] ?? mf.category;
+            const catLabel = categoryLabel(mf.category);
 
             // ── Empty placeholder card ──
             if (mf.status === 'empty') {

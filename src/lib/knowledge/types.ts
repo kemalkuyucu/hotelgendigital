@@ -2,11 +2,11 @@
  * ============================================================================
  * KNOWLEDGE BASE — TypeScript Types
  * ============================================================================
- * DB ile bire bir eşleşir. CHECK constraint → FACT_CATEGORIES sabit listesi.
+ * hotel_facts.category SERBEST TEXT'tir — DB'de CHECK constraint YOK (canlı teyit 2026-07-16).
  * ============================================================================
  */
 
-// hotel_facts.category CHECK constraint ile senkronize
+// hotel_facts.category = serbest TEXT; bu liste yalnızca admin panel UI içindir (DB kısıtı değil)
 export const FACT_CATEGORIES = [
   'general',
   'pool',
