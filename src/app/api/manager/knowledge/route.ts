@@ -59,26 +59,54 @@ export async function GET() {
     }
 
     // Normalize legacy Turkish keys → English so mergeFactsWithTemplates() matches correctly.
-    // Duplicate resolution: when 2+ rows map to the same normalized key, the latest updated_at
-    // WINS the normalized key. Losers are NOT dropped — they are returned with their RAW fact_key
-    // so the panel still renders them (raw keys fall to the 'custom' branch), keeping the duplicate
-    // visible and deletable. Silent-swallow guard: a masked row still reaches the bot
-    // (fetchKnowledgeFacts reads every row raw), so the manager must be able to see and remove it.
+    // Duplicate resolution in TWO passes, so a demoted row NEVER collides in the panel's dbMap
+    // (which is keyed by fact_key). Losers are not dropped — they are returned so the panel still
+    // renders them (silent-swallow guard: a masked row still reaches the bot via fetchKnowledgeFacts,
+    // so the manager must be able to see and delete it).
+    //   Pass 1 — canonical rows (fact_key already === its normalized key) claim the normalized slot
+    //     FIRST; latest updated_at wins, any same-key duplicate loses with its raw key.
+    //   Pass 2 — legacy Turkish-alias rows (raw !== normalized): they take the slot only if it is
+    //     still free; if a canonical row already holds it the alias ALWAYS loses (canonical wins,
+    //     regardless of updated_at); two aliases contesting one slot → latest updated_at wins.
+    // Because a loser is only ever a Turkish-alias row (or an alias beaten by another alias), it
+    // keeps a raw TR fact_key that is never a template key → it falls to the 'custom' branch, so a
+    // loser's key can never equal the winner's canonical key → dbMap collision is impossible.
     type FactRow = NonNullable<typeof data>[number]
-    const seen = new Map<string, FactRow>()   // normalizedKey → winning RAW row
+    const rows = data ?? []
+    const seen = new Map<string, FactRow>()   // normalizedKey → winning row
     const losers: FactRow[] = []              // displaced rows, RAW fact_key kept
-    for (const row of data ?? []) {
-      const normalizedKey = normalizeFactKey(row.fact_key)
-      const existing = seen.get(normalizedKey)
+
+    // Pass 1 — canonical (already-English) rows.
+    for (const row of rows) {
+      if (row.fact_key !== normalizeFactKey(row.fact_key)) continue
+      const existing = seen.get(row.fact_key)
       if (!existing) {
-        seen.set(normalizedKey, row)
+        seen.set(row.fact_key, row)
       } else if (row.updated_at > existing.updated_at) {
-        losers.push(existing)   // previous winner demoted → keep its raw fact_key
-        seen.set(normalizedKey, row)
+        losers.push(existing)
+        seen.set(row.fact_key, row)
       } else {
-        losers.push(row)        // this row loses → keep its raw fact_key
+        losers.push(row)
       }
     }
+
+    // Pass 2 — legacy Turkish-alias rows.
+    for (const row of rows) {
+      const normalizedKey = normalizeFactKey(row.fact_key)
+      if (row.fact_key === normalizedKey) continue
+      const existing = seen.get(normalizedKey)
+      if (!existing) {
+        seen.set(normalizedKey, row)                 // free slot → alias wins the canonical key
+      } else if (existing.fact_key === normalizedKey) {
+        losers.push(row)                             // slot held by a canonical row → alias always loses
+      } else if (row.updated_at > existing.updated_at) {
+        losers.push(existing)                        // two aliases: latest wins
+        seen.set(normalizedKey, row)
+      } else {
+        losers.push(row)
+      }
+    }
+
     const winners = Array.from(seen.entries()).map(([normalizedKey, row]) => ({
       ...row,
       fact_key: normalizedKey,
