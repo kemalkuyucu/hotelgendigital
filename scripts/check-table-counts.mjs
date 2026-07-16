@@ -1,8 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
 
-const DEMO_HOTEL_SUPABASE_URL = 'https://rvsyvegfeywzqbqljlij.supabase.co';
-const DEMO_HOTEL_SUPABASE_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2c3l2ZWdmZXl3enFicWxqbGlqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzk3MzQ2OCwiZXhwIjoyMDkzNTQ5NDY4fQ.T1NtIugkuxcX0sLcw3LVDavJHLhdXzjwR4FO2oDiEio';
+const DEMO_HOTEL_SUPABASE_URL = process.env.DEMO_HOTEL_SUPABASE_URL;
+const DEMO_HOTEL_SUPABASE_SERVICE_ROLE_KEY = process.env.DEMO_HOTEL_SUPABASE_SERVICE_ROLE_KEY;
+
+if (!DEMO_HOTEL_SUPABASE_URL || !DEMO_HOTEL_SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('EKSIK ENV: DEMO_HOTEL_SUPABASE_*');
+  process.exit(1);
+}
 
 const supabase = createClient(DEMO_HOTEL_SUPABASE_URL, DEMO_HOTEL_SUPABASE_SERVICE_ROLE_KEY, {
   realtime: { transport: ws }
