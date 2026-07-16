@@ -110,11 +110,15 @@ function mergeFactsWithTemplates(templates: FactTemplate[], dbFacts: HotelFact[]
   const fromTemplates: MergedFact[] = templates.map((tmpl) => {
     const db = dbMap.get(tmpl.fact_key);
     usedKeys.add(tmpl.fact_key);
+    // Dolu kartta kategori kaynagi DB (otelin gercek tercihi).
+    // tmpl.category yalnizca HENUZ KAYIT OLMAYAN (empty) kart icin varsayilan.
+    // Baseline 16 Tem: 5 kart degisir (wifi_ssid/wifi_password/hotel_email/
+    // pool_open/pool_close), kart sayisi sabit (209).
     if (db) {
       return {
         status: db.is_active ? 'filled' : 'inactive',
         fact_key: tmpl.fact_key, fact_label: tmpl.fact_label, fact_value: db.fact_value,
-        category: tmpl.category, tier: tmpl.tier, is_active: db.is_active,
+        category: db.category, tier: tmpl.tier, is_active: db.is_active,
         placeholder: tmpl.placeholder, hint: tmpl.hint, display_order: tmpl.display_order,
         db_id: db.id, applies_to_concepts: tmpl.applies_to_concepts,
       };
