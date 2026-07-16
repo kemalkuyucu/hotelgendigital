@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PREDEFINED_FACTS } from '@/lib/knowledge/predefined-facts';
 import { FACT_CATEGORIES, FACT_CATEGORY_LABELS } from '@/lib/knowledge/types';
 import type { HotelFact, KnowledgeSection, FactCategory } from '@/lib/knowledge/types';
+import { prettify } from '@/lib/knowledge/format-category';
 
 interface Props {
   hotelId: string;
@@ -30,7 +31,7 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
   // Fact form
   const [useCustomKey, setUseCustomKey] = useState(false);
   const [selectedPredefined, setSelectedPredefined] = useState('');
-  const [factForm, setFactForm] = useState({ fact_key: '', fact_value: '', fact_label: '', category: 'general' as FactCategory });
+  const [factForm, setFactForm] = useState({ fact_key: '', fact_value: '', fact_label: '', category: 'general' });
 
   // Section form
   const [sectionForm, setSectionForm] = useState({ title: '', content: '', category: '', display_order: 0 });
@@ -166,6 +167,22 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
     ? facts
     : facts.filter((f) => f.category === categoryFilter);
 
+  // Filtre chip'leri: bilinen kategoriler (veride olanlar) once, canli ekstralar alfabetik sonda.
+  const availableCategories = useMemo<FactCategory[]>(() => {
+    const seen = new Set(facts.map((f) => f.category));
+    const known = new Set<string>(FACT_CATEGORIES);
+    const ordered = FACT_CATEGORIES.filter((c) => seen.has(c));
+    const extra = [...seen].filter((c) => !known.has(c)).sort();
+    return [...ordered, ...extra];
+  }, [facts]);
+
+  // Edit dropdown: TUM bilinen kategoriler + canli ekstralar (fact'in mevcut kategorisi hep listede).
+  const dropdownCategories = useMemo<FactCategory[]>(() => {
+    const known = new Set<string>(FACT_CATEGORIES);
+    const extra = [...new Set(facts.map((f) => f.category))].filter((c) => !known.has(c)).sort();
+    return [...FACT_CATEGORIES, ...extra];
+  }, [facts]);
+
   if (loading) return <div className="text-gray-500 p-4">Yükleniyor...</div>;
 
   return (
@@ -205,16 +222,15 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
             >
               Tümü ({facts.length})
             </button>
-            {FACT_CATEGORIES.map((cat) => {
+            {availableCategories.map((cat) => {
               const count = facts.filter((f) => f.category === cat).length;
-              if (count === 0) return null;
               return (
                 <button
                   key={cat}
                   onClick={() => setCategoryFilter(cat)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${categoryFilter === cat ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                 >
-                  {FACT_CATEGORY_LABELS[cat]} ({count})
+                  {FACT_CATEGORY_LABELS[cat] ?? prettify(cat)} ({count})
                 </button>
               );
             })}
@@ -250,7 +266,7 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
                       <td className="px-4 py-3 text-gray-600 font-mono">{f.fact_value}</td>
                       <td className="px-4 py-3">
                         <span className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">
-                          {FACT_CATEGORY_LABELS[f.category] ?? f.category}
+                          {FACT_CATEGORY_LABELS[f.category] ?? prettify(f.category)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -381,11 +397,11 @@ export function KnowledgeClient({ hotelId, hotelName: _hotelName }: Props) {
               <label className="block text-xs font-medium text-gray-700 mb-1">Kategori</label>
               <select
                 value={factForm.category}
-                onChange={(e) => setFactForm(p => ({ ...p, category: e.target.value as FactCategory }))}
+                onChange={(e) => setFactForm(p => ({ ...p, category: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                {FACT_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{FACT_CATEGORY_LABELS[c]}</option>
+                {dropdownCategories.map((c) => (
+                  <option key={c} value={c}>{FACT_CATEGORY_LABELS[c] ?? prettify(c)}</option>
                 ))}
               </select>
             </div>

@@ -3,7 +3,6 @@ import { requireSuperAdmin } from '@/lib/auth/guards';
 import { logAudit } from '@/lib/auth/audit';
 import { updateFact, deleteFact } from '@/lib/knowledge/knowledge-client';
 import { invalidateSummary } from '@/lib/knowledge/cache';
-import { isFactCategory } from '@/lib/knowledge/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,7 +33,14 @@ export async function PATCH(
   const patch: Record<string, unknown> = {};
   if (typeof b.fact_value === 'string') patch.fact_value = b.fact_value;
   if (typeof b.fact_label === 'string') patch.fact_label = b.fact_label;
-  if (isFactCategory(b.category)) patch.category = b.category;
+  // Kategori SERBEST TEXT: body'de varsa non-empty string sart; sessizce dusurme YOK.
+  if ('category' in b) {
+    if (typeof b.category === 'string' && b.category.trim() !== '') {
+      patch.category = b.category.trim();
+    } else {
+      return NextResponse.json({ error: 'category bos olamaz' }, { status: 400 });
+    }
+  }
   if (typeof b.display_order === 'number') patch.display_order = b.display_order;
 
   if (Object.keys(patch).length === 0) {

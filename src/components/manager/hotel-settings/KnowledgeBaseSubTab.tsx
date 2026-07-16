@@ -10,6 +10,7 @@ import {
   FactTemplate,
   getTemplatesForConcept,
 } from '@/data/factTemplates';
+import { prettify } from '@/lib/knowledge/format-category';
 
 // (MeetingRoomsCard taşındı → MeetingRoomsSubTab.tsx)
 
@@ -73,15 +74,7 @@ const CATEGORY_LABELS: Record<FactCategory, string> = {
   laundry_ironing:    'Çamaşır & Ütü',
 };
 
-function prettify(cat: string): string {
-  return cat
-    .split('_')
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
-
-// Kategori etiketi: bilinen key CATEGORY_LABELS'ten, degilse ham key prettify edilir.
+// categoryLabel: bilinen key CATEGORY_LABELS'ten; degilse paylasimli prettify (format-category.ts).
 function categoryLabel(cat: string): string {
   const labels: Record<string, string> = CATEGORY_LABELS;
   return labels[cat] ?? prettify(cat);

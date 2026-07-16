@@ -3,7 +3,6 @@ import { requireSuperAdmin } from '@/lib/auth/guards';
 import { logAudit } from '@/lib/auth/audit';
 import { listFacts, upsertFact } from '@/lib/knowledge/knowledge-client';
 import { invalidateSummary } from '@/lib/knowledge/cache';
-import { isFactCategory } from '@/lib/knowledge/types';
 import type { HotelFactInput } from '@/lib/knowledge/types';
 
 export const runtime = 'nodejs';
@@ -47,18 +46,21 @@ export async function POST(
     return NextResponse.json({ error: 'invalid json' }, { status: 400 });
   }
 
-  if (
-    typeof body !== 'object' ||
-    body === null ||
-    typeof (body as Record<string, unknown>).fact_key !== 'string' ||
-    typeof (body as Record<string, unknown>).fact_value !== 'string' ||
-    typeof (body as Record<string, unknown>).fact_label !== 'string' ||
-    !isFactCategory((body as Record<string, unknown>).category)
-  ) {
-    return NextResponse.json({ error: 'fact_key, fact_value, fact_label ve geçerli category zorunlu' }, { status: 400 });
+  if (typeof body !== 'object' || body === null) {
+    return NextResponse.json({ error: 'geçersiz gövde' }, { status: 400 });
   }
-
   const b = body as Record<string, unknown>;
+
+  // Kategori artik SERBEST TEXT: non-empty string yeterli (isFactCategory kapisi kaldirildi).
+  if (
+    typeof b.fact_key !== 'string' ||
+    typeof b.fact_value !== 'string' ||
+    typeof b.fact_label !== 'string' ||
+    typeof b.category !== 'string' ||
+    b.category.trim() === ''
+  ) {
+    return NextResponse.json({ error: 'fact_key, fact_value, fact_label ve category (bos olamaz) zorunlu' }, { status: 400 });
+  }
   const factInput: HotelFactInput = {
     fact_key: b.fact_key as string,
     fact_value: b.fact_value as string,
