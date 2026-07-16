@@ -246,7 +246,12 @@ export default function KnowledgeBaseSubTab() {
   };
   const openEdit = (mf: MergedFact) => {
     const dbFact = facts.find((f) => f.id === mf.db_id);
-    if (!dbFact) return;
+    if (!dbFact) {
+      // SESSIZ RETURN YASAK: kullanici kaleme basiyor ama hicbir sey olmuyordu.
+      console.error('[KnowledgeBase] openEdit: DB kaydi bulunamadi', { fact_key: mf.fact_key, db_id: mf.db_id });
+      addToast('Bu kaydı düzenleyemedim, lütfen sayfayı yenileyip tekrar deneyin.', 'error');
+      return;
+    }
     setEditingId(dbFact.id); setFillMf(mf);
     setForm({ fact_label: dbFact.fact_label, fact_key: dbFact.fact_key, fact_value: dbFact.fact_value, category: dbFact.category, is_active: dbFact.is_active });
     setKeyManuallyEdited(true); setFieldError(null); setPanelMode('edit');

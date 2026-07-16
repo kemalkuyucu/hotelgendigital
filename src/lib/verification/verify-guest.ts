@@ -36,6 +36,9 @@ export interface ParsedVerification {
   lastName: string | null;
   hasEmbeddedRequest: boolean;
   embeddedRequest: string | null;
+  // Salt-kimlik iddiasi mi? (re-verify guard'i icin). true = mesaj SADECE oda+ad+soyad;
+  // oda no cikarildiktan sonra kalanda rakam yok. "1001 kod 2 adet" gibi mesajlar false.
+  isPureIdentityClaim: boolean;
 }
 
 // Türkçe/İngilizce/Almanca/Rusça/Arapça sık kullanılan stop word'ler
@@ -82,6 +85,7 @@ export function parseVerificationInput(text: string): ParsedVerification {
     lastName: null,
     hasEmbeddedRequest: false,
     embeddedRequest: null,
+    isPureIdentityClaim: false,
   };
 
   if (!text || typeof text !== 'string') return result;
@@ -142,6 +146,17 @@ export function parseVerificationInput(text: string): ParsedVerification {
       result.embeddedRequest = stripped.length > 3 ? stripped : null;
     }
   }
+
+  // 5) Salt-kimlik iddiasi tespiti (re-verify guard icin). Oda no eslesmesi CIKARILDIKTAN
+  //    sonra kalan metinde RAKAM YOKSA ve ad+soyad doluysa true. Ilk dogrulama akisini
+  //    ETKILEMEZ — sadece yeni alan.
+  //    "312 Kemal Kuyucu"     -> true
+  //    "oda 312 Kemal Kuyucu" -> true
+  //    "1001 kod 2 adet"      -> false  ("2" artik rakam)
+  //    "15 agustos 2 kisi"    -> false
+  const residualAfterRoom = roomMatch ? cleaned.replace(roomMatch[0], ' ') : cleaned;
+  result.isPureIdentityClaim =
+    !/\d/.test(residualAfterRoom) && !!result.firstName && !!result.lastName;
 
   return result;
 }

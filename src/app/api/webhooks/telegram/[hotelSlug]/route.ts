@@ -2926,6 +2926,7 @@ async function handleMessage(args: {
     const reParsed = parseVerificationInput(text);
     if (
       !reParsed.hasEmbeddedRequest &&  // BEYINCIK: mesajda talep varsa re-verify YOK; dogrulanmis misafir "eslesme bulamadim" duymaz, talep normal akar (dedup ikinci karti keser)
+      reParsed.isPureIdentityClaim &&  // SADECE salt oda+ad+soyad ("1001 kod 2 adet" gibi rakamli talep mesajlari re-verify'a DUSMEZ)
       reParsed.roomNumber !== null &&
       reParsed.firstName !== null &&
       reParsed.lastName !== null &&
@@ -3002,6 +3003,81 @@ async function handleMessage(args: {
           message_type: 'text',
         });
         await tg.sendMessage({ chat_id: chatId, text: noMatchMsg });
+
+        // ── SESSIZ YUTMA FIX: mesaj "On buromuza yonlendiriyorum" diyor → GERCEKTEN
+        // front_office'e forward et + sla_events olustur ki talep izlensin ve dusmesin.
+        // Ana forward yolunun (satir ~3690+) cekirdegi: dept chat_id + sla_minutes →
+        // sla_events INSERT → SLA butonlu grup karti → department_message_id update.
+        // Kart mevcut currentVerifiedGuest kimligiyle, HAM mesaj request_text olarak duser.
+        // Kart gonderilemezse oksuz SLA kalmasin (BUG-2 kurali) → rollback. Hata olsa da return.
+        try {
+          const { data: foDept } = await supa
+            .from('departments')
+            .select('telegram_chat_id, sla_minutes')
+            .eq('code', 'front_office')
+            .maybeSingle();
+          const foChatId = (foDept as { telegram_chat_id?: string | null } | null)?.telegram_chat_id ?? null;
+          if (!foChatId) {
+            console.error('[reverify-forward] front_office telegram_chat_id yok — talep forward EDILEMEDI (sessiz yutma riski)');
+          } else {
+            const foSlaMin = (foDept as { sla_minutes?: number | null } | null)?.sla_minutes ?? 1;
+            const nowFwd = new Date();
+            const guestFullFwd = `${currentVerifiedGuest.first_name ?? ''} ${currentVerifiedGuest.last_name ?? ''}`.trim().toUpperCase();
+            const { data: foSla, error: foSlaErr } = await supa
+              .from('sla_events')
+              .insert({
+                conversation_id: conversationId,
+                inhouse_guest_id: null,
+                department_code: 'front_office',
+                department_chat_id: foChatId,
+                request_text: text,
+                room_number: currentVerifiedGuest.room_number ?? null,
+                guest_full_name: guestFullFwd,
+                forwarded_at: nowFwd.toISOString(),
+                sla_deadline: new Date(nowFwd.getTime() + foSlaMin * 60 * 1000).toISOString(),
+              })
+              .select('id')
+              .single();
+            if (foSlaErr || !foSla) {
+              console.error('[reverify-forward] sla_events INSERT FAILED', { code: foSlaErr?.code, msg: foSlaErr?.message });
+            } else {
+              const reqTr = await translateToTurkish(text);
+              const needTr = !!reqTr.trim() && reqTr.trim() !== text.trim();
+              const escF = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const trDateF =
+                new Intl.DateTimeFormat('tr-TR', {
+                  timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit',
+                  hour: '2-digit', minute: '2-digit', hour12: false,
+                }).format(nowFwd) + ' (TR)';
+              const roomLineF = currentVerifiedGuest.room_number
+                ? `🚪 <b>Oda:</b> ${escF(currentVerifiedGuest.room_number)}\n`
+                : '';
+              const trLineF = needTr ? `\n🇹🇷 <b>Çeviri:</b> "${escF(reqTr)}"` : '';
+              const cardHtml =
+                `🛎 <b>Misafir Talebi</b>\n\n` +
+                roomLineF +
+                `👤 <b>Misafir:</b> ${escF(guestFullFwd)}\n` +
+                `📝 <b>Talep:</b> "${escF(text)}"${trLineF}\n` +
+                `🕐 <b>Saat:</b> ${escF(trDateF)}`;
+              const { messageId: foMsgId, ok: foOk } = await sendForwardWithSlaButtons({
+                botToken,
+                chatId: foChatId,
+                html: cardHtml,
+                variant: 'normal',
+                slaEventId: foSla.id as string,
+              });
+              if (foOk && foMsgId) {
+                await supa.from('sla_events').update({ department_message_id: foMsgId }).eq('id', foSla.id as string);
+                console.log('[reverify-forward] front_office SLA karti dustu', { slaEventId: foSla.id, msgId: foMsgId });
+              } else {
+                await supa.from('sla_events').delete().eq('id', foSla.id as string);
+                console.error('[reverify-forward] kart gonderilemedi → oksuz sla_events geri alindi', { slaEventId: foSla.id });
+              }
+            }
+          }
+        } catch (fwdErr) {
+          console.error('[reverify-forward] forward hatasi (misafire mesaj yine de gitti):', fwdErr instanceof Error ? fwdErr.message : fwdErr);
+        }
         return;
       }
     } else if (

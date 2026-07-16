@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth'
 import { getDemoHotelSupabase } from '@/lib/supabase-client'
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
+import { invalidateSummary } from '@/lib/knowledge/cache'
 
 // ── PATCH /api/manager/knowledge/[id] ────────────────────────────────────────
 export async function PATCH(
@@ -39,9 +40,8 @@ export async function PATCH(
 
     patch.updated_at = new Date().toISOString()
 
-    const supabase = manager.hotel_slug
-      ? (await resolveTenantBySlug(manager.hotel_slug)).hotelSupabase
-      : getDemoHotelSupabase()
+    const tenant = manager.hotel_slug ? await resolveTenantBySlug(manager.hotel_slug) : null
+    const supabase = tenant ? tenant.hotelSupabase : getDemoHotelSupabase()
 
     const { data, error } = await supabase
       .from('hotel_facts')
@@ -64,6 +64,8 @@ export async function PATCH(
       )
     }
 
+    // CLAUDE.md: her knowledge CRUD sonrasi bot bayat bilgi dondurmesin diye cache iptal
+    if (tenant) invalidateSummary(tenant.hotelId)
     return NextResponse.json({ fact: data }, { status: 200 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -87,9 +89,8 @@ export async function DELETE(
     }
 
     const { id } = await params
-    const supabase = manager.hotel_slug
-      ? (await resolveTenantBySlug(manager.hotel_slug)).hotelSupabase
-      : getDemoHotelSupabase()
+    const tenant = manager.hotel_slug ? await resolveTenantBySlug(manager.hotel_slug) : null
+    const supabase = tenant ? tenant.hotelSupabase : getDemoHotelSupabase()
 
     const { error } = await supabase
       .from('hotel_facts')
@@ -104,6 +105,8 @@ export async function DELETE(
       )
     }
 
+    // CLAUDE.md: her knowledge CRUD sonrasi bot bayat bilgi dondurmesin diye cache iptal
+    if (tenant) invalidateSummary(tenant.hotelId)
     return NextResponse.json({ ok: true }, { status: 200 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

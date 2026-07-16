@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getManagerOrHotelAdmin } from '@/lib/hotel-admin/auth'
 import { getDemoHotelSupabase } from '@/lib/supabase-client'
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
+import { invalidateSummary } from '@/lib/knowledge/cache'
 
 // ── Legacy Turkish → English fact_key normalization map ──────────────────────
 // Eski Türkçe anahtar adlarını şablon sistemiyle (factTemplates.ts) uyumlu
@@ -108,9 +109,8 @@ export async function POST(req: NextRequest) {
 
     const normalizedKey = fact_key.trim().toLowerCase()
 
-    const supabase = manager.hotel_slug
-      ? (await resolveTenantBySlug(manager.hotel_slug)).hotelSupabase
-      : getDemoHotelSupabase()
+    const tenant = manager.hotel_slug ? await resolveTenantBySlug(manager.hotel_slug) : null
+    const supabase = tenant ? tenant.hotelSupabase : getDemoHotelSupabase()
 
     // ── Check if a row with this fact_key already exists (UPSERT logic) ──────
     // Includes legacy Turkish aliases so saving 'hotel_name' also finds 'otel_adi'.
@@ -152,6 +152,8 @@ export async function POST(req: NextRequest) {
         )
       }
 
+      // CLAUDE.md: her knowledge CRUD sonrasi bot bayat bilgi dondurmesin diye cache iptal
+      if (tenant) invalidateSummary(tenant.hotelId)
       return NextResponse.json({ fact: data }, { status: 200 })
     }
 
@@ -189,6 +191,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // CLAUDE.md: her knowledge CRUD sonrasi bot bayat bilgi dondurmesin diye cache iptal
+    if (tenant) invalidateSummary(tenant.hotelId)
     return NextResponse.json({ fact: data }, { status: 201 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
