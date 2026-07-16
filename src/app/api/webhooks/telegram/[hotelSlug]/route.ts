@@ -3089,8 +3089,9 @@ async function handleMessage(args: {
             if (foSlaErr || !foSla) {
               console.error('[reverify-forward] sla_events INSERT FAILED', { code: foSlaErr?.code, msg: foSlaErr?.message });
             } else {
-              const reqTr = await translateToTurkish(text);
-              const needTr = !!reqTr.trim() && reqTr.trim() !== text.trim();
+              // Kimlik uyusmazligi kartidir, TALEP degil: translateToTurkish CAGRILMAZ
+              // (kimlik metni cevirisi anlamsiz). Kayitli oda/misafir = currentVerifiedGuest;
+              // misafirin verdigi bilgi = ham text.
               const escF = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
               const trDateF =
                 new Intl.DateTimeFormat('tr-TR', {
@@ -3098,20 +3099,21 @@ async function handleMessage(args: {
                   hour: '2-digit', minute: '2-digit', hour12: false,
                 }).format(nowFwd) + ' (TR)';
               const roomLineF = currentVerifiedGuest.room_number
-                ? `🚪 <b>Oda:</b> ${escF(currentVerifiedGuest.room_number)}\n`
+                ? `🚪 <b>Kayıtlı oda:</b> ${escF(currentVerifiedGuest.room_number)}\n`
                 : '';
-              const trLineF = needTr ? `\n🇹🇷 <b>Çeviri:</b> "${escF(reqTr)}"` : '';
               const cardHtml =
-                `🛎 <b>Misafir Talebi</b>\n\n` +
+                `⚠️ <b>Kimlik Doğrulama Uyuşmazlığı</b>\n\n` +
                 roomLineF +
-                `👤 <b>Misafir:</b> ${escF(guestFullFwd)}\n` +
-                `📝 <b>Talep:</b> "${escF(text)}"${trLineF}\n` +
+                `👤 <b>Kayıtlı misafir:</b> ${escF(guestFullFwd)}\n\n` +
+                `📝 <b>Misafirin verdiği bilgi:</b> "${escF(text)}"\n` +
+                `❗ Bu bilgi in-house listesinde eşleşmedi.\n\n` +
+                `Lütfen misafirle iletişime geçip doğrulayın.\n` +
                 `🕐 <b>Saat:</b> ${escF(trDateF)}`;
               const { messageId: foMsgId, ok: foOk } = await sendForwardWithSlaButtons({
                 botToken,
                 chatId: foChatId,
                 html: cardHtml,
-                variant: 'normal',
+                variant: 'overlimit',
                 slaEventId: foSla.id as string,
               });
               if (foOk && foMsgId) {
