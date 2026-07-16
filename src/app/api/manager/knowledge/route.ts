@@ -59,24 +59,32 @@ export async function GET() {
     }
 
     // Normalize legacy Turkish keys → English so mergeFactsWithTemplates() matches correctly.
-    // Duplicate resolution: if two rows map to the same normalized key, keep the more recently
-    // updated one (latest updated_at wins).
+    // Duplicate resolution: when 2+ rows map to the same normalized key, the latest updated_at
+    // WINS the normalized key. Losers are NOT dropped — they are returned with their RAW fact_key
+    // so the panel still renders them (raw keys fall to the 'custom' branch), keeping the duplicate
+    // visible and deletable. Silent-swallow guard: a masked row still reaches the bot
+    // (fetchKnowledgeFacts reads every row raw), so the manager must be able to see and remove it.
     type FactRow = NonNullable<typeof data>[number]
-    const seen = new Map<string, FactRow>()
+    const seen = new Map<string, FactRow>()   // normalizedKey → winning RAW row
+    const losers: FactRow[] = []              // displaced rows, RAW fact_key kept
     for (const row of data ?? []) {
       const normalizedKey = normalizeFactKey(row.fact_key)
       const existing = seen.get(normalizedKey)
       if (!existing) {
-        seen.set(normalizedKey, { ...row, fact_key: normalizedKey })
+        seen.set(normalizedKey, row)
+      } else if (row.updated_at > existing.updated_at) {
+        losers.push(existing)   // previous winner demoted → keep its raw fact_key
+        seen.set(normalizedKey, row)
       } else {
-        // Keep the one with the later updated_at
-        if (row.updated_at > existing.updated_at) {
-          seen.set(normalizedKey, { ...row, fact_key: normalizedKey })
-        }
+        losers.push(row)        // this row loses → keep its raw fact_key
       }
     }
+    const winners = Array.from(seen.entries()).map(([normalizedKey, row]) => ({
+      ...row,
+      fact_key: normalizedKey,
+    }))
 
-    return NextResponse.json({ facts: Array.from(seen.values()) }, { status: 200 })
+    return NextResponse.json({ facts: [...winners, ...losers] }, { status: 200 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[knowledge GET] unexpected error:', message)
