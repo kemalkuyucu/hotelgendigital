@@ -11,6 +11,7 @@ import {
   getTemplatesForConcept,
 } from '@/data/factTemplates';
 import { categoryLabel } from '@/lib/knowledge/format-category';
+import { normalizeTr } from '@/lib/utils/normalize-tr';
 
 // (MeetingRoomsCard taşındı → MeetingRoomsSubTab.tsx)
 
@@ -178,6 +179,7 @@ export default function KnowledgeBaseSubTab() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('empty');
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [search, setSearch] = useState(''); // client-side arama (debounce YOK — 134 kayit)
   const [panelMode, setPanelMode] = useState<'new' | 'fill' | 'edit' | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -205,6 +207,16 @@ export default function KnowledgeBaseSubTab() {
     const extra = [...seen].filter((c) => !known.has(c)).sort();
     return [...ordered, ...extra];
   }, [mergedFacts]);
+
+  // Form dropdown kategorileri: TUM sablon kategorileri + canli DB'de gecen ekstralar.
+  // Ekstralar HAM `facts`'ten turer (mergedFacts DEGIL): mergeFactsWithTemplates template
+  // fact'lerde db.category'yi tmpl.category ile MASKELER; ham facts, duzenlenen fact'in
+  // MEVCUT db kategorisinin (edit'te form.category=dbFact.category) HER ZAMAN listede olmasini garanti eder.
+  const dropdownCategories = useMemo<string[]>(() => {
+    const known = new Set<string>(ALL_FACT_CATEGORIES);
+    const extra = [...new Set(facts.map((f) => f.category))].filter((c) => !known.has(c)).sort();
+    return [...ALL_FACT_CATEGORIES, ...extra];
+  }, [facts]);
 
   const fetchFacts = useCallback(async () => {
     try {
@@ -236,9 +248,21 @@ export default function KnowledgeBaseSubTab() {
     }
   }, [panelMode, editingId, fillMf]);
 
+  // ── Search (client-side, UC alan: label/key/value; normalizeTr ile TR-toleransli) ──
+  // Bos arama -> mergedFacts aynen doner. Paylasimli normalizeTr (src/lib/utils) kullanilir.
+  const searchHits = useMemo<MergedFact[]>(() => {
+    const q = normalizeTr(search.trim());
+    if (!q) return mergedFacts;
+    return mergedFacts.filter((m) =>
+      normalizeTr(m.fact_label ?? '').includes(q) ||
+      normalizeTr(m.fact_key ?? '').includes(q) ||
+      normalizeTr(m.fact_value ?? '').includes(q)
+    );
+  }, [mergedFacts, search]);
+
   // ── Filtered + sorted list ──────────────────────────────────────────────────
   const filteredSorted = useMemo<MergedFact[]>(() => {
-    let list = mergedFacts;
+    let list = searchHits;
     // status filter
     if (filterStatus === 'empty')    list = list.filter((m) => m.status === 'empty');
     else if (filterStatus === 'filled') list = list.filter((m) => m.status === 'filled' || m.status === 'custom');
@@ -246,7 +270,7 @@ export default function KnowledgeBaseSubTab() {
     // category filter
     if (filterCategory) list = list.filter((m) => m.category === filterCategory);
     return sortMerged(list, filterStatus);
-  }, [mergedFacts, filterStatus, filterCategory]);
+  }, [searchHits, filterStatus, filterCategory]);
 
   // ── Form handlers ──────────────────────────────────────────────────────────
   const handleLabelChange = (val: string) => {
@@ -416,10 +440,10 @@ export default function KnowledgeBaseSubTab() {
               <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
                 <label className="form-label" htmlFor="kb-category">Kategori</label>
                 {isReadOnly ? (
-                  <input id="kb-category" type="text" className="form-input knowledge-form-input form-input--readonly" value={CATEGORY_LABELS[form.category as FactCategory] ?? form.category} readOnly title="Bu alan şablondan geliyor" />
+                  <input id="kb-category" type="text" className="form-input knowledge-form-input form-input--readonly" value={categoryLabel(form.category, CATEGORY_LABELS)} readOnly title="Bu alan şablondan geliyor" />
                 ) : (
                   <select id="kb-category" className="form-input knowledge-form-input knowledge-select" value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}>
-                    {ALL_FACT_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                    {dropdownCategories.map((c) => <option key={c} value={c}>{categoryLabel(c, CATEGORY_LABELS)}</option>)}
                   </select>
                 )}
               </div>
@@ -439,6 +463,34 @@ export default function KnowledgeBaseSubTab() {
           </div>
         </div>
       )}
+
+      {/* ── Search box ── */}
+      <div className="knowledge-search-row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <input
+            type="text"
+            className="form-input knowledge-form-input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Başlık, anahtar veya metin içinde ara..."
+            aria-label="Bilgi tabanında ara"
+            style={{ width: '100%', paddingRight: search ? 30 : undefined }}
+          />
+          {search && (
+            <button
+              type="button"
+              aria-label="Aramayı temizle"
+              onClick={() => setSearch('')}
+              style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: '#9ca3af', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <span style={{ fontSize: 12, color: '#9ca3af', whiteSpace: 'nowrap' }}>
+          {filteredSorted.length} / {mergedFacts.length}
+        </span>
+      </div>
 
       {/* ── Status filter ── */}
       <div className="knowledge-status-filter" role="group" aria-label="Durum filtresi">
@@ -472,7 +524,22 @@ export default function KnowledgeBaseSubTab() {
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'rgba(168,85,247,0.4)' }}>
             <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
           </svg>
-          <p className="knowledge-empty-text">Bu filtrede kayıt bulunamadı.</p>
+          {searchHits.length > 0 ? (
+            <>
+              {/* SESSIZ YUTMA YASAGI: eslesme VAR ama status/kategori filtresi gizliyor
+                  (varsayilan 'empty' status filtresi dolu fact'leri saklar → "arama bozuk" yanilgisi) */}
+              <p className="knowledge-empty-text">Bu aramada {searchHits.length} sonuç var ama filtreler gizliyor.</p>
+              <button
+                type="button"
+                onClick={() => { setFilterCategory(null); setFilterStatus('all'); }}
+                style={{ marginTop: 8, padding: '6px 14px', fontSize: 13, borderRadius: 8, border: '1px solid rgba(168,85,247,0.35)', background: 'rgba(168,85,247,0.1)', color: 'rgba(196,181,253,0.95)', cursor: 'pointer' }}
+              >
+                Filtreleri temizle
+              </button>
+            </>
+          ) : (
+            <p className="knowledge-empty-text">Bu filtrede kayıt bulunamadı.</p>
+          )}
         </div>
       )}
 
