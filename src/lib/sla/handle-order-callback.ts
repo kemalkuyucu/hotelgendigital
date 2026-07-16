@@ -2,6 +2,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { sendForwardWithSlaButtons } from './send-forward-with-buttons';
 import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 import { extractOrderNote } from '@/lib/menu/parse-order';
+import { readPendingText, orderStampAccepts, formatOrderSummary } from '@/lib/menu/pending-order';
 
 const TG = (token: string, m: string) => `https://api.telegram.org/bot${token}/${m}`;
 
@@ -9,16 +10,16 @@ interface OrderCallbackParams {
   supa: SupabaseClient;
   botToken: string;
   callbackQueryId: string;
-  callbackData: string; // order:confirm:<convId> | order:cancel:<convId>
+  callbackData: string; // order:confirm:<convId>:<v> | order:cancel:<convId>:<v> (v=damga, legacy'de yok)
   callbackChatId: number | string;
   callbackMessageId: number;
 }
 
-async function answer(token: string, id: string, text: string) {
+async function answer(token: string, id: string, text: string, showAlert = false) {
   await fetch(TG(token, 'answerCallbackQuery'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ callback_query_id: id, text }),
+    body: JSON.stringify({ callback_query_id: id, text, ...(showAlert ? { show_alert: true } : {}) }),
   }).catch(() => {});
 }
 
@@ -34,47 +35,10 @@ async function editCard(token: string, chatId: number | string, msgId: number, l
   }).catch(() => {});
 }
 
-// order_pending_text iki formatta olabilir:
-//  - YENI: parseOrder ozeti (JSON) — kod bazli siparis, fiyat/adet belli
-//  - ESKI: ham misafir cumlesi (serbest metin siparisi veya eski kayitlar)
-// Guvenli ayrim: '{' ile basliyorsa JSON dene; parse patlarsa/lines yoksa ham muamelesi.
-type StructuredOrderLine = {
-  code: string;
-  name: string;
-  unitPrice: number;
-  qty: number;
-  lineTotal: number;
-};
-type StructuredOrder = {
-  raw: string;
-  lines: StructuredOrderLine[];
-  total: number;
-  currency: string;
-};
-
-function parsePendingOrder(raw: string): StructuredOrder | null {
-  const trimmed = (raw ?? '').trim();
-  if (!trimmed.startsWith('{')) return null;
-  try {
-    const obj = JSON.parse(trimmed) as Partial<StructuredOrder>;
-    if (!obj || !Array.isArray(obj.lines) || obj.lines.length === 0) return null;
-    return {
-      raw: obj.raw ?? '',
-      lines: obj.lines as StructuredOrderLine[],
-      total: Number(obj.total ?? 0),
-      currency: obj.currency || 'TRY',
-    };
-  } catch {
-    return null; // bozuk JSON => ham metin gibi davran
-  }
-}
-
-/** Personel kartinda gorunen ozet — fiyat SADECE burada. */
-function formatOrderSummary(order: StructuredOrder): string {
-  const cur = order.currency === 'TRY' ? 'TL' : order.currency;
-  const lines = order.lines.map((l) => `• ${l.name} × ${l.qty} = ${l.lineTotal} ${cur}`);
-  return `${lines.join('\n')}\n💰 Toplam: ${order.total} ${cur}`;
-}
+// order_pending_text ZARFI ve tum yardimcilari src/lib/menu/pending-order.ts'te
+// (readPendingText / orderStampAccepts / formatOrderSummary / bumpPendingOrder) —
+// hk_pending_text damga deseninin ikizi. parsePendingOrder KALKTI: readPendingText
+// hem structured'i cozer hem orderText'i (zarf ici raw) ham JSON blob'a dusmeden verir.
 
 const msgConfirmed = (lang: string) =>
   lang === 'en' ? 'Your order has been sent to our team. They will assist you shortly.'
@@ -89,7 +53,8 @@ const msgCancelled = (lang: string) =>
 export async function handleOrderCallback(params: OrderCallbackParams): Promise<void> {
   const parts = params.callbackData.split(':');
   const action = parts[1]; // confirm | cancel
-  const conversationId = parts.slice(2).join(':');
+  const conversationId = parts[2]; // convId UUID — ic ':' yok (slice/join gereksiz)
+  const stampRaw = parts[3]; // damga; legacy (damgasiz) butonda undefined
 
   // conversation + guest bilgisi cek
   const { data: conv, error: convErr } = await params.supa
@@ -111,11 +76,29 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     return;
   }
 
+  const storedText = typeof conv.order_pending_text === 'string' ? conv.order_pending_text : null;
+  const { v: stateV, orderText, structured } = readPendingText(storedText);
+
+  // ── DAMGA KAPISI ──────────────────────────────────────────────────────────
+  // State okundu, HENUZ hicbir sey degismedi. Buton kendi damgasini (stampRaw)
+  // tasir; canli stateV ile eslesmezse bu buton BAYAT/EZILMIS demektir (misafir
+  // cevaplamadan yeni siparis yazdi -> state ezildi, ekranda eski buton kaldi).
+  // Karar orderStampAccepts'te (saf fonksiyon). RED'de state'e DOKUNMA, forward YOK,
+  // sla_events YOK; misafir show_alert ile bilgilendirilir (SESSIZ YUTMA YASAGI).
+  if (!orderStampAccepts(stampRaw, stateV)) {
+    await answer(
+      params.botToken,
+      params.callbackQueryId,
+      'Bu buton güncel değil. Lütfen mesajın en altındaki güncel butonu kullanın.',
+      true,
+    );
+    console.log('[order-cb] RED bayat damga', { stamp: stampRaw, stateV, conversationId });
+    return;
+  }
+
   const guestChatId = conv.telegram_chat_id as string;
-  const orderText = (conv.order_pending_text as string) || '';
-  const structured = parsePendingOrder(orderText);
   // Kartta ve sla_events.request_text'te gorunecek metin: kod bazliysa fiyatli ozet,
-  // degilse eski davranis (ham cumle).
+  // degilse ham cumle (readPendingText orderText'i zarf ici raw'dan verir — JSON blob DEGIL).
   const requestText = structured ? formatOrderSummary(structured) : orderText;
 
   if (action === 'cancel') {

@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { bumpPendingOrder } from '@/lib/menu/pending-order';
 
 const TG = (token: string, m: string) => `https://api.telegram.org/bot${token}/${m}`;
 
@@ -107,19 +108,14 @@ export async function handleNoteCallback(params: NoteCallbackParams): Promise<vo
       return;
     }
 
-    // order_pending akisina devret (notsuz — raw oldugu gibi)
-    await params.supa
-      .from('conversations')
-      .update({
-        order_pending: true,
-        order_pending_text: JSON.stringify({
-          raw: order.raw,
-          lines: order.lines,
-          total: order.total,
-          currency: order.currency,
-        }),
-      })
-      .eq('id', conversationId);
+    // order_pending akisina devret (damgali zarf — notsuz, raw oldugu gibi).
+    // ASAGIDAKI butonlar bu orderStamp'i tasir (bayat buton reddi icin).
+    const orderStamp = await bumpPendingOrder(params.supa, conversationId, order.raw, {
+      raw: order.raw,
+      lines: order.lines,
+      total: order.total,
+      currency: order.currency,
+    });
 
     const itemsBlock = order.lines.map((l) => `• ${l.name} × ${l.qty}`).join('\n');
     const confirmText = `Siparişiniz:\n${itemsBlock}\n\nOnaylıyor musunuz?`;
@@ -132,8 +128,8 @@ export async function handleNoteCallback(params: NoteCallbackParams): Promise<vo
         text: confirmText,
         reply_markup: {
           inline_keyboard: [
-            [{ text: 'Evet, onayliyorum', callback_data: `order:confirm:${conversationId}` }],
-            [{ text: 'Vazgectim', callback_data: `order:cancel:${conversationId}` }],
+            [{ text: 'Evet, onayliyorum', callback_data: `order:confirm:${conversationId}:${orderStamp}` }],
+            [{ text: 'Vazgectim', callback_data: `order:cancel:${conversationId}:${orderStamp}` }],
           ],
         },
       }),

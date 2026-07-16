@@ -33,6 +33,7 @@ import { handleMenuOfferCallback } from '@/lib/sla/handle-menu-offer-callback';
 import { handleHousekeepingCallback, advanceHousekeeping } from '@/lib/sla/handle-housekeeping-callback';
 import { notifyDuplicateRequest } from '@/lib/sla/notify-duplicate';
 import { parseOrder, extractOrderNote } from '@/lib/menu/parse-order';
+import { bumpPendingOrder } from '@/lib/menu/pending-order';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
 import { getTurkeyToday } from '@/lib/date/turkeyTime'; // Modül 18: timezone fix
 import { sendForwardWithSlaButtons } from '@/lib/sla/send-forward-with-buttons';
@@ -1702,17 +1703,17 @@ async function handleMessage(args: {
 
     // Notu raw'a ekle (order kartinda extractOrderNote ile gosterilecek)
     const mergedRaw = noteText ? `${orderObj.raw} ${noteText}` : orderObj.raw;
-    const orderJson = JSON.stringify({
+
+    // order_pending akisina devret (damgali zarf — ASAGIDAKI butonlar orderStamp tasir).
+    const orderStamp = await bumpPendingOrder(supa, conversationId, mergedRaw, {
       raw: mergedRaw,
       lines: orderObj.lines,
       total: orderObj.total,
       currency: orderObj.currency,
     });
-
-    // order_pending akisina devret
     await supa
       .from('conversations')
-      .update({ order_pending: true, order_pending_text: orderJson, note_pending_order: null })
+      .update({ note_pending_order: null })
       .eq('id', conversationId);
 
     // Onay karti (fiyatsiz ozet + butonlar) — handle-note-callback ile ayni desen
@@ -1741,8 +1742,8 @@ async function handleMessage(args: {
         text: confirmText,
         reply_markup: {
           inline_keyboard: [
-            [{ text: yesLabel, callback_data: `order:confirm:${conversationId}` }],
-            [{ text: noLabel, callback_data: `order:cancel:${conversationId}` }],
+            [{ text: yesLabel, callback_data: `order:confirm:${conversationId}:${orderStamp}` }],
+            [{ text: noLabel, callback_data: `order:cancel:${conversationId}:${orderStamp}` }],
           ],
         },
       }),
@@ -3619,21 +3620,14 @@ async function handleMessage(args: {
           return NextResponse.json({ ok: true });
         }
 
-        // 1) Bayragi ac + siparisi sakla. Kod yakalandiysa yapilandirilmis ozet (JSON —
-        //    callback fiyat/adet icin okur), aksi halde eski davranis: ham cumle.
-        const pendingText = hasCodes
-          ? JSON.stringify({
-              raw: text,
-              lines: parsed.lines,
-              total: parsed.total,
-              currency: parsed.currency,
-            })
-          : text;
-        const { error: orderPendingErr } = await supa
-          .from('conversations')
-          .update({ order_pending: true, order_pending_text: pendingText })
-          .eq('id', conversationId);
-        if (orderPendingErr) console.error('[order-pending] UPDATE hatasi:', orderPendingErr.message);
+        // 1) Bayragi ac + siparisi sakla (damgali zarf — bayat buton reddi icin).
+        //    Kod yakalandiysa yapilandirilmis ozet (callback fiyat/adet icin okur),
+        //    aksi halde ham cumle (structured=null). bumpPendingOrder v'yi TAZE okuyup
+        //    +1 artirir; ASAGIDAKI butonlar bu v'yi (orderStamp) tasir.
+        const structured = hasCodes
+          ? { raw: text, lines: parsed.lines, total: parsed.total, currency: parsed.currency }
+          : null;
+        const orderStamp = await bumpPendingOrder(supa, conversationId, text, structured);
 
         // 2) Botun urettigi guzel cevabi gonder ("Tabii memnuniyetle...")
         await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
@@ -3663,8 +3657,8 @@ async function handleMessage(args: {
             text: confirmText,
             reply_markup: {
               inline_keyboard: [
-                [{ text: yesLabel, callback_data: `order:confirm:${conversationId}` }],
-                [{ text: noLabel, callback_data: `order:cancel:${conversationId}` }],
+                [{ text: yesLabel, callback_data: `order:confirm:${conversationId}:${orderStamp}` }],
+                [{ text: noLabel, callback_data: `order:cancel:${conversationId}:${orderStamp}` }],
               ],
             },
           }),
