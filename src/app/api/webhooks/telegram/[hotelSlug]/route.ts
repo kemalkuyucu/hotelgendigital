@@ -3397,13 +3397,30 @@ async function handleMessage(args: {
   // tamsa advanceHousekeeping dogrudan forward eder.
   // Bu turda dogrulama sorulduysa (verificationAskedThisRound) DOKUNMA — once kimlik.
   if (aiResult?.hkItems?.length && !verificationAskedThisRound) {
-    const state = { items: aiResult.hkItems.map((i) => ({ c: i.code, q: i.qty, a: i.ambiguous })), i: 0 };
+    // DAMGA: onceki hk state'in v'sini taze oku. conversation objesi hk_pending_text
+    // icermiyor (ConversationState'te yok), bu yuzden burada tek seferlik taze okuma
+    // yapilir. Yeni state v = eski.v + 1 -> her yeni talep kurulumu damgayi ilerletir,
+    // ekranda kalan eski butonlar bayatlar (callback damga kapisinda RED olur).
+    const { data: prevHk } = await supa
+      .from('conversations')
+      .select('hk_pending_text')
+      .eq('id', conversationId)
+      .maybeSingle();
+    let prevV = 0;
+    const prevRaw = prevHk?.hk_pending_text;
+    if (typeof prevRaw === 'string' && prevRaw.trim()) {
+      try {
+        const parsed = JSON.parse(prevRaw);
+        if (parsed && typeof parsed.v === 'number') prevV = parsed.v;
+      } catch { /* bozuk JSON -> prevV 0 kalir */ }
+    }
+    const state = { items: aiResult.hkItems.map((i) => ({ c: i.code, q: i.qty, a: i.ambiguous })), i: 0, v: prevV + 1 };
     await supa
       .from('conversations')
       .update({ hk_pending: true, hk_pending_text: JSON.stringify(state) })
       .eq('id', conversationId);
     await advanceHousekeeping({ supa, botToken, convId: conversationId, guestChatId: chatId, state, language });
-    console.log('[hk-ask] state kuruldu', { conv: conversationId, items: state.items.length });
+    console.log('[hk-ask] state kuruldu', { conv: conversationId, items: state.items.length, v: state.v });
     return;
   }
 

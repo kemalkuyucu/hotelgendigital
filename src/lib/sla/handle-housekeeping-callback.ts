@@ -3,15 +3,41 @@ import { labelForHousekeepingCode } from '@/lib/ai/department-brains';
 import { forwardHousekeepingItems } from './housekeeping-forward';
 
 // Housekeeping COKLU esya buton callback'i. State conversations.hk_pending (bool) +
-// hk_pending_text (JSON): { items: [{ c, q, a }], i }
-//   c=code, q=qty|null, a=ambiguous, i=su an sorulan esyanin index'i.
+// hk_pending_text (JSON): { items: [{ c, q, a }], i, p?, pl?, v? }
+//   c=code, q=qty|null, a=ambiguous, i=su an sorulan esyanin index'i,
+//   p=odadaki pax, pl=pax lookup yapildi mi, v=damga (state versiyonu).
 //
-// callback_data:
-//   hk:s:<code>:<convId>   -> aktif esyanin TIPI secildi
-//   hk:q:<qty>:<convId>    -> aktif esyanin ADEDI secildi
-//   hk:noop                -> route.ts'te ele aliniyor (buraya gelmez)
+// callback_data (damga = o karti ureten state'in v'si; legacy butonda yok):
+//   hk:s:<code>:<convId>:<v>   -> aktif esyanin TIPI secildi
+//   hk:q:<qty>:<convId>:<v>    -> aktif esyanin ADEDI secildi
+//   hk:noop                    -> route.ts'te ele aliniyor (buraya gelmez)
 
 const TG = (token: string, m: string) => `https://api.telegram.org/bot${token}/${m}`;
+
+// callback_data parse — saf/yan-etkisiz (birim testi bunu import eder).
+//   hk:<action>:<value>:<convId>:<stamp?>
+// convId bir UUID'dir, icinde ':' YOKTUR -> parts[3] tek basina yeterli
+// (eski slice(3).join(':') gereksizdi). stamp legacy butonda undefined.
+export function parseHkCallbackData(data: string): {
+  action: string;
+  value: number;
+  convId: string;
+  stampRaw: string | undefined;
+} {
+  const parts = data.split(':');
+  return { action: parts[1], value: parseInt(parts[2], 10), convId: parts[3], stampRaw: parts[4] };
+}
+
+// Damga kapisi karari — saf/yan-etkisiz (birim testi bunu import eder).
+// true = KABUL, false = RED.
+//   ikisi de undefined            -> KABUL (deploy anindaki damgasiz eski butonlar)
+//   Number(stampRaw) === stateV   -> KABUL (guncel buton)
+//   aksi                          -> RED (bayat/ezilmis buton)
+export function hkStampAccepts(stampRaw: string | undefined, stateV: number | undefined): boolean {
+  const bothUndefined = stampRaw === undefined && stateV === undefined;
+  const stampMatches = stampRaw !== undefined && Number(stampRaw) === stateV;
+  return bothUndefined || stampMatches;
+}
 
 interface HkStateItem {
   c: number;
@@ -23,6 +49,7 @@ interface HkState {
   i: number;
   p?: number | null; // odadaki kisi sayisi (null = bilinmiyor)
   pl?: boolean; // pax lookup yapildi mi
+  v?: number; // damga: her state yazisinda artar; bayat/ezilmis buton reddi icin
 }
 
 interface HkCallbackParams {
@@ -34,11 +61,11 @@ interface HkCallbackParams {
   callbackMessageId: number;
 }
 
-async function answer(token: string, id: string, text: string) {
+async function answer(token: string, id: string, text: string, showAlert = false) {
   await fetch(TG(token, 'answerCallbackQuery'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ callback_query_id: id, text }),
+    body: JSON.stringify({ callback_query_id: id, text, ...(showAlert ? { show_alert: true } : {}) }),
   }).catch(() => {});
 }
 
@@ -99,6 +126,7 @@ export async function advanceHousekeeping(p: {
   const typeIdx = state.items.findIndex((it) => it.a === true);
   if (typeIdx !== -1) {
     state.i = typeIdx;
+    state.v = (state.v ?? 0) + 1; // damga: ONCE artir + yaz, SONRA kart gonder
     await supa.from('conversations').update({ hk_pending_text: JSON.stringify(state) }).eq('id', convId);
     const askText =
       prefixFor(typeIdx) +
@@ -116,9 +144,9 @@ export async function advanceHousekeeping(p: {
         text: askText,
         reply_markup: {
           inline_keyboard: [
-            [{ text: lbl('Bath towel', 'Badetuch', 'Banyo havlusu'), callback_data: `hk:s:1:${convId}` }],
-            [{ text: lbl('Face towel', 'Gesichtstuch', 'Yuz havlusu'), callback_data: `hk:s:2:${convId}` }],
-            [{ text: lbl('Foot towel', 'Fußtuch', 'Ayak havlusu'), callback_data: `hk:s:3:${convId}` }],
+            [{ text: lbl('Bath towel', 'Badetuch', 'Banyo havlusu'), callback_data: `hk:s:1:${convId}:${state.v}` }],
+            [{ text: lbl('Face towel', 'Gesichtstuch', 'Yuz havlusu'), callback_data: `hk:s:2:${convId}:${state.v}` }],
+            [{ text: lbl('Foot towel', 'Fußtuch', 'Ayak havlusu'), callback_data: `hk:s:3:${convId}:${state.v}` }],
           ],
         },
       }),
@@ -134,6 +162,7 @@ export async function advanceHousekeeping(p: {
   const qtyIdx = state.items.findIndex((it) => it.q === null);
   if (qtyIdx !== -1) {
     state.i = qtyIdx;
+    state.v = (state.v ?? 0) + 1; // damga: ONCE artir + yaz, SONRA kart gonder
     await supa.from('conversations').update({ hk_pending_text: JSON.stringify(state) }).eq('id', convId);
     const label = labelForHousekeepingCode(state.items[qtyIdx].c) ?? '';
     const askText =
@@ -146,7 +175,7 @@ export async function advanceHousekeeping(p: {
     const nums = Array.from({ length: btnMax }, (_, i) => i + 1);
     const rows: unknown[][] = [];
     for (let i = 0; i < nums.length; i += 3)
-      rows.push(nums.slice(i, i + 3).map((n) => ({ text: String(n), callback_data: `hk:q:${n}:${convId}` })));
+      rows.push(nums.slice(i, i + 3).map((n) => ({ text: String(n), callback_data: `hk:q:${n}:${convId}:${state.v}` })));
     await fetch(TG(botToken, 'sendMessage'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -177,10 +206,7 @@ export async function advanceHousekeeping(p: {
 }
 
 export async function handleHousekeepingCallback(params: HkCallbackParams): Promise<void> {
-  const parts = params.callbackData.split(':');
-  const action = parts[1]; // 's' | 'q'
-  const value = parseInt(parts[2], 10);
-  const convId = parts.slice(3).join(':');
+  const { action, value, convId, stampRaw } = parseHkCallbackData(params.callbackData);
   console.log('[hk-cb] START', { action, data: params.callbackData });
 
   if ((action !== 's' && action !== 'q') || Number.isNaN(value) || !convId) {
@@ -210,6 +236,23 @@ export async function handleHousekeepingCallback(params: HkCallbackParams): Prom
   }
   if (!state?.items?.length || typeof state.i !== 'number' || !state.items[state.i]) {
     await answer(params.botToken, params.callbackQueryId, 'Bu adim zaten islendi.');
+    return;
+  }
+
+  // ── DAMGA KAPISI ──────────────────────────────────────────────────────────
+  // State okundu, HENUZ hicbir sey degismedi. Buton kendi damgasini (stampRaw)
+  // tasir; canli state.v ile eslesmezse bu buton BAYAT/EZILMIS demektir (misafir
+  // cevaplamadan yeni talep yazdi -> state ezildi, ekranda eski buton kaldi).
+  // Karar hkStampAccepts'te (saf fonksiyon). RED'de state'e DOKUNMA, forward YOK;
+  // misafir show_alert ile bilgilendirilir (SESSIZ YUTMA YASAGI).
+  if (!hkStampAccepts(stampRaw, state.v)) {
+    await answer(
+      params.botToken,
+      params.callbackQueryId,
+      'Bu buton güncel değil. Lütfen mesajın en altındaki güncel butonu kullanın.',
+      true,
+    );
+    console.log('[hk-cb] RED bayat damga', { stamp: stampRaw, stateV: state.v, convId });
     return;
   }
 
