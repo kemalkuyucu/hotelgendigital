@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Toast, { ToastItem, useToast } from '../Toast';
 import { EditIcon, DeleteIcon, PlusIcon } from '../icons';
 import {
@@ -178,6 +178,7 @@ export default function KnowledgeBaseSubTab() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('empty');
   const [filterCategory, setFilterCategory] = useState<FactCategory | null>(null);
   const [panelMode, setPanelMode] = useState<'new' | 'fill' | 'edit' | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fillMf, setFillMf] = useState<MergedFact | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -215,6 +216,14 @@ export default function KnowledgeBaseSubTab() {
   }, []);
 
   useEffect(() => { fetchFacts(); }, [fetchFacts]);
+
+  // Panel (edit/fill/new) listenin ÜSTÜNDE render edildiği için, aşağıdaki bir karta
+  // basıldığında panel görünür alana kaydırılır. Render'dan SONRA çalışmalı → useEffect.
+  useEffect(() => {
+    if (panelMode !== null) {
+      panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [panelMode, editingId, fillMf]);
 
   // ── Filtered + sorted list ──────────────────────────────────────────────────
   const filteredSorted = useMemo<MergedFact[]>(() => {
@@ -366,7 +375,7 @@ export default function KnowledgeBaseSubTab() {
 
       {/* ── Slide-down panel ── */}
       {panelMode !== null && (
-        <div className="knowledge-panel" id="knowledge-panel">
+        <div className="knowledge-panel" id="knowledge-panel" ref={panelRef}>
           <div className="knowledge-panel-header">
             <span className="knowledge-panel-title">{panelTitle}</span>
           </div>
