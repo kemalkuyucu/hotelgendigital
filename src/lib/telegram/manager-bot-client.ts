@@ -4,12 +4,7 @@ export interface SendManagerMessageInput {
   parseMode?: 'Markdown' | 'HTML';
 }
 
-export async function sendManagerMessage(input: SendManagerMessageInput): Promise<void> {
-  const token = process.env.TELEGRAM_MANAGER_BOT_TOKEN_DEMO;
-  if (!token) {
-    throw new Error('TELEGRAM_MANAGER_BOT_TOKEN_DEMO env değişkeni yok');
-  }
-
+export async function sendManagerMessage(input: SendManagerMessageInput, token: string): Promise<void> {
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
   const body = {
     chat_id: input.chatId,
@@ -38,13 +33,9 @@ export async function sendManagerDocument(
   chatId: number | string,
   fileBuffer: Buffer,
   fileName: string,
+  token: string,
   caption?: string
 ): Promise<void> {
-  const token = process.env.TELEGRAM_MANAGER_BOT_TOKEN_DEMO;
-  if (!token) {
-    throw new Error('TELEGRAM_MANAGER_BOT_TOKEN_DEMO env değişkeni yok');
-  }
-
   const form = new FormData();
   form.append('chat_id', String(chatId));
   if (caption) form.append('caption', caption);

@@ -1220,7 +1220,7 @@ async function handleMessage(args: {
 
     await tg.sendMessage({
       chat_id: chatId,
-      text: `Merhaba! ${displayHotelName}'e hos geldiniz. Size nasil yardimci olabilirim?`,
+      text: `Merhaba! ${displayHotelName}'e hoş geldiniz. Size nasıl yardımcı olabilirim?`,
     });
     return;
   }
@@ -1307,7 +1307,7 @@ async function handleMessage(args: {
 
           await tg.sendMessage({
             chat_id: chatId,
-            text: `Tesekkurler ${matched.guest_name}, sizin icin hazirim. Nasil yardimci olabilirim?`,
+            text: `Teşekkürler ${matched.guest_name}, sizin için hazırım. Nasıl yardımcı olabilirim?`,
           });
           return;
         }
@@ -1336,7 +1336,7 @@ async function handleMessage(args: {
           // ── ADIM 1: Misafire önce cevap ver (misafir beklesin) ────────────
           await tg.sendMessage({
             chat_id: chatId,
-            text: 'Belirtilen oda numarasinda kayit bulunamadi. Ondan emin olmak icin resepsiyonu bilgilendiriyorum, lutfen bekleyin.',
+            text: 'Belirtilen oda numarasında kayıt bulunamadı. Ondan emin olmak için resepsiyonu bilgilendiriyorum, lütfen bekleyin.',
           });
 
           // ── ADIM 2: pending_guest_matches tablosuna kaydet ────────────────
@@ -1410,7 +1410,7 @@ async function handleMessage(args: {
 
           await tg.sendMessage({
             chat_id: chatId,
-            text: `Tesekkurler ${matched.guest_name}, sizin icin hazirim. Nasil yardimci olabilirim?`,
+            text: `Teşekkürler ${matched.guest_name}, sizin için hazırım. Nasıl yardımcı olabilirim?`,
           });
           return;
         }
@@ -1425,7 +1425,7 @@ async function handleMessage(args: {
 
         await tg.sendMessage({
           chat_id: chatId,
-          text: 'Birden fazla kayit goruldu. Lutfen adinizi yaziniz:',
+          text: 'Birden fazla kayıt görüldü. Lütfen adınızı yazınız:',
         });
         return;
       }
@@ -1473,7 +1473,7 @@ async function handleMessage(args: {
 
           await tg.sendMessage({
             chat_id: chatId,
-            text: `Tesekkurler ${matched.guest_name}, sizin icin hazirim. Nasil yardimci olabilirim?`,
+            text: `Teşekkürler ${matched.guest_name}, sizin için hazırım. Nasıl yardımcı olabilirim?`,
           });
           return;
         }
@@ -1538,7 +1538,7 @@ async function handleMessage(args: {
 
           await tg.sendMessage({
             chat_id: chatId,
-            text: 'Isminizi eslestiremedik. On buromuz sizinle iletisime gececek, lutfen bekleyiniz.',
+            text: 'İsminizi eşleştiremedik. Ön büromuz sizinle iletişime geçecek, lütfen bekleyiniz.',
           });
           return;
         }
@@ -1546,7 +1546,7 @@ async function handleMessage(args: {
         // Still within attempt limit — ask again
         await tg.sendMessage({
           chat_id: chatId,
-          text: 'Isminizi eslestiremedik. Lutfen tekrar adinizi yaziniz:',
+          text: 'İsminizi eşleştiremedik. Lütfen tekrar adınızı yazınız:',
         });
         return;
       }
@@ -1667,7 +1667,7 @@ async function handleMessage(args: {
             ? 'Thank you, I have passed your contact details to the spa team. They will reach out to you soon.'
             : language === 'de'
             ? 'Vielen Dank, ich habe Ihre Kontaktdaten an das Spa-Team weitergeleitet. Man wird sich bald bei Ihnen melden.'
-            : 'Tesekkurler, iletisim bilgilerinizi spa ekibine ilettim. En kisa surede size donus yapacaklar.';
+            : 'Teşekkürler, iletişim bilgilerinizi spa ekibine ilettim. En kısa sürede size dönüş yapacaklar.';
         await tg.sendMessage({ chat_id: chatId, text: spaThanks });
         console.log(`[spa-contact] iletisim alindi ve SPA'ya iletildi. conversationId=${conversationId}`);
         return;
@@ -3454,7 +3454,7 @@ async function handleMessage(args: {
               ? 'The spa team will reach out to you. If you like, share your phone number, email, or both and I will pass them on so they can contact you directly.'
               : language === 'de'
               ? 'Das Spa-Team wird sich bei Ihnen melden. Wenn Sie moechten, teilen Sie mir Ihre Telefonnummer, E-Mail oder beides mit, dann leite ich diese weiter, damit man Sie direkt erreichen kann.'
-              : 'Spa ekibi sizinle iletisime gececek. Isterseniz telefon numaranizi, mail adresinizi ya da her ikisini bana iletin; ben kendilerine ulastirayim, size donus yapsinlar.';
+              : 'Spa ekibi sizinle iletişime geçecek. İsterseniz telefon numaranızı, mail adresinizi ya da her ikisini bana iletin; ben kendilerine ulaştırayım, size dönüş yapsınlar.';
           finalResponseText = spaContactAsk;
           try {
             await supa
@@ -3590,7 +3590,7 @@ async function handleMessage(args: {
           const offerYes =
             language === 'en' ? 'Yes, show me' : language === 'de' ? 'Ja, zeigen' : 'Evet, bakmak isterim';
           const offerNo =
-            language === 'en' ? 'No, thanks' : language === 'de' ? 'Nein, danke' : 'Hayir, tesekkurler';
+            language === 'en' ? 'No, thanks' : language === 'de' ? 'Nein, danke' : 'Hayır, teşekkürler';
 
           await supa
             .from('conversations')

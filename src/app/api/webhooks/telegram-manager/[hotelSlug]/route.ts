@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendManagerMessage, sendManagerDocument } from '@/lib/telegram/manager-bot-client';
+import { getManagerBotTokenForHotel } from '@/lib/telegram/manager-bot-token';
 import { handleHelp } from '@/lib/telegram/commands/handle-help';
 import { handleRapor } from '@/lib/telegram/commands/handle-rapor';
 import { buildRaporExcel } from '@/lib/telegram/commands/build-rapor-excel';
@@ -166,6 +167,9 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
+  // Manager bot token (per-hotel; SESSIZ FALLBACK YASAK — throw eder)
+  const managerToken = getManagerBotTokenForHotel(hotelSlug);
+
   // 5) Hotel client'ı al (departments, mesaj sayıları vb. için)
   // Demo hotel için direkt env var'dan, production'da bridge_credentials'tan gelecek
   const hotelClient = hotelSlug === 'demo-hotel'
@@ -192,20 +196,14 @@ export async function POST(
         await sendManagerMessage({
           chatId: incomingChatId,
           text: '⏳ Ses mesajınız çok uzun (5 dakikadan fazla). Lütfen daha kısa bir kayıt gönderin ya da komutu yazılı paylaşın.',
-        });
-        return NextResponse.json({ ok: true });
-      }
-
-      const botToken = process.env.TELEGRAM_MANAGER_BOT_TOKEN_DEMO;
-      if (!botToken) {
-        console.error('[manager-webhook] TELEGRAM_MANAGER_BOT_TOKEN_DEMO yok — voice atlandı');
+        }, managerToken);
         return NextResponse.json({ ok: true });
       }
 
       let transcribed = '';
       try {
         const dl = await downloadTelegramAudio({
-          botToken,
+          botToken: managerToken,
           fileId: voiceObj.file_id,
           durationSeconds: voiceObj.duration,
         });
@@ -221,7 +219,7 @@ export async function POST(
         await sendManagerMessage({
           chatId: incomingChatId,
           text: '🎤 Ses mesajınızı işlerken bir sorun oluştu. Lütfen tekrar deneyin ya da komutu yazılı gönderin.',
-        });
+        }, managerToken);
         return NextResponse.json({ ok: true });
       }
 
@@ -229,7 +227,7 @@ export async function POST(
         await sendManagerMessage({
           chatId: incomingChatId,
           text: '🎤 Sesinizi anlayamadım. Lütfen tekrar deneyin ya da komutu yazılı gönderin.',
-        });
+        }, managerToken);
         return NextResponse.json({ ok: true });
       }
 
@@ -243,7 +241,7 @@ export async function POST(
         await sendManagerMessage({
           chatId: incomingChatId,
           text: `Anlaşılan: "${transcribed}". Şu an sadece sesli "rapor" komutu destekleniyor.`,
-        });
+        }, managerToken);
         return NextResponse.json({ ok: true });
       }
     }
@@ -273,7 +271,7 @@ export async function POST(
             ? await handleRapor(hotelClient, raporRange)
             : await handleRapor(hotelClient);
           // Özet metin önce gider (mevcut davranış aynen korunur)
-          await sendManagerMessage({ chatId: incomingChatId, text: response, parseMode: 'HTML' });
+          await sendManagerMessage({ chatId: incomingChatId, text: response, parseMode: 'HTML' }, managerToken);
 
           // Detaylı departman Excel'i — özet mesajı ETKİLEMEZ (izole try/catch).
           // range null dalında handleRapor'un iç son-24-saat hesabını taklit et:
@@ -288,7 +286,7 @@ export async function POST(
           try {
             raporBuf = await buildRaporExcel(hotelClient, excelRange);
             raporFname = `rapor_${excelRange.label.replace(/[^0-9A-Za-z.]/g, '_')}.xlsx`;
-            await sendManagerDocument(incomingChatId, raporBuf, raporFname, 'Detayli departman raporu');
+            await sendManagerDocument(incomingChatId, raporBuf, raporFname, managerToken, 'Detayli departman raporu');
           } catch (e) {
             console.error('[rapor-excel] failed', e);
           }
@@ -348,7 +346,7 @@ export async function POST(
 
   // 7) Cevap gönder
   try {
-    await sendManagerMessage({ chatId: incomingChatId, text: response });
+    await sendManagerMessage({ chatId: incomingChatId, text: response }, managerToken);
   } catch (err) {
     console.error('[manager-webhook] sendManagerMessage hatası:', err);
   }
