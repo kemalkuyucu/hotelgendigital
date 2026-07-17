@@ -311,7 +311,7 @@ KAPANIS KURALI:
 - Yanitlarinda hicbir emoji kullanma.
 - Yaniti kisa ve sicak bir cumleyle bitir.
 - "Ihtiyaciniz olursa bildirin", "baska bir sey olursa soyleyin" gibi bos/dolgu/tekrarli kapanis cumlesi EKLEME; misafir zaten talebini iletti. Kapanis dolu ve baglama uygun olsun.
-- ISTISNA: Bilgi-yok fallback cumlesini verirken bu kural UYGULANMAZ — o cumle tek basina, ek cumle olmadan yazilir.`;
+- ISTISNA (KESIN): Cevabinda bilgi-yok ifadesi geciyorsa (tam fallback cumlesi VEYA "... bilgisi su an sistemimizde yer almiyor" gibi KISMI bilgi-yok ifadesi), o cevaba HICBIR vaat/guvence kuyrugu EKLEME: "yardimci olacagiz", "donus yapacagiz", "ilgilenecegiz", "en kisa surede" YASAK. Gercekten iletilen operasyonel talep vaadi bundan etkilenmez. Bu kural KAPANIS KURALI'ndan USTUNDUR.`;
   // overLimit karari kart katmaninda: qty > pax (kisi basi 1), housekeeping-forward.ts.
   const maxQty = extractMaxItemQuantity(input.guestMessage);
 
@@ -373,6 +373,7 @@ Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbi
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 Maksimum 3 cumle.
+- ISTISNA (KESIN): Cevabinda bilgi-yok ifadesi geciyorsa (tam fallback cumlesi VEYA "... bilgisi su an sistemimizde yer almiyor" gibi KISMI bilgi-yok ifadesi), o cevaba HICBIR vaat/guvence kuyrugu EKLEME: "yardimci olacagiz", "donus yapacagiz", "ilgilenecegiz", "en kisa surede" YASAK. Gercekten iletilen operasyonel talep vaadi bundan etkilenmez. Bu kural KAPANIS KURALI'ndan USTUNDUR.
 
 CIKTI BICIMI: Yanitini SADECE su JSON olarak ver, baska metin/markdown YOK:
 {"reply": "misafire gidecek cevap", "infoOnly": true veya false}
@@ -443,7 +444,8 @@ ${reservationRule}
 Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
-Maksimum 3 cumle.`;
+Maksimum 3 cumle.
+- ISTISNA (KESIN): Cevabinda bilgi-yok ifadesi geciyorsa (tam fallback cumlesi VEYA "... bilgisi su an sistemimizde yer almiyor" gibi KISMI bilgi-yok ifadesi), o cevaba HICBIR vaat/guvence kuyrugu EKLEME: "yardimci olacagiz", "donus yapacagiz", "ilgilenecegiz", "en kisa surede" YASAK. Gercekten iletilen operasyonel talep vaadi bundan etkilenmez. Bu kural KAPANIS KURALI'ndan USTUNDUR.`;
 
   const recent = (input.conversationContext ?? [])
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -490,7 +492,7 @@ Calisma ilkelerin:
 KAPANIS KURALI:
 - Hicbir emoji kullanma.
 - Yaniti kisa, sicak ve guven verici bir cumleyle bitir.
-- ISTISNA: Bilgi-yok fallback cumlesini verirken bu kural UYGULANMAZ — o cumle tek basina, ek cumle olmadan yazilir.
+- ISTISNA (KESIN): Cevabinda bilgi-yok ifadesi geciyorsa (tam fallback cumlesi VEYA "... bilgisi su an sistemimizde yer almiyor" gibi KISMI bilgi-yok ifadesi), o cevaba HICBIR vaat/guvence kuyrugu EKLEME: "yardimci olacagiz", "donus yapacagiz", "ilgilenecegiz", "en kisa surede" YASAK. Gercekten iletilen operasyonel talep vaadi bundan etkilenmez. Bu kural KAPANIS KURALI'ndan USTUNDUR.
 - "Ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME.
 Kisa ve oz tut.`;
 
@@ -554,7 +556,7 @@ Calisma ilkelerin:
 KAPANIS KURALI:
 - Hicbir emoji kullanma.
 - Yaniti kisa, sicak ve guven verici bir cumleyle bitir.
-- ISTISNA: Bilgi-yok fallback cumlesini verirken bu kural UYGULANMAZ — o cumle tek basina, ek cumle olmadan yazilir.
+- ISTISNA (KESIN): Cevabinda bilgi-yok ifadesi geciyorsa (tam fallback cumlesi VEYA "... bilgisi su an sistemimizde yer almiyor" gibi KISMI bilgi-yok ifadesi), o cevaba HICBIR vaat/guvence kuyrugu EKLEME: "yardimci olacagiz", "donus yapacagiz", "ilgilenecegiz", "en kisa surede" YASAK. Gercekten iletilen operasyonel talep vaadi bundan etkilenmez. Bu kural KAPANIS KURALI'ndan USTUNDUR.
 - "Ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME; misafir zaten sorunu iletti.
 Kisa ve oz tut.`;
   const recent = (input.conversationContext ?? [])
@@ -606,7 +608,8 @@ KESIN YASAKLAR (cok onemli):
 
 KAPANIS:
 - Hicbir emoji kullanma. Yaniti kisa (en fazla 3-4 cumle), sicak ve guven verici tut.
-- Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.`;
+- Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
+- ISTISNA (KESIN): Cevabinda bilgi-yok ifadesi geciyorsa (tam fallback cumlesi VEYA "... bilgisi su an sistemimizde yer almiyor" gibi KISMI bilgi-yok ifadesi), o cevaba HICBIR vaat/guvence kuyrugu EKLEME: "yardimci olacagiz", "donus yapacagiz", "ilgilenecegiz", "en kisa surede" YASAK. Gercekten iletilen operasyonel talep vaadi bundan etkilenmez. Bu kural KAPANIS KURALI'ndan USTUNDUR.`;
   const recent = (input.conversationContext ?? [])
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
     .slice(-6)
@@ -656,7 +659,7 @@ KAPSAM:
 KAPANIS:
 - Hicbir emoji kullanma.
 - Kisa, sicak, baglama uygun bitir. Bos/dolgu/tekrarli kapanis cumlesi EKLEME.
-- ISTISNA: Bilgi-yok fallback cumlesini verirken bu kural UYGULANMAZ — o cumle tek basina, ek cumle olmadan yazilir.
+- ISTISNA (KESIN): Cevabinda bilgi-yok ifadesi geciyorsa (tam fallback cumlesi VEYA "... bilgisi su an sistemimizde yer almiyor" gibi KISMI bilgi-yok ifadesi), o cevaba HICBIR vaat/guvence kuyrugu EKLEME: "yardimci olacagiz", "donus yapacagiz", "ilgilenecegiz", "en kisa surede" YASAK. Gercekten iletilen operasyonel talep vaadi bundan etkilenmez. Bu kural KAPANIS KURALI'ndan USTUNDUR.
 
 CIKTI BICIMI (COK ONEMLI):
 - Yanitini SADECE su JSON formatinda ver, baska hicbir metin/markdown ekleme:
