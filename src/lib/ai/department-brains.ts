@@ -1,5 +1,6 @@
 import { callAI } from './anthropic-client';
 import { enforceReplyLanguage } from './enforce-reply-language';
+import { NO_INFO_FALLBACK_TR } from './fallback-texts';
 // B1.1 — Departman beyni iskeleti (davranis-notr).
 // Bayrak KAPALI iken dispatcher hep handled=false doner; monolit orkestrator
 // aynen calisir. Departman beyinleri tek tek eklenecek (7.4 kalibrasyonu).
@@ -292,7 +293,7 @@ TALEP CEVABI KURALI:
 - Bilgi tabanindaki ek detaylari (standart donanim, adet politikasi, ucret vb.) SADECE misafir acikca sordugunda ver; talep cevabina kendiliginden EKLEME.
 - Ornek dogru talep cevabi: "Havlu talebiniz alindi, kat hizmetleri ekibimiz en kisa surede odaniza getirecektir."
 
-Bilmediginde: "Kat hizmetleri ekibimiz en kisa surede ilgilenecektir, lutfen resepsiyondan da destek alabilirsiniz."
+Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
 Kapsam disinda (teknik ariza, yemek, animasyon vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 Kisa ve oz tut.
@@ -361,7 +362,7 @@ async function runAnimationBrain(input: DepartmentBrainInput): Promise<Departmen
 DURUM KURALI:
 - Talep DOGRUDAN animasyon ekibine iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
 Gorev: Misafirin animasyon, etkinlik, cocuk kulubu, gece programi ve eglence sorularini nazikce, kisa ve net yanıtla.
-Bilmediginde: "Animasyon ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan sorabilirsiniz."
+Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 Maksimum 3 cumle.
@@ -422,7 +423,7 @@ DURUM KURALI:
 Gorev: Misafirin spa, masaj, sauna, hamam, buhar odasi, cilt bakimi taleplerini nazikce ve kisa karsila.
 - Genel spa bilgisi (hizmet turleri, calisma saatleri) verebilirsin.
 - REZERVASYON/RANDEVU KURALI (KESIN): Saat veya rezervasyon ONAYI VEREMEZSIN. "Yarin 15:00 uygundur", "ayarladim", "rezerve ettim", "olur", "musait" gibi ifadeler YASAK. Misafir bir saat/randevu istese bile ASLA onaylama. Bunun yerine sicak ve nazik bir mesaj kur ve su uc seyi mutlaka soyle: (1) talebi/tercih edilen saati spa yetkilisine ilettigini, (2) o saatte rezervasyonlar dolu olabilecegi icin en saglikli yolun birebir gorusme oldugunu, yetkilinin en kisa surede telefonla veya yuz yuze iletisime gececegini, (3) kibar bir kapanis (ornegin keyifli/iyi tatiller dilegi ve otel adi). Tum randevular yalnizca spa ekibiyle birebir netlesir.
-Bilmediginde: "Spa ekibimiz size en dogru bilgiyi verecektir, lutfen resepsiyondan da destek alabilirsiniz."
+Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 Maksimum 3 cumle.`;
@@ -468,7 +469,7 @@ Calisma ilkelerin:
 - Misafir zaten dogrulanmis; oda numarasi ve kimligi sistemde mevcut. ASLA isim, soyisim, oda numarasi, telefon veya kimlik bilgisi isteme; bu bilgiler sende var.
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan talebi ele alan cumleyle basla.
 - "Sahipleniyorum" gibi yapay/resmi kaliplar KULLANMA. Gercek bir on buro gorevlisi gibi dogal konus: ornek ton -> "Tabii ki, bagajinizi odaniza birakmalari icin hemen on buro ekibine ilettim, en kisa surede gelip alacaklar."
-- Bilgi sorularini (hizmet, saat vb.) otel bilgilerinden yanitla. Bilgi yoksa uydurma; "On buro ekibimiz en kisa surede yardimci olacaktir." de.
+- Bilgi sorularini (hizmet, saat vb.) otel bilgilerinden yanitla. Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
 - Kapsam disi konular (teknik ariza, temizlik, yemek, spa, animasyon) icin misafiri ilgili departmana yonlendir.
 
 KAPANIS KURALI:
@@ -525,7 +526,7 @@ Calisma ilkelerin:
 - Misafiri baska bir yere yonlendirme. Arizayi anladigini sicak, sade, gunluk bir dille belirt.
 - Ariza talebi teknik ekibe arka planda OTOMATIK iletilir; bu senin gorevin degil, sistem hallediyor. Misafire ekibin en kisa surede ilgilenecegini sicakca bildir.
 - Misafir sorunu bildirdiyse is yola cikmistir; onay isteme, "iletmemi ister misiniz" gibi soru sorma.
-- Bilgi sorularini otel bilgilerinden yanitla. Bilgi yoksa uydurma; "Teknik ekibimiz en kisa surede ilgilenecektir." de.
+- Bilgi sorularini otel bilgilerinden yanitla. Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
 - Kapsam disi konular (temizlik ve havlu, yemek, spa, animasyon) icin misafiri ilgili departmana yonlendir.
 - Misafir zaten dogrulanmis; oda numarasi ve kimligi sistemde mevcut. ASLA oda numarasi, telefon numarasi veya kimlik bilgisi isteme; bu bilgiler sende var.
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan sorunu sahiplenen cumleyle basla.
@@ -628,7 +629,7 @@ YUKSEK RISK - ALERJEN/ICERIK (cok onemli):
 
 BILGI KURALI:
 - Sadece OTEL BILGILERI icinde acikca yazani soyle. Saat/fiyat/menu icerigi orada yoksa UYDURMA.
-- Bilgi yoksa: "Bu konuda restoran/resepsiyon ekibimiz kesin bilgi verecektir."
+- Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
 
 KAPSAM:
 - Teknik ariza, temizlik, animasyon vb. kapsam disi: "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."

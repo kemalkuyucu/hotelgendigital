@@ -1,3 +1,5 @@
+import { NO_INFO_FALLBACK_TR } from './fallback-texts';
+
 export interface DepartmentInfo {
   code: string;
   display_name: string;
@@ -124,7 +126,7 @@ Diller ve örnekler:
 3. Misafir dili karıştırırsa daha çok kullanılan dile göre cevap ver.
 4. Misafir kısa veya tek kelime yazarsa Türkçe varsay.
 5. Bilgi sorusu fallback cevabı (bilgi HOTEL CONTEXT'te yoksa) aynı dilde olmalı:
-   - TR: "Bu bilgi şu an sistemimizde yer almıyor. Doğrulamak için resepsiyonumuzu arayabilirsiniz."
+   - TR: "${NO_INFO_FALLBACK_TR}"
    - EN: "This information is not currently in our system. Please call our reception to confirm."
    - DE: "Diese Information liegt uns leider nicht vor. Bitte rufen Sie unsere Rezeption an."
    - RU: "Эта информация в нашей системе отсутствует. Пожалуйста, позвоните на ресепшн для уточнения."
@@ -156,7 +158,7 @@ ADIM 2: Eğer cevap orada VARSA (kısmen bile olsa):
 
 ADIM 3: Eğer cevap HOTEL CONTEXT bölümünde HİÇ YOKSA:
   ✅ Sadece şu kalıbı kullan (misafirin dilinde, {telefon} ile otel telefon numarasını doldur):
-  - TR: "Bu bilgi şu an sistemimizde yer almıyor. Doğrulamak için resepsiyonumuzu arayabilirsiniz."
+  - TR: "${NO_INFO_FALLBACK_TR}"
   - EN: "This information is not currently in our system. Please call our reception to confirm."
   - DE: "Diese Information liegt uns leider nicht vor. Bitte rufen Sie unsere Rezeption an."
   - RU: "Эта информация в нашей системе отсутствует. Пожалуйста, позвоните на ресепшн для уточнения."
@@ -262,7 +264,7 @@ answered_from_knowledge: true
 Örnek 5 — Bilgi YOK (bilgi sorusu):
 HOTEL CONTEXT'te: müdür ismi geçmiyor
 Soru: "Müdürünüz kim?"
-Cevap: "Bu bilgi şu an sistemimizde yer almıyor. Doğrulamak için resepsiyonumuzu arayabilirsiniz."
+Cevap: "${NO_INFO_FALLBACK_TR}"
 intents: [{department: "knowledge_query", request_text: ""}], answered_from_knowledge: false
 
 Örnek 6 — Bilgi YOK (işlem talebi):
@@ -280,7 +282,7 @@ intents: [{department: "knowledge_query", request_text: ""}], answered_from_know
 Örnek 11 — Bilgi YOK (havuz saati — UYDURMA YASAK):
 HOTEL CONTEXT'te: havuz saati bilgisi YOK
 Soru: "Havuz kaçta açılıyor?"
-Cevap: "Havuz saatleri sistemimizde yer almıyor. Doğrulamak için resepsiyonumuzu arayabilirsiniz."
+Cevap: "${NO_INFO_FALLBACK_TR}"
 intents: [{department: "knowledge_query", request_text: ""}], answered_from_knowledge: false
 
 Örnek 7 — KİŞİSEL İŞLEM (allergy):
