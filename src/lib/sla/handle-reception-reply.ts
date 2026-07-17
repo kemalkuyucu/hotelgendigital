@@ -20,7 +20,7 @@ export async function handleReceptionReply(
   // escalation_message_id ile eşleşen sla_event'i bul
   const { data: slaEvent } = await params.hotelSupabase
     .from('sla_events')
-    .select('id, reception_responded_at, escalation_message_id, escalated_at')
+    .select('id, reception_responded_at, reception_response_text, escalation_message_id, escalated_at, final_status')
     .eq('escalation_message_id', params.replyToMessageId)
     .maybeSingle();
 
@@ -35,13 +35,22 @@ export async function handleReceptionReply(
 
   // DB'ye kaydet
   const now = new Date();
+  // GEC YANIT: check-runner event'i 'no_response' olarak kapatmis olabilir (resepsiyon
+  // taninan surede yazmadi). Bu durumda gec gelen aciklama REDDEDILMEZ (sessiz yutma
+  // yasagi); sistem notu SILINMEDEN altina eklenir, durum 'escalated_resolved_late' olur.
+  const isLate = slaEvent.final_status === 'no_response';
+  const mevcutMetin = (slaEvent.reception_response_text as string | null) ?? '';
+  const receptionText = isLate
+    ? `${mevcutMetin}\n\n[GEC YANIT - resepsiyon] ${params.replyText}`
+    : params.replyText;
+  const finalStatus = isLate ? 'escalated_resolved_late' : 'escalated_resolved';
   await params.hotelSupabase
     .from('sla_events')
     .update({
       reception_responded_at: now.toISOString(),
-      reception_response_text: params.replyText,
+      reception_response_text: receptionText,
       reception_responder_telegram_id: params.responderTelegramId,
-      final_status: 'escalated_resolved',
+      final_status: finalStatus,
       closed_at: now.toISOString(),
       updated_at: now.toISOString(),
     })

@@ -88,6 +88,62 @@ export async function handleRapor(
   if (isoEnd) kbQ = kbQ.lte('created_at', isoEnd);
   const { count: kbAnsweredCount } = await kbQ;
 
+  // ── SLA DETAY (sla_events) — mevcut ai_intents/forward bolumlerinden BAGIMSIZ ─────
+  // Kolon adlari migrations/tenant/003_sla_events.sql'den dogrulandi.
+  let slaQ = hotelClient
+    .from('sla_events')
+    .select('department_code, forwarded_at, responded_at, final_status, request_text, reception_response_text')
+    .gte('created_at', isoStart);
+  if (isoEnd) slaQ = slaQ.lte('created_at', isoEnd);
+  const { data: slaRows } = await slaQ;
+  const slaList = (slaRows ?? []) as {
+    department_code: string | null;
+    forwarded_at: string | null;
+    responded_at: string | null;
+    final_status: string | null;
+    request_text: string | null;
+    reception_response_text: string | null;
+  }[];
+
+  // Departman bazli: talep sayisi + ortalama yanit dk (responded_at - forwarded_at)
+  const slaDeptMap = new Map<string, { toplam: number; yanitDkToplam: number; yanitSayisi: number }>();
+  for (const r of slaList) {
+    const dept = r.department_code ?? '(bilinmeyen)';
+    if (!slaDeptMap.has(dept)) slaDeptMap.set(dept, { toplam: 0, yanitDkToplam: 0, yanitSayisi: 0 });
+    const d = slaDeptMap.get(dept)!;
+    d.toplam++;
+    if (r.responded_at && r.forwarded_at) {
+      const diff = new Date(r.responded_at).getTime() - new Date(r.forwarded_at).getTime();
+      if (diff >= 0) {
+        d.yanitDkToplam += diff / 60000;
+        d.yanitSayisi++;
+      }
+    }
+  }
+  const slaDeptLines =
+    slaDeptMap.size === 0
+      ? '  <i>(SLA talebi yok)</i>'
+      : Array.from(slaDeptMap.entries())
+          .sort((a, b) => b[1].toplam - a[1].toplam)
+          .map(([k, v]) => {
+            const ortDk = v.yanitSayisi > 0 ? `${Math.round(v.yanitDkToplam / v.yanitSayisi)} dk` : '—';
+            return `  • <code>${escapeHtml(k)}</code>: ${v.toplam} talep · ort. yanit ${ortDk}`;
+          })
+          .join('\n');
+
+  // final_status='no_response' sayisi + liste; her biri icin reception_response_text AYNEN
+  const noResp = slaList.filter((r) => r.final_status === 'no_response');
+  const noRespLines =
+    noResp.length === 0
+      ? '  <i>(yok)</i>'
+      : noResp
+          .map((r) => {
+            const talep = escapeHtml(r.request_text ?? '—');
+            const acik = escapeHtml(r.reception_response_text ?? '—');
+            return `  • "${talep}"\n    ↳ Resepsiyon: ${acik}`;
+          })
+          .join('\n');
+
   const baslik = range
     ? `📊 <b>Rapor (${escapeHtml(range.label)})</b>`
     : '📊 <b>Son 24 Saat Raporu</b>';
@@ -106,5 +162,10 @@ ${distLines}
 📨 <b>Forward Özeti</b>
   ✅ Gönderilen: <b>${fwdSentCount ?? 0}</b>
   🌙 Off-hours: <b>${fwdOffHoursCount ?? 0}</b>
-  ❌ Başarısız: <b>${fwdFailedCount ?? 0}</b>`;
+  ❌ Başarısız: <b>${fwdFailedCount ?? 0}</b>
+
+📋 <b>SLA Detay</b>
+${slaDeptLines}
+  ⚠️ Cevapsız (no_response): <b>${noResp.length}</b>
+${noRespLines}`;
 }

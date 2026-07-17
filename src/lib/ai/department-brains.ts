@@ -8,6 +8,12 @@ import { NO_INFO_FALLBACK_TR } from './fallback-texts';
 // Bool tiplenir ki literal-narrowing "unreachable" uyarisi cikmasin.
 export const DEPARTMENT_BRAINS_ENABLED: boolean = true;
 
+// Spa rezervasyon/randevu niyeti — TEK kaynak (fork YASAK). runSpaBrain hem prompt
+// kosulunu hem reservationNotify donusunu bu sabitten hesaplar. route.ts:3432
+// yalnizca reservationNotify=true iken spa grubuna bildirim gonderir; boylece
+// "ilettim" vaadi ayni deterministik kapiya baglanir.
+const RESERVATION_KEYWORDS = ['rezervasyon', 'randevu', 'rezerve'];
+
 // 7.4 — Her departman beyninin yetenek profili.
 export interface DepartmentBrainConfig {
   department: string;
@@ -293,7 +299,7 @@ TALEP CEVABI KURALI:
 - Bilgi tabanindaki ek detaylari (standart donanim, adet politikasi, ucret vb.) SADECE misafir acikca sordugunda ver; talep cevabina kendiliginden EKLEME.
 - Ornek dogru talep cevabi: "Havlu talebiniz alindi, kat hizmetleri ekibimiz en kisa surede odaniza getirecektir."
 
-Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
+Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}" Bu kural KAPANIS KURALI dahil tum ton kurallarindan USTUNDUR.
 Kapsam disinda (teknik ariza, yemek, animasyon vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
 Kisa ve oz tut.
@@ -304,7 +310,8 @@ DURUM KURALI:
 KAPANIS KURALI:
 - Yanitlarinda hicbir emoji kullanma.
 - Yaniti kisa ve sicak bir cumleyle bitir.
-- "Ihtiyaciniz olursa bildirin", "baska bir sey olursa soyleyin" gibi bos/dolgu/tekrarli kapanis cumlesi EKLEME; misafir zaten talebini iletti. Kapanis dolu ve baglama uygun olsun.`;
+- "Ihtiyaciniz olursa bildirin", "baska bir sey olursa soyleyin" gibi bos/dolgu/tekrarli kapanis cumlesi EKLEME; misafir zaten talebini iletti. Kapanis dolu ve baglama uygun olsun.
+- ISTISNA: Bilgi-yok fallback cumlesini verirken bu kural UYGULANMAZ — o cumle tek basina, ek cumle olmadan yazilir.`;
   // overLimit karari kart katmaninda: qty > pax (kisi basi 1), housekeeping-forward.ts.
   const maxQty = extractMaxItemQuantity(input.guestMessage);
 
@@ -416,13 +423,23 @@ async function runSpaBrain(input: DepartmentBrainInput): Promise<DepartmentBrain
     : [];
   const contextBlock =
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
+  // Rezervasyon niyeti prompt KURULMADAN once hesaplanir; hem asagidaki kosullu blok
+  // hem reservationNotify donusu ayni degiskeni kullanir (tek hesap, RESERVATION_KEYWORDS).
+  const lowerMsg = input.guestMessage.toLowerCase();
+  const isReservation = RESERVATION_KEYWORDS.some((k) => lowerMsg.includes(k));
+  // KOSULLU BLOK: rezervasyon talebiyse mevcut REZERVASYON/RANDEVU KURALI aynen girer;
+  // degilse "ilettim" turu iletme/takip vaadi YASAK — cunku route.ts:3432 rezervasyon-disi
+  // mesajda spa grubuna HICBIR sey gondermez (bos vaat olur).
+  const reservationRule = isReservation
+    ? `- REZERVASYON/RANDEVU KURALI (KESIN): Saat veya rezervasyon ONAYI VEREMEZSIN. "Yarin 15:00 uygundur", "ayarladim", "rezerve ettim", "olur", "musait" gibi ifadeler YASAK. Misafir bir saat/randevu istese bile ASLA onaylama. Bunun yerine sicak ve nazik bir mesaj kur ve su uc seyi mutlaka soyle: (1) talebi/tercih edilen saati spa yetkilisine ilettigini, (2) o saatte rezervasyonlar dolu olabilecegi icin en saglikli yolun birebir gorusme oldugunu, yetkilinin en kisa surede telefonla veya yuz yuze iletisime gececegini, (3) kibar bir kapanis (ornegin keyifli/iyi tatiller dilegi ve otel adi). Tum randevular yalnizca spa ekibiyle birebir netlesir.`
+    : `- ILETME VAADI YASAK: Bu mesaj rezervasyon/randevu talebi DEGIL. Cevabinda 'ilettim', 'aktardim', 'yetkiliye bildirdim', 'iletisime gececekler', 'donus yapacaklar' gibi HICBIR iletme/takip vaadi KULLANMA. Sadece sorulan bilgiyi ver. Bu kural KAPANIS KURALI'ndan USTUNDUR.`;
   const system = `${languageBlock(input.guestMessage)}Sen ${input.hotelName} otelinin spa & wellness departmani asistanisin.${contextBlock}
 
 DURUM KURALI:
 - Talep DOGRUDAN spa ekibine iletilir. Talebi ASLA "resepsiyon onayi bekleniyor", "onaylandiginda haber verecegim" gibi durum ifadeleriyle nitelendirme. Konusma gecmisindeki dogrulama/onay/resepsiyon mesajlarini ORNEK ALMA, tekrarlama; sadece guncel talebi karsila.
 Gorev: Misafirin spa, masaj, sauna, hamam, buhar odasi, cilt bakimi taleplerini nazikce ve kisa karsila.
 - Genel spa bilgisi (hizmet turleri, calisma saatleri) verebilirsin.
-- REZERVASYON/RANDEVU KURALI (KESIN): Saat veya rezervasyon ONAYI VEREMEZSIN. "Yarin 15:00 uygundur", "ayarladim", "rezerve ettim", "olur", "musait" gibi ifadeler YASAK. Misafir bir saat/randevu istese bile ASLA onaylama. Bunun yerine sicak ve nazik bir mesaj kur ve su uc seyi mutlaka soyle: (1) talebi/tercih edilen saati spa yetkilisine ilettigini, (2) o saatte rezervasyonlar dolu olabilecegi icin en saglikli yolun birebir gorusme oldugunu, yetkilinin en kisa surede telefonla veya yuz yuze iletisime gececegini, (3) kibar bir kapanis (ornegin keyifli/iyi tatiller dilegi ve otel adi). Tum randevular yalnizca spa ekibiyle birebir netlesir.
+${reservationRule}
 Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
 Kapsam disinda (oda, teknik, yemek vb.): "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan konuya gir.
@@ -444,11 +461,9 @@ Maksimum 3 cumle.`;
   });
 
   const replyText = response.text;
-  const lowerMsg = input.guestMessage.toLowerCase();
-  const reservationNotify = ['rezervasyon', 'randevu', 'rezerve'].some((k) =>
-    lowerMsg.includes(k),
-  );
-  return { handled: true, replyText, reservationNotify };
+  // reservationNotify prompt kosuluyla AYNI degiskenden gelir (RESERVATION_KEYWORDS,
+  // yukarida hesaplandi) — ikinci liste/hesap YOK.
+  return { handled: true, replyText, reservationNotify: isReservation };
 }
 
 async function runFrontOfficeBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
@@ -469,12 +484,13 @@ Calisma ilkelerin:
 - Misafir zaten dogrulanmis; oda numarasi ve kimligi sistemde mevcut. ASLA isim, soyisim, oda numarasi, telefon veya kimlik bilgisi isteme; bu bilgiler sende var.
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan talebi ele alan cumleyle basla.
 - "Sahipleniyorum" gibi yapay/resmi kaliplar KULLANMA. Gercek bir on buro gorevlisi gibi dogal konus: ornek ton -> "Tabii ki, bagajinizi odaniza birakmalari icin hemen on buro ekibine ilettim, en kisa surede gelip alacaklar."
-- Bilgi sorularini (hizmet, saat vb.) otel bilgilerinden yanitla. Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
+- Bilgi sorularini (hizmet, saat vb.) otel bilgilerinden yanitla. Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}" Bu kural KAPANIS KURALI dahil tum ton kurallarindan USTUNDUR.
 - Kapsam disi konular (teknik ariza, temizlik, yemek, spa, animasyon) icin misafiri ilgili departmana yonlendir.
 
 KAPANIS KURALI:
 - Hicbir emoji kullanma.
 - Yaniti kisa, sicak ve guven verici bir cumleyle bitir.
+- ISTISNA: Bilgi-yok fallback cumlesini verirken bu kural UYGULANMAZ — o cumle tek basina, ek cumle olmadan yazilir.
 - "Ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME.
 Kisa ve oz tut.`;
 
@@ -526,7 +542,7 @@ Calisma ilkelerin:
 - Misafiri baska bir yere yonlendirme. Arizayi anladigini sicak, sade, gunluk bir dille belirt.
 - Ariza talebi teknik ekibe arka planda OTOMATIK iletilir; bu senin gorevin degil, sistem hallediyor. Misafire ekibin en kisa surede ilgilenecegini sicakca bildir.
 - Misafir sorunu bildirdiyse is yola cikmistir; onay isteme, "iletmemi ister misiniz" gibi soru sorma.
-- Bilgi sorularini otel bilgilerinden yanitla. Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
+- Bilgi sorularini otel bilgilerinden yanitla. Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}" Bu kural KAPANIS KURALI dahil tum ton kurallarindan USTUNDUR.
 - Kapsam disi konular (temizlik ve havlu, yemek, spa, animasyon) icin misafiri ilgili departmana yonlendir.
 - Misafir zaten dogrulanmis; oda numarasi ve kimligi sistemde mevcut. ASLA oda numarasi, telefon numarasi veya kimlik bilgisi isteme; bu bilgiler sende var.
 - Konusma zaten suruyor; cevaba "Merhaba", "Hos geldiniz" gibi selamlama EKLEME. Dogrudan sorunu sahiplenen cumleyle basla.
@@ -538,6 +554,7 @@ Calisma ilkelerin:
 KAPANIS KURALI:
 - Hicbir emoji kullanma.
 - Yaniti kisa, sicak ve guven verici bir cumleyle bitir.
+- ISTISNA: Bilgi-yok fallback cumlesini verirken bu kural UYGULANMAZ — o cumle tek basina, ek cumle olmadan yazilir.
 - "Ihtiyaciniz olursa bildirin" gibi bos/dolgu kapanis cumlesi EKLEME; misafir zaten sorunu iletti.
 Kisa ve oz tut.`;
   const recent = (input.conversationContext ?? [])
@@ -629,7 +646,7 @@ YUKSEK RISK - ALERJEN/ICERIK (cok onemli):
 
 BILGI KURALI:
 - Sadece OTEL BILGILERI icinde acikca yazani soyle. Saat/fiyat/menu icerigi orada yoksa UYDURMA.
-- Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}"
+- Bilgi HOTEL CONTEXT'te yoksa UYDURMA. SADECE su cumleyi yaz; basina/sonuna hicbir sey ekleme, misafirin sorusunu cumleye GOMME, kelimesi kelimesine yaz: "${NO_INFO_FALLBACK_TR}" Bu kural KAPANIS KURALI dahil tum ton kurallarindan USTUNDUR.
 
 KAPSAM:
 - Teknik ariza, temizlik, animasyon vb. kapsam disi: "Bu konuda size yardimci olamam, ilgili departmana yonlendirilmenizi onerim."
@@ -639,6 +656,7 @@ KAPSAM:
 KAPANIS:
 - Hicbir emoji kullanma.
 - Kisa, sicak, baglama uygun bitir. Bos/dolgu/tekrarli kapanis cumlesi EKLEME.
+- ISTISNA: Bilgi-yok fallback cumlesini verirken bu kural UYGULANMAZ — o cumle tek basina, ek cumle olmadan yazilir.
 
 CIKTI BICIMI (COK ONEMLI):
 - Yanitini SADECE su JSON formatinda ver, baska hicbir metin/markdown ekleme:

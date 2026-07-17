@@ -105,7 +105,7 @@ export async function runSlaCheck(
         continue;
       }
 
-      const receptionSlaMinutes = (frontOffice as { reception_sla_minutes?: number | null } | null)?.reception_sla_minutes ?? 5;
+      const receptionSlaMinutes = (frontOffice as { reception_sla_minutes?: number | null } | null)?.reception_sla_minutes ?? 20;
       const receptionDeadline = new Date(
         now.getTime() + receptionSlaMinutes * 60 * 1000
       );
@@ -191,7 +191,7 @@ export async function runSlaCheck(
         .from('sla_events')
         .update({
           final_status: 'no_response',
-          reception_response_text: 'Sistem notu: Talep resepsiyona iletildi, taninan surede yanitlanmadi (sebep yogunluk olabilir). Otomatik olarak yonetici raporuna eklendi.',
+          reception_response_text: '[SISTEM - OTOMATIK] Resepsiyon taninan surede aciklama yazmadi (sebep yogunluk olabilir). Bu not resepsiyon tarafindan DEGIL, sistem tarafindan olusturulmustur.',
           closed_at: now.toISOString(),
           updated_at: now.toISOString(),
         })

@@ -202,12 +202,49 @@ export async function buildRaporExcel(
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }
 
+  // ── SLA Detay sheet verisi (sla_events) — ai_intents bolumunden BAGIMSIZ ─────────
+  // Kolon adlari migrations/tenant/003_sla_events.sql'den dogrulandi.
+  const { data: slaData } = await hotelClient
+    .from('sla_events')
+    .select('department_code, request_text, forwarded_at, responded_at, final_status, reception_response_text, created_at')
+    .gte('created_at', range.startIso)
+    .lte('created_at', range.endIso)
+    .order('created_at', { ascending: true });
+  const slaSheetRows = ((slaData ?? []) as {
+    department_code: string | null;
+    request_text: string | null;
+    forwarded_at: string | null;
+    responded_at: string | null;
+    final_status: string | null;
+    reception_response_text: string | null;
+    created_at: string | null;
+  }[]).map((e) => {
+    let yanitDk = '';
+    if (e.responded_at && e.forwarded_at) {
+      const diff = new Date(e.responded_at).getTime() - new Date(e.forwarded_at).getTime();
+      if (diff >= 0) yanitDk = String(Math.round(diff / 60000));
+    }
+    return {
+      Tarih: fmtTr(e.created_at),
+      Departman: deptLabel(e.department_code),
+      Talep: e.request_text ?? '',
+      Iletildi: fmtTr(e.forwarded_at),
+      'Yanit dk': yanitDk,
+      Durum: e.final_status ?? '',
+      'Resepsiyon Aciklamasi': e.reception_response_text ?? '',
+    };
+  });
+  const slaWs = XLSX.utils.json_to_sheet(
+    slaSheetRows.length > 0 ? slaSheetRows : [{ Durum: 'SLA kaydi yok' }]
+  );
+
   // 5) Workbook olustur
   const wb = XLSX.utils.book_new();
 
   if (intents.length === 0) {
     const ws = XLSX.utils.json_to_sheet([{ Durum: 'Kayit yok' }]);
     XLSX.utils.book_append_sheet(wb, ws, safeSheetName('Ozet'));
+    XLSX.utils.book_append_sheet(wb, slaWs, safeSheetName('SLA Detay'));
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
   }
 
@@ -233,6 +270,9 @@ export async function buildRaporExcel(
     const ws = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, name);
   }
+
+  // SLA Detay sheet'i (sla_events) — departman sheet'lerinden sonra
+  XLSX.utils.book_append_sheet(wb, slaWs, safeSheetName('SLA Detay'));
 
   // 6) Buffer dondur
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
