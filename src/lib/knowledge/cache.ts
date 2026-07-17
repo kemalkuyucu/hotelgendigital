@@ -9,6 +9,11 @@
  * ============================================================================
  */
 
+// NOT (17 Tem): getCachedSummary'nin TÜKETİCİSİ YOK. Bacak A prompt'tan
+// cikarildi (cift enjeksiyon); tek otorite = buildHotelContext (HOTEL CONTEXT).
+// Bu dosya knowledge_sections icin Phase-C'de geri baglanacak. invalidateSummary
+// cagrilari o zamana kadar etkisiz — SILME.
+
 import { buildKnowledgeSummary } from './build-summary';
 
 interface CacheEntry {

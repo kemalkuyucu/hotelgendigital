@@ -1,6 +1,5 @@
 import { callAI, DEFAULT_MAX_TOKENS, aiUsageStore } from './anthropic-client';
 import { buildOrchestratorSystemPrompt, DepartmentInfo } from './system-prompts';
-import { getCachedSummary } from '@/lib/knowledge/cache';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
 // Modül 15.3 — Hotel context
 import {
@@ -181,9 +180,7 @@ async function _classifyAndRespondImpl(
   }
   // ── Safety Pre-Classifier SONU ────────────────────────────────────────────
 
-  // Knowledge summary'yi cache'den getir (5dk TTL) ve sisteme inject et
-  const knowledgeSummary = await getCachedSummary(input.hotelId);
-  const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments, knowledgeSummary, input.verifiedGuestName, input.verifiedRoomNumber, input.verifiedCheckout);
+  const systemPrompt = buildOrchestratorSystemPrompt(input.hotelName, input.departments, input.verifiedGuestName, input.verifiedRoomNumber, input.verifiedCheckout);
 
   const hotelContextText = hotelContext ? formatContextForPrompt(hotelContext) : '';
   // HOTEL CONTEXT'i system prompt'a göm — TÜM otel verisi (meeting_rooms dahil) burada
