@@ -39,6 +39,11 @@ interface OtelOzet {
   ortalamaYanitDakika: number | null;
 }
 
+interface CevapsizAciklama {
+  departman: string;
+  aciklama: string | null;
+}
+
 interface OtelRapor {
   hotelId: string;
   hotelName: string;
@@ -47,6 +52,7 @@ interface OtelRapor {
   ozet: OtelOzet;
   departmanBazli: DepartmanSatir[];
   personelBazli: PersonelSatir[];
+  cevapsizAciklamalar: CevapsizAciklama[];
 }
 
 interface ReportBody {
@@ -66,6 +72,7 @@ interface SlaEventRow {
   escalated_at: string | null;
   final_status: string | null;
   responder_username: string | null;
+  reception_response_text: string | null;
   created_at: string;
 }
 
@@ -77,12 +84,14 @@ function hesaplaOtelOzeti(rows: SlaEventRow[]): {
   ozet: OtelOzet;
   departmanBazli: DepartmanSatir[];
   personelBazli: PersonelSatir[];
+  cevapsizAciklamalar: CevapsizAciklama[];
 } {
   if (rows.length === 0) {
     return {
       ozet: { toplam: 0, cevaplanan: 0, cevapsiz: 0, escalation: 0, ortalamaYanitDakika: null },
       departmanBazli: [],
       personelBazli: [],
+      cevapsizAciklamalar: [],
     };
   }
 
@@ -97,6 +106,7 @@ function hesaplaOtelOzeti(rows: SlaEventRow[]): {
     { toplam: number; cevaplanan: number; escalation: number }
   >();
   const personelMap = new Map<string, number>();
+  const cevapsizAciklamalar: CevapsizAciklama[] = [];
 
   for (const row of rows) {
     // ---- genel sayaçlar ----
@@ -113,7 +123,13 @@ function hesaplaOtelOzeti(rows: SlaEventRow[]): {
       }
     }
 
-    if (row.final_status === 'no_response') cevapsiz++;
+    if (row.final_status === 'no_response') {
+      cevapsiz++;
+      cevapsizAciklamalar.push({
+        departman: row.department_code ?? 'bilinmeyen',
+        aciklama: row.reception_response_text ?? null,
+      });
+    }
     if (row.escalated_at) escalation++;
 
     // ---- departman ----
@@ -157,6 +173,7 @@ function hesaplaOtelOzeti(rows: SlaEventRow[]): {
     },
     departmanBazli,
     personelBazli,
+    cevapsizAciklamalar,
   };
 }
 
@@ -252,7 +269,7 @@ export async function POST(
         const { data: events, error: eventsError } = await hotelSupabase
           .from('sla_events')
           .select(
-            'department_code, forwarded_at, responded_at, escalated_at, final_status, responder_username, created_at'
+            'department_code, forwarded_at, responded_at, escalated_at, final_status, responder_username, reception_response_text, created_at'
           )
           .gte('created_at', startUtc)
           .lt('created_at', endDateNextDay)
@@ -268,11 +285,12 @@ export async function POST(
             ozet: { toplam: 0, cevaplanan: 0, cevapsiz: 0, escalation: 0, ortalamaYanitDakika: null },
             departmanBazli: [],
             personelBazli: [],
+            cevapsizAciklamalar: [],
           });
           continue;
         }
 
-        const { ozet, departmanBazli, personelBazli } = hesaplaOtelOzeti(
+        const { ozet, departmanBazli, personelBazli, cevapsizAciklamalar } = hesaplaOtelOzeti(
           (events ?? []) as SlaEventRow[]
         );
 
@@ -283,6 +301,7 @@ export async function POST(
           ozet,
           departmanBazli,
           personelBazli,
+          cevapsizAciklamalar,
         });
       } catch (err) {
         // Bridge veya başka hata — bu oteli işaretle, diğerlerine devam et
@@ -295,6 +314,7 @@ export async function POST(
           ozet: { toplam: 0, cevaplanan: 0, cevapsiz: 0, escalation: 0, ortalamaYanitDakika: null },
           departmanBazli: [],
           personelBazli: [],
+          cevapsizAciklamalar: [],
         });
       }
     }
