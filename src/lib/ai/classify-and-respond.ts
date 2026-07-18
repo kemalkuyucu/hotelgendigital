@@ -21,6 +21,7 @@ import {
 // Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { dispatchToDepartmentBrain, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkItem } from '@/lib/ai/department-brains';
+import { enforceReplyLanguage } from './enforce-reply-language';
 
 // ── ÇOK DİLLİ ALERJİ KÖK-KELİMELERİ (tek kaynak) ───────────────────────────
 // Bu liste iki yerde kullanılır: (1) saglik kapisi alerji istisnasi (satir ~107),
@@ -488,13 +489,19 @@ async function _classifyAndRespondImpl(
       ? parsed.answered_from_knowledge
       : false;
 
+  // DIL KAPISI — orchestrator (beyin-disi) cevap yolu. Brain yolu B1.1 erken-return'de
+  // (satir ~450) enforceReplyLanguage'dan ZATEN gecti; burasi beynin HANDLE ETMEDIGI
+  // (greeting / knowledge_query / REGISTRY-disi intent) tek emit noktasi. Ayni tek
+  // reusable guard fonksiyonu; hata halinde metin AYNEN korunur (fonksiyon try/catch'li).
+  const guardedResponse = await enforceReplyLanguage(input.guestMessage, responseToGuest);
+
   return {
     classifiedIntents,
     department: classifiedIntents[0]?.department ?? null,
     shouldForward: classifiedIntents.some((i) => i.shouldForward),
     confidence,
     reasoning: parsed.reasoning ?? '',
-    response_to_guest: responseToGuest,
+    response_to_guest: guardedResponse,
     answered_from_knowledge: answeredFromKnowledge,
     safetyTriggered: false,   // Normal akis: safety pre-classifier'da eslesme yoktu
     safetyCategory: null,

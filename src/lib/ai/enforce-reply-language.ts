@@ -1,6 +1,25 @@
 import { callAI } from './anthropic-client';
 import { hasForeignScript, scriptsOf } from './script-guard';
 
+// Ceviri system prompt'unun TABANI — ilk cagri VE retry ortak kullanir (fork yok).
+// Retry yalniz "sertlestirilmis alfabe" ekiyle farklidir (taban + ek) → taban
+// degisince retry otomatik takip eder.
+const TRANSLATE_SYSTEM_BASE =
+  'Sana bir misafir mesaji ve bir asistan cevabi verilecek. Gorevin: asistanin ' +
+  'cevabini, MISAFIRIN mesajinin diline cevir. Cevap zaten misafirin dilindeyse ' +
+  'HICBIR SEY degistirme, aynen geri ver. Sadece cevabi yaz; aciklama, tirnak, ' +
+  'on-ek ekleme. Ozel isimleri (kisi, yer, marka, oda adi, Wi-Fi, sifre) cevirme.';
+
+// Retry sistem prompt'u = taban + sertlestirilmis alfabe talimati. Ek disinda ilk
+// cagri ile BIREBIR ayni metin.
+function hardenedTranslateSystem(scripts: string): string {
+  return (
+    TRANSLATE_SYSTEM_BASE +
+    `\n\nZORUNLU: Cevabinda SADECE su alfabeleri kullan: ${scripts} + Latin. Baska ` +
+    'HICBIR alfabe (Kiril, Yunan, Arap, Devanagari, Telugu, Cince, Japonca...) KULLANMA.'
+  );
+}
+
 /**
  * Asistanin cevabini misafirin mesajinin diline zorlar.
  * Beyin prompt'lari Turkce yazili oldugu icin model yabanci misafire de Turkce
@@ -19,11 +38,7 @@ export async function enforceReplyLanguage(
   try {
     const res = await callAI({
       tier: 'standard',
-      system:
-        'Sana bir misafir mesaji ve bir asistan cevabi verilecek. Gorevin: asistanin ' +
-        'cevabini, MISAFIRIN mesajinin diline cevir. Cevap zaten misafirin dilindeyse ' +
-        'HICBIR SEY degistirme, aynen geri ver. Sadece cevabi yaz; aciklama, tirnak, ' +
-        'on-ek ekleme. Ozel isimleri (kisi, yer, marka, oda adi, Wi-Fi, sifre) cevirme.',
+      system: TRANSLATE_SYSTEM_BASE,
       messages: [
         { role: 'user', content: `MİSAFİR MESAJI: ${guest}\n\nASİSTAN CEVABI: ${clean}` },
       ],
@@ -37,13 +52,7 @@ export async function enforceReplyLanguage(
     try {
       const retryRes = await callAI({
         tier: 'standard',
-        system:
-          'Sana bir misafir mesaji ve bir asistan cevabi verilecek. Gorevin: asistanin ' +
-          'cevabini, MISAFIRIN mesajinin diline cevir. Cevap zaten misafirin dilindeyse ' +
-          'HICBIR SEY degistirme, aynen geri ver. Sadece cevabi yaz; aciklama, tirnak, ' +
-          'on-ek ekleme. Ozel isimleri (kisi, yer, marka, oda adi, Wi-Fi, sifre) cevirme.' +
-          `\n\nZORUNLU: Cevabinda SADECE su alfabeleri kullan: ${scripts} + Latin. Baska ` +
-          'HICBIR alfabe (Kiril, Yunan, Arap, Devanagari, Telugu, Cince, Japonca...) KULLANMA.',
+        system: hardenedTranslateSystem(scripts),
         messages: [
           { role: 'user', content: `MİSAFİR MESAJI: ${guest}\n\nASİSTAN CEVABI: ${clean}` },
         ],

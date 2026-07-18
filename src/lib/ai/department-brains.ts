@@ -118,7 +118,7 @@ EK KURALLAR:
 - Misafir dilleri karıştırırsa daha çok kullandığı dile göre yanıtla.
 - Misafir çok kısa veya tek kelime yazdıysa Türkçe varsay.
 - Türkçe yanıt verirken TAM Türkçe karakter kullan (ç ğ ı ö ş ü / Ç Ğ İ Ö Ş Ü). ASCII karşılıklarını KULLANMA: "gorseller" değil "görseller", "kisi" değil "kişi", "Agustos" değil "Ağustos".
-- ALFABE KURALI (KESIN): Cevabinda SADECE misafirin mesajinda kullandigi alfabeyi ve Latin harfleri kullan. Misafir Latin harflerle yazdiysa cevabinda Kiril, Yunan, Arap, Devanagari, Telugu, Cince, Japonca vb. HICBIR farkli alfabe KULLANMA. Tek bir kelime bile baska alfabede olamaz.`;
+- ALFABE KURALI (KESİN): Cevabında SADECE misafirin mesajında kullandığı alfabeyi ve Latin harfleri kullan. Misafir Latin harflerle yazdıysa cevabında Kiril, Yunan, Arap, Devanagari, Telugu, Çince, Japonca vb. HİÇBİR farklı alfabe KULLANMA. Tek bir kelime bile başka alfabede olamaz.`;
 
 // Beyin prompt'unun basina giren dil blogu. Misafirin HAM mesaji system prompt
 // govdesine de yazilir — dil karari yalnizca user turn'e birakilmaz.
