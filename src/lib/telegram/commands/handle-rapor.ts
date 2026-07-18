@@ -56,10 +56,11 @@ export async function handleRapor(
           .join('\n');
 
   // Forward özeti (Modül 6.1)
+  // KANIT: gercek forward kaydi sla_events'te (kart dusen talep). forwarded_messages
+  // SLA yolunda skipGroupMessage=true nedeniyle 'sent' grup satiri yazmaz -> TUM ZAMAN 0.
   let fwdSentQ = hotelClient
-    .from('forwarded_messages')
+    .from('sla_events')
     .select('id', { count: 'exact', head: true })
-    .eq('status', 'sent')
     .gte('created_at', isoStart);
   if (isoEnd) fwdSentQ = fwdSentQ.lte('created_at', isoEnd);
   const { count: fwdSentCount } = await fwdSentQ;
