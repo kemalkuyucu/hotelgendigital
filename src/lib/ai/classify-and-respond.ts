@@ -22,6 +22,7 @@ import {
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { dispatchToDepartmentBrain, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkItem } from '@/lib/ai/department-brains';
 import { enforceReplyLanguage } from './enforce-reply-language';
+import { NO_INFO_FALLBACK_TR } from './fallback-texts';
 
 // ── ÇOK DİLLİ ALERJİ KÖK-KELİMELERİ (tek kaynak) ───────────────────────────
 // Bu liste iki yerde kullanılır: (1) saglik kapisi alerji istisnasi (satir ~107),
@@ -461,7 +462,8 @@ async function _classifyAndRespondImpl(
           // answered_from_knowledge'i AND'lenir -> "bilgi yok" fallback'i KB sayilmaz.
           answered_from_knowledge:
             brainShouldForward === false &&
-            (parsed.answered_from_knowledge === true || brainResult.isInfoOnly === true),
+            (parsed.answered_from_knowledge === true || brainResult.isInfoOnly === true) &&
+            brainResult.replyText !== NO_INFO_FALLBACK_TR,
           mapsLink: mapsLink ?? undefined,
           safetyTriggered: false,
           safetyCategory: null,
