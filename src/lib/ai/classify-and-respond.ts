@@ -434,10 +434,7 @@ async function _classifyAndRespondImpl(
         conversationContext: (input.context ?? []).map((m) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.text ?? '' })),
       });
       if (brainResult.handled && (brainResult.replyText || brainResult.hkItems?.length)) {
-        return {
-          classifiedIntents,
-          department: primaryIntent.department,
-          shouldForward:
+        const brainShouldForward =
             primaryIntent.department === 'spa'
               ? false
               : primaryIntent.department === 'housekeeping' &&
@@ -449,11 +446,20 @@ async function _classifyAndRespondImpl(
               : primaryIntent.department === 'animation' &&
                 brainResult.isInfoOnly === true
               ? false
-              : primaryIntent.shouldForward,
+              : primaryIntent.shouldForward;
+        return {
+          classifiedIntents,
+          department: primaryIntent.department,
+          shouldForward: brainShouldForward,
           confidence: 1,
           reasoning: 'department_brain',
           response_to_guest: brainResult.replyText ?? '',
-          answered_from_knowledge: false,
+          // KANIT: route.ts:2571 skipForward = !aiShouldForward || answered_from_knowledge
+          // Flag bir SUPPRESSOR. brainShouldForward===false iken skipForward ZATEN true ->
+          // bu deger forward davranisini DEGISTIREMEZ (kanitli notr). LLM'in kendi
+          // answered_from_knowledge'i AND'lenir -> "bilgi yok" fallback'i KB sayilmaz.
+          answered_from_knowledge:
+            brainShouldForward === false && parsed.answered_from_knowledge === true,
           mapsLink: mapsLink ?? undefined,
           safetyTriggered: false,
           safetyCategory: null,
