@@ -132,16 +132,35 @@ export async function handleRapor(
           })
           .join('\n');
 
-  // final_status='no_response' sayisi + liste; her biri icin reception_response_text AYNEN
+  // final_status='no_response' -> departman bazinda grupla + ayni talebi say (dept basi MAX)
   const noResp = slaList.filter((r) => r.final_status === 'no_response');
+  const MAX_PER_DEPT = 5;
+  const noRespByDept = new Map<string, Map<string, number>>();
+  for (const r of noResp) {
+    const dept = r.department_code ?? '(bilinmeyen)';
+    const talep = (r.request_text ?? '—').trim() || '—';
+    if (!noRespByDept.has(dept)) noRespByDept.set(dept, new Map());
+    const m = noRespByDept.get(dept)!;
+    m.set(talep, (m.get(talep) ?? 0) + 1);
+  }
   const noRespLines =
     noResp.length === 0
       ? '  <i>(yok)</i>'
-      : noResp
-          .map((r) => {
-            const talep = escapeHtml(r.request_text ?? '—');
-            const acik = escapeHtml(r.reception_response_text ?? '—');
-            return `  • "${talep}"\n    ↳ Resepsiyon: ${acik}`;
+      : Array.from(noRespByDept.entries())
+          .map(([dept, talepMap]) => ({
+            dept, talepMap,
+            total: Array.from(talepMap.values()).reduce((a, b) => a + b, 0),
+          }))
+          .sort((a, b) => b.total - a.total)
+          .map(({ dept, talepMap, total }) => {
+            const talepSorted = Array.from(talepMap.entries()).sort((a, b) => b[1] - a[1]);
+            const shown = talepSorted.slice(0, MAX_PER_DEPT);
+            const lines = shown.map(
+              ([talep, adet]) => `    • "${escapeHtml(talep)}"${adet > 1 ? ` ×${adet}` : ''}`,
+            );
+            const kalan = talepSorted.length - shown.length;
+            if (kalan > 0) lines.push(`    <i>…ve ${kalan} farkli talep daha</i>`);
+            return `  <b>${escapeHtml(dept)}</b> (${total}):\n${lines.join('\n')}`;
           })
           .join('\n');
 
@@ -168,5 +187,6 @@ ${distLines}
 📋 <b>SLA Detay</b>
 ${slaDeptLines}
   ⚠️ Cevapsız (no_response): <b>${noResp.length}</b>
+  <i>(Süresinde yanıtlanmadı, otomatik eklendi — tam liste Excel'de)</i>
 ${noRespLines}`;
 }
