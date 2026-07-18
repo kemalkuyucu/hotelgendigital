@@ -460,7 +460,8 @@ async function _classifyAndRespondImpl(
           // bu deger forward davranisini DEGISTIREMEZ (kanitli notr). LLM'in kendi
           // answered_from_knowledge'i AND'lenir -> "bilgi yok" fallback'i KB sayilmaz.
           answered_from_knowledge:
-            brainShouldForward === false && parsed.answered_from_knowledge === true,
+            brainShouldForward === false &&
+            (parsed.answered_from_knowledge === true || brainResult.isInfoOnly === true),
           mapsLink: mapsLink ?? undefined,
           safetyTriggered: false,
           safetyCategory: null,
