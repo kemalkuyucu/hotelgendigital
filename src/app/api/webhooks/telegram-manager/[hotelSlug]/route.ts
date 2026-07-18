@@ -5,6 +5,7 @@ import { getManagerBotTokenForHotel } from '@/lib/telegram/manager-bot-token';
 import { handleHelp } from '@/lib/telegram/commands/handle-help';
 import { handleRapor } from '@/lib/telegram/commands/handle-rapor';
 import { buildRaporExcel } from '@/lib/telegram/commands/build-rapor-excel';
+import { parseRaporRange, parseVoiceDateRange } from '@/lib/telegram/commands/parse-rapor-range';
 import { sendRaporEmail } from '@/lib/email/rapor-email';
 import { handleDurum } from '@/lib/telegram/commands/handle-durum';
 import { handleAktifKonusmalar } from '@/lib/telegram/commands/handle-aktif-konusmalar';
@@ -39,67 +40,6 @@ function getDemoHotelClient() {
     process.env.DEMO_HOTEL_SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
   );
-}
-
-/**
- * /rapor tarih argümanı parse — "GG.AA" (gün.ay) formatı, yıl = şimdiki yıl,
- * timezone Europe/Istanbul (+03:00). start = ilk günün 00:00:00,
- * end = ikinci günün 23:59:59. Geçersizse null (eski son-24-saat davranışı).
- */
-function parseRaporRange(
-  arg1?: string,
-  arg2?: string
-): { startIso: string; endIso: string; label: string } | null {
-  if (!arg1 || !arg2) return null;
-  const re = /^(\d{1,2})\.(\d{1,2})$/;
-  const m1 = re.exec(arg1);
-  const m2 = re.exec(arg2);
-  if (!m1 || !m2) return null;
-
-  const d1 = Number(m1[1]);
-  const mo1 = Number(m1[2]);
-  const d2 = Number(m2[1]);
-  const mo2 = Number(m2[2]);
-  if (mo1 < 1 || mo1 > 12 || d1 < 1 || d1 > 31) return null;
-  if (mo2 < 1 || mo2 > 12 || d2 < 1 || d2 > 31) return null;
-
-  const year = new Date().getFullYear();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const startDate = new Date(`${year}-${pad(mo1)}-${pad(d1)}T00:00:00+03:00`);
-  const endDate = new Date(`${year}-${pad(mo2)}-${pad(d2)}T23:59:59+03:00`);
-  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return null;
-
-  return {
-    startIso: startDate.toISOString(),
-    endIso: endDate.toISOString(),
-    label: `${arg1} - ${arg2}`,
-  };
-}
-
-const TR_MONTHS: Record<string, number> = {
-  ocak: 1, subat: 2, mart: 3, nisan: 4, mayis: 5, haziran: 6,
-  temmuz: 7, agustos: 8, eylul: 9, ekim: 10, kasim: 11, aralik: 12,
-};
-
-/**
- * Sesli rapor tarih aralığı: "20 haziran 26 haziran" → "20.06 26.06".
- * normalizeTr ile ASCII'ye indirilmiş transcript üzerinde (gün + ay-adı) çiftlerini yakalar.
- * En az 2 çift bulunursa ilk ikisi başlangıç/bitiş; aksi halde null (→ son 24 saat).
- * KALICI #3: tamamen deterministik regex + sabit ay haritası; LLM'e tarih kararı YOK.
- */
-function parseVoiceDateRange(transcribed: string): string | null {
-  const norm = normalizeTr(transcribed);
-  const monthNames = Object.keys(TR_MONTHS).join('|');
-  const re = new RegExp(`(\\d{1,2})\\s+(${monthNames})`, 'g');
-  const pairs: { day: number; month: number }[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(norm)) !== null) {
-    pairs.push({ day: Number(m[1]), month: TR_MONTHS[m[2]] });
-  }
-  if (pairs.length < 2) return null;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const [a, b] = pairs;
-  return `${pad(a.day)}.${pad(a.month)} ${pad(b.day)}.${pad(b.month)}`;
 }
 
 export async function POST(

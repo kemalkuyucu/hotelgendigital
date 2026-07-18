@@ -2290,7 +2290,7 @@ async function handleMessage(args: {
         if (priceRes.status === 'need_dates') {
           await tg.sendMessage({
             chat_id: chatId,
-            text: 'Size en dogru fiyati verebilmem icin birkac bilgi gerekli: hangi tarihler arasi (giris-cikis) ve kac kisi (yetiskin/cocuk) kalacaksiniz?',
+            text: 'Size en doğru fiyatı verebilmem için birkaç bilgi gerekli: hangi tarihler arası (giriş-çıkış) ve kaç kişi (yetişkin/çocuk) kalacaksınız?',
           });
           return;
         }
@@ -3586,7 +3586,7 @@ async function handleMessage(args: {
               ? 'Unfortunately this item is not available right now, we are very sorry. Would you like to see our other available items?'
               : language === 'de'
               ? 'Dieser Artikel ist derzeit leider nicht verfuegbar, es tut uns sehr leid. Moechten Sie unsere anderen verfuegbaren Artikel sehen?'
-              : 'Bu urun su an mevcut degil, cok uzgunuz. Elimizdeki diger urunlere bakmak ister misiniz?';
+              : 'Bu ürün şu an mevcut değil, çok üzgünüz. Elimizdeki diğer ürünlere bakmak ister misiniz?';
           const offerYes =
             language === 'en' ? 'Yes, show me' : language === 'de' ? 'Ja, zeigen' : 'Evet, bakmak isterim';
           const offerNo =
@@ -3647,9 +3647,9 @@ async function handleMessage(args: {
             ? 'I am creating your order. To proceed, could you please confirm?'
             : language === 'de'
               ? 'Ich erstelle Ihre Bestellung. Bitte bestaetigen Sie zur Fortsetzung.'
-              : 'Siparisinizi olusturuyorum. Onaylarsaniz ilgili ekibe hemen iletecegim. Onayliyor musunuz?';
-        const yesLabel = language === 'en' ? 'Yes, confirm' : language === 'de' ? 'Ja, bestaetigen' : 'Evet, onayliyorum';
-        const noLabel = language === 'en' ? 'Cancel' : language === 'de' ? 'Abbrechen' : 'Vazgectim';
+              : 'Siparişinizi oluşturuyorum. Onaylarsanız ilgili ekibe hemen ileteceğim. Onaylıyor musunuz?';
+        const yesLabel = language === 'en' ? 'Yes, confirm' : language === 'de' ? 'Ja, bestaetigen' : 'Evet, onaylıyorum';
+        const noLabel = language === 'en' ? 'Cancel' : language === 'de' ? 'Abbrechen' : 'Vazgeçtim';
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
