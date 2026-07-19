@@ -115,7 +115,8 @@ export async function runCevreKesfiScan(
       const result = await queryPerplexity(cand.tag as InterestTag, address)
       const cat = getCategoryByTag(cand.tag)
       const queryText = cat ? cat.prompt_template.replace('{address}', address) : cand.tag
-      const expiresAt = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString()
+      // 30 gunluk TTL: gunluk piggyback tazelemesi altinda kayitlar surekli taze kalir
+      const expiresAt = new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString()
 
       // delete-then-insert: bu otel+tag icin eski kaydi temizle, tek taze kayit kalsin
       await cand.client
