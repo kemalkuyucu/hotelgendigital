@@ -1,6 +1,7 @@
 import { callAI } from './anthropic-client';
 import { enforceReplyLanguage } from './enforce-reply-language';
 import { NO_INFO_FALLBACK_TR } from './fallback-texts';
+import { normalizeTr } from '../utils/normalize-tr';
 // B1.1 — Departman beyni iskeleti (davranis-notr).
 // Bayrak KAPALI iken dispatcher hep handled=false doner; monolit orkestrator
 // aynen calisir. Departman beyinleri tek tek eklenecek (7.4 kalibrasyonu).
@@ -159,6 +160,46 @@ export const HOUSEKEEPING_SERVICE_PATTERNS: RegExp[] = [
   /çarşaf\s*degis/i,
   /carsaf\s*degis/i,
 ];
+
+// ── SORU KAPISI (IS 8) — deterministik + cok dilli ───────────────────────────
+// Housekeeping esyasi ICEREN ama BILGI SORUSU olan mesajlar ("havlu ne zaman
+// degisir?", "carsaf kacta degisir") talep/buton akisina DUSMEMELI. Karar KODDA
+// (LLM degil). SADECE soru-isareti/kelimesi VARKEN true doner; "2 banyo havlusu"
+// (miktar, soru yok) -> false (TALEP kalir, regresyon #6). normalizeTr TR/Latin
+// diyakritigini katlar ama Kiril/Arap'i TRANSLITERE ETMEZ (kendi alfabesinde
+// kuculur), bu yuzden Latin-disi belirtecler \b degil dogrudan includes ile aranir.
+// Latin kisa belirtecler (kim/mi/mu/wo/wer...) kelime-siniri \b ile yanlis-pozitif
+// vermez (normalizeTr ciktisinin Latin kismi ASCII -> \b dogru calisir).
+export function isHousekeepingInfoQuestion(text: string): boolean {
+  const raw = String(text ?? '');
+  if (!raw.trim()) return false;
+
+  // 1) Soru isareti — dil-bagimsiz en guclu sinyal.
+  //    '?' (U+003F), tam-genislik '？' (U+FF1F), Arapca '؟' (U+061F).
+  if (/[?？؟]/.test(raw)) return true;
+
+  const n = normalizeTr(raw);
+
+  // 2) Tam-kelime soru belirtecleri (TR/EN/DE/FR) — iki yanda kelime-siniri (\b).
+  //    Kisa risklileri (kim/mi/mu/wo/wer/kac...) \b yanlis-pozitiften korur:
+  //    "calisMIyor", "kimlik", "muz", "su kaCAgi", "minibar" ESLESMEZ. "var mi" -> \bmi\b.
+  const wordRe =
+    /\b(?:ne zaman|kacta|kac|saat kac|ne kadar|hangi|nasil|nerede|kim|mi|mu|when|what time|how|where|which|who|is there|are there|do you|wann|wie|wo|wer|gibt es|quand|comment|qui|est-ce|a-t-il)\b/;
+  if (wordRe.test(n)) return true;
+
+  // 3) Cekimli govde belirtecler (bas \b, son-ek serbest): welche/welcher/welches, quel/quelle.
+  //    Sondaki \b bunlari bozar ("welche"de h'den sonra e var), o yuzden ayri kural.
+  if (/\b(?:welch|quel)/.test(n)) return true;
+
+  // 4) Kiril/Arap belirtecler — \b ASCII-disinda calismaz; dogrudan includes.
+  //    Bu diller TR housekeeping esya pattern'ine takilmaz -> regresyon alani bos.
+  //    RU "как" ayni zamanda "какой/какая/какие" soru koklerini de kapsar.
+  const nonLatin = [
+    'когда', 'во сколько', 'как', 'где', 'кто', 'есть ли', // RU: ne zaman / kacta / nasil / nerede / kim / var mi
+    'متى', 'كيف', 'اين', 'أين', 'هل',                       // AR: ne zaman / nasil / nerede / nerede(hamza) / mi
+  ];
+  return nonLatin.some((m) => n.includes(m));
+}
 
 // Tek bir metinde HOUSEKEEPING_ITEM_PATTERNS icinden ILK eslesen PATTERN'i doner (liste sirasi).
 function matchHousekeepingItem(text: string): HousekeepingItem | null {
@@ -331,6 +372,14 @@ KAPANIS KURALI:
     messages: [{ role: 'user', content: userContent }],
   });
   const replyText = response.text;
+  // ── SORU KAPISI (IS 8): esya iceren mesaj BILGI SORUSU ise talep/buton akisina
+  // DUSURME. hkItems URETME; beyin bilgi cevabini (replyText) isInfoOnly ile don.
+  // Forward, classify brainShouldForward'ta housekeeping+isInfoOnly ile kesilir.
+  // matchHousekeepingItems'ten (talep-pattern) ONCE calisir. "2 banyo havlusu"
+  // (soru yok) bu kapiyi GECMEZ -> asagidaki hkItems dalina duser (TALEP kalir).
+  if (isHousekeepingInfoQuestion(input.guestMessage)) {
+    return { handled: true, replyText, overLimit: false, isInfoOnly: true };
+  }
   // Kart ozeti + esya kararlari SADECE guncel mesajdan. Gecmis TARANMAZ (butonlar
   // geldigi icin coklu-turlu metin akisi yok; gecmis fallback'i stale esya uretiyordu).
   const normalizedRequest = maxQty !== null

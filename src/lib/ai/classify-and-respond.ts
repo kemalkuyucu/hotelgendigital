@@ -440,7 +440,7 @@ async function _classifyAndRespondImpl(
             primaryIntent.department === 'spa'
               ? false
               : primaryIntent.department === 'housekeeping' &&
-                (brainResult.hkItems?.length ?? 0) > 0
+                ((brainResult.hkItems?.length ?? 0) > 0 || brainResult.isInfoOnly === true)
               ? false
               : primaryIntent.department === 'fb' &&
                 brainResult.isInfoOnly === true
