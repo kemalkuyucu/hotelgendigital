@@ -449,7 +449,7 @@ async function fetchNearbyPlaces(
   const places = Array.isArray(data.results) ? data.results : [];
   if (places.length === 0) return '';
 
-  const lines: string[] = [`CEVRE [${interestHint}]:`];
+  const lines: string[] = [`CEVRE [${interestHint}] (OTEL DISI - yakin cevre): Asagidakiler otelin DISINDAKI yakin yerlerdir. Misafir "yakinda", "yakin", "civarda", "cevrede", "disarida", "otel disinda", "bolgede", "buralarda" veya "en yakin" gibi OTEL DISINI kastederek sorduysa, otelin kendi mekanlari yerine BUNLARI oner. Misafir otelin KENDI yerlerini sormussa (ornek: sadece "restoran oner") bu blogu KULLANMA.`];
   for (const place of places.slice(0, 10)) {
     const p = place as Record<string, unknown>;
     const parts: string[] = [];
