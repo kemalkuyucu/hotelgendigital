@@ -5,6 +5,8 @@
  * Brain'e dokunmaz (Yol B); fetchNearbyPlaces bu fonksiyonu cagirir.
  */
 
+import { normalizeTr } from '@/lib/utils/normalize-tr';
+
 // Turkiye 81 il — adres icinde il tespiti icin (normalize edilmis: ASCII kucuk)
 const TR_PROVINCES: string[] = [
   'adana', 'adiyaman', 'afyonkarahisar', 'agri', 'amasya', 'ankara', 'antalya',
@@ -20,22 +22,6 @@ const TR_PROVINCES: string[] = [
   'sirnak', 'bartin', 'ardahan', 'igdir', 'yalova', 'karabuk', 'kilis',
   'osmaniye', 'duzce',
 ]
-
-/**
- * Turkce metni ASCII kucuk harfe normalize eder (il eslestirme icin).
- * Ornek: "Serik / Antalya" -> "serik / antalya"
- */
-function normalizeForProvince(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/ı/g, 'i')
-    .replace(/İ/g, 'i')
-    .replace(/ğ/g, 'g')
-    .replace(/ü/g, 'u')
-    .replace(/ş/g, 's')
-    .replace(/ö/g, 'o')
-    .replace(/ç/g, 'c')
-}
 
 /**
  * Su an Turkiye saatiyle nobet saatinde miyiz? (18:30–08:30)
@@ -56,14 +42,23 @@ export function isPharmacyDutyTime(now: Date = new Date()): boolean {
 
 /**
  * Adres metninden Turkiye ilini yakalar. Bulamazsa null.
+ * ONCE adresin son "/"-parcasini ("Ilce/IL" formatinda gercek il) dener; boylece
+ * mahalle/sokak adindaki il-adi (ornek: "Igdir Mh." -> Mersin'deki otel) yanlis
+ * yakalanmaz. Bulamazsa TUM adres uzerinde arar. Paylasilan normalizeTr kullanilir
+ * (buyuk İ dogru islenir; ikinci normalizer YAZILMAZ — CLAUDE.md).
  */
 export function extractProvince(address: string | null | undefined): string | null {
   if (!address) return null
-  const normalized = normalizeForProvince(address)
-  // Kelime sinirlariyla esles (ilce/mahalle adi icinde gomulu yakalamayi azaltir)
+  // 1) Adresin son "/"-parcasi = gercek il ("Ilce/IL")
+  const segs = address.split('/')
+  const tail = normalizeTr(segs[segs.length - 1] ?? '')
   for (const province of TR_PROVINCES) {
-    const re = new RegExp(`\\b${province}\\b`)
-    if (re.test(normalized)) return province
+    if (new RegExp(`\\b${province}\\b`).test(tail)) return province
+  }
+  // 2) Fallback: tum adres uzerinde ara
+  const full = normalizeTr(address)
+  for (const province of TR_PROVINCES) {
+    if (new RegExp(`\\b${province}\\b`).test(full)) return province
   }
   return null
 }
