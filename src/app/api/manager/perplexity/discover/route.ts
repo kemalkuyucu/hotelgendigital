@@ -127,6 +127,9 @@ export async function POST(request: Request) {
   // FIX 1a: expires_at her zaman set edilmeli — NULL kayıtlar UI'da "süresi doldu" gösteriyor
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
+  // Ayni tag icin eski kayitlari temizle — birikmeyi onle (bot en yeniyi okur, eskiler artik kalmaz)
+  await supabase.from('perplexity_discoveries').delete().eq('interest_tag', tag);
+
   const { data: inserted, error: insertError } = await supabase
     .from('perplexity_discoveries')
     .insert({

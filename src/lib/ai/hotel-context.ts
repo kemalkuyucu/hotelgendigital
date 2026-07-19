@@ -436,6 +436,7 @@ async function fetchNearbyPlaces(
     .from('perplexity_discoveries')
     .select('interest_tag, results, created_at')
     .eq('interest_tag', interestHint)
+    .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -660,6 +661,7 @@ export function formatContextForPrompt(ctx: HotelContext): string {
   if (contextParts.length > 0) {
     blocks.push(
       `=== HOTEL CONTEXT — YALNIZCA BU BILGILERI KULLAN ===\n\n` +
+      `KURAL: Bilgiler celisirse BILGI TABANI onceliklidir; CEVRE bloklari yalnizca yakin cevredeki yer onerileri icindir.\n` +
       `KURAL 1: Asagidaki HOTEL CONTEXT disindaki bilgileri KESINLIKLE UYDURMA.\n` +
       `KURAL 2: Baglamda bilgi VARSA net ve kesin cevap ver — "resepsiyona danisin" DEME.\n` +
       `KURAL 3: Baglamda YOKSA kibarca bilmedigini soyle ve otel telefona yonlendir` +

@@ -6,6 +6,9 @@ import { runSlaCheck } from '@/lib/sla/check-runner'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { runDeptChatHealthCheck } from '@/lib/telegram/dept-chat-health';
 import { runWebhookHealthCheck } from '@/lib/telegram/webhook-health';
+import { runCevreKesfiScan } from '@/lib/perplexity/cevre-scan-runner'
+
+export const maxDuration = 60
 
 export async function GET(req: NextRequest) {
   // Cron secret kontrolü
@@ -89,6 +92,13 @@ export async function GET(req: NextRequest) {
       webhookResults = await runWebhookHealthCheck(webhookHotelEntries)
     } catch (whErr) {
       console.error('[health-check] webhook check error:', whErr)
+    }
+
+    // Cevre Kesfi piggyback — SLA'dan SONRA, kendi try/catch'inde (SLA'yi ETKILEMEZ)
+    try {
+      await runCevreKesfiScan(hotelEntries, getHotelSupabase, { maxCalls: 3 })
+    } catch (e) {
+      console.warn('[cevre] piggyback skipped', e)
     }
   } catch (slaErr) {
     console.error('[health-check] SLA check error:', slaErr)
