@@ -35,7 +35,8 @@ export async function runCevreKesfiScan(
   const staleMs = staleHours * 60 * 60 * 1000
   const now = Date.now()
 
-  const ALL_TAGS = PERPLEXITY_CATEGORIES.map((c) => c.tag)
+  // SADECE 'perplexity' modundaki kategoriler taranir; kb_only/disabled Perplexity cagrisi harcamaz.
+  const ALL_TAGS = PERPLEXITY_CATEGORIES.filter((c) => c.mode === 'perplexity').map((c) => c.tag)
 
   const scanned: Array<{ hotel: string; tag: string }> = []
   const errors: Array<{ hotel: string; tag: string; reason: string }> = []

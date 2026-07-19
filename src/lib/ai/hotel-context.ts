@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCentralSupabase } from '../supabase-client';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { isPharmacyDutyTime, buildPharmacyDutyBlock } from '@/lib/perplexity/pharmacy-duty';
+import { getCategoryByTag } from '@/lib/perplexity/categories';
 
 export type HotelContextOptions = {
   /** Hangi kategoride çevre bilgisi gerekli? null = hiçbiri (genel sohbet) */
@@ -426,6 +427,11 @@ async function fetchNearbyPlaces(
   hotelAddress?: string | null,
 ): Promise<string> {
   if (!interestHint) return '';
+
+  // Kategori modu: sadece 'perplexity' modundakiler CEVRE blogu enjekte eder.
+  // 'kb_only' (restoran/plaj) ve 'disabled' (ulasim) -> brain KB kullanir + yoksa nazik fallback.
+  const cat = getCategoryByTag(interestHint);
+  if (!cat || cat.mode !== 'perplexity') return '';
 
   // NOBETCI ECZANE OVERRIDE (deterministik): eczane + nobet saati ise cache yerine guncel link
   if (interestHint === 'pharmacy' && isPharmacyDutyTime()) {
