@@ -20,7 +20,7 @@ import {
 } from './message-types';
 // Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
 import { normalizeTr } from '@/lib/utils/normalize-tr';
-import { dispatchToDepartmentBrain, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkItem } from '@/lib/ai/department-brains';
+import { dispatchToDepartmentBrain, isInfoQuestion, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkItem } from '@/lib/ai/department-brains';
 import { enforceReplyLanguage } from './enforce-reply-language';
 import { NO_INFO_FALLBACK_TR } from './fallback-texts';
 
@@ -364,12 +364,23 @@ async function _classifyAndRespondImpl(
     const BAGGAGE_KEYWORDS = ['bagaj', 'valiz', 'bavul', 'baggage', 'luggage'];
     const hasBaggageKeyword = BAGGAGE_KEYWORDS.some((kw) => normalizedGuestMsg.includes(kw));
     if (hasBaggageKeyword) {
+      // ── SORU KAPISI (IS 8 kardes-fix, hk-gate ile ayni TEK dedektor) ──────────
+      // Bagaj SORUSU ("bagaj nereye birakilir?", "nereye birakabilirim") TALEP DEGIL:
+      // forward'i deterministik KES, on-buroya BILDIRIM gitmesin, bilgi akisina birak.
+      // Bagaj TALEBI ("bagajimi alir misiniz", "bagajimi odaya getirin") eskisi gibi
+      // front_office'e forward. Departman ZORLAMA yok (Option A: normal KB akisina birak).
+      const baggageIsQuestion = isInfoQuestion(input.guestMessage);
       const foRouting = routeIntentToDepartment('front_office');
       let redirected = false;
       for (const it of classifiedIntents) {
         const rd = (it.rawDepartment ?? '').toLowerCase().trim();
         if (rd === 'allergy') continue;
-        if (it.department !== 'front_office' || it.createsSlaEvent) {
+        if (baggageIsQuestion) {
+          it.shouldForward = false;
+          it.messageType = 'BILGI';
+          it.withButtons = false;
+          it.createsSlaEvent = false;
+        } else if (it.department !== 'front_office' || it.createsSlaEvent) {
           it.department = 'front_office';
           it.shouldForward = true;
           it.messageType = 'BILDIRIM';
@@ -378,7 +389,11 @@ async function _classifyAndRespondImpl(
           redirected = true;
         }
       }
-      if (redirected) {
+      if (baggageIsQuestion) {
+        console.log(
+          `[baggage-override] Bagaj SORUSU -> forward kesildi (bilgi). msg="${input.guestMessage.slice(0, 60)}"`,
+        );
+      } else if (redirected) {
         console.log(
           `[baggage-override] Bagaj talebi front_office'e yonlendirildi. msg="${input.guestMessage.slice(0, 60)}"`,
         );
