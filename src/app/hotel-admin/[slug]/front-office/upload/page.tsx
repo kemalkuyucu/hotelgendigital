@@ -161,6 +161,17 @@ export default function UploadPage() {
       }
     }
 
+    if (!mapping.guest_count) {
+      const devam = window.confirm(
+        "UYARI: 'Kisi Sayisi' kolonu eslenmedi.\n\n" +
+        "Eslenmezse tum odalar 'kisi sayisi bilinmiyor' kaydedilir; havlu/pax gibi " +
+        "kisi-sayisina bagli ozellikler varsayilan 2 kisi gibi davranir; yanlis " +
+        "'Standart Disi' uyarisi cikabilir. Kolonu eslemen onerilir.\n\n" +
+        "Yine de ice aktarilsin mi?"
+      );
+      if (!devam) return;
+    }
+
     setStep('importing')
     setErrorMsg('')
 

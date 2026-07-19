@@ -36,7 +36,7 @@ interface GuestRow {
   room_number: string
   agency: string | null
   guest_name: string
-  guest_count: number
+  guest_count: number | null
   check_in_date: string
   check_out_date: string
 }
@@ -193,7 +193,8 @@ function extractGuest(
 
   const agencyRaw = mapping.agency ? row[mapping.agency] : null
   const countRaw = mapping.guest_count ? row[mapping.guest_count] : null
-  const guest_count = parseInt(String(countRaw ?? '1')) || 1
+  const parsedCount = parseInt(String(countRaw ?? '').trim(), 10)
+  const guest_count = Number.isFinite(parsedCount) && parsedCount > 0 ? parsedCount : null
 
   return {
     room_number,
