@@ -283,7 +283,7 @@ export function matchHousekeepingItems(text: string): HkItem[] {
 async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
-    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.nearbyPlaces].filter(
         (p) => typeof p === 'string' && p.trim().length > 0,
       )
     : [];
@@ -359,7 +359,7 @@ KAPANIS KURALI:
 async function runAnimationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
-    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.nearbyPlaces].filter(
         (p) => typeof p === 'string' && p.trim().length > 0,
       )
     : [];
@@ -419,7 +419,7 @@ infoOnly=false: SADECE misafir somut bir aksiyon/ozel istek/sikayet iletiyorsa (
 async function runSpaBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
-    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.nearbyPlaces].filter(
         (p) => typeof p === 'string' && p.trim().length > 0,
       )
     : [];
@@ -472,7 +472,7 @@ Maksimum 3 cumle.
 async function runFrontOfficeBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
-    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.locationInfo].filter(
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.locationInfo, ctx.nearbyPlaces].filter(
         (p) => typeof p === 'string' && p.trim().length > 0,
       )
     : [];
@@ -529,7 +529,7 @@ Kisa ve oz tut.`;
 async function runTechnicalBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
-    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.nearbyPlaces].filter(
         (p) => typeof p === 'string' && p.trim().length > 0,
       )
     : [];
@@ -584,7 +584,7 @@ Kisa ve oz tut.`;
 async function runGuestRelationBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
-    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.nearbyPlaces].filter(
         (p) => typeof p === 'string' && p.trim().length > 0,
       )
     : [];
@@ -632,7 +632,7 @@ KAPANIS:
 async function runFbBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
-    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts].filter(
+    ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.nearbyPlaces].filter(
         (p) => typeof p === 'string' && p.trim().length > 0,
       )
     : [];
