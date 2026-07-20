@@ -20,7 +20,7 @@ import {
 } from './message-types';
 // Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
 import { normalizeTr } from '@/lib/utils/normalize-tr';
-import { dispatchToDepartmentBrain, isInfoQuestion, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkItem } from '@/lib/ai/department-brains';
+import { dispatchToDepartmentBrain, isInfoQuestion, isHousekeepingComplaint, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkItem } from '@/lib/ai/department-brains';
 import { enforceReplyLanguage } from './enforce-reply-language';
 import { NO_INFO_FALLBACK_TR } from './fallback-texts';
 
@@ -93,6 +93,7 @@ export interface ClassifyAndRespondOutput {
   reservationNotify?: boolean;
   normalizedRequest?: string;
   hkItems?: HkItem[];       // housekeeping coklu esya (tip/adet butonlariyla sorulacak)
+  hkComplaint?: { code: number }; // housekeeping sikayeti (ozur + onay butonu; forward butona bagli)
   mapsLink?: string;        // konum cevabına garanti link enjeksiyonu icin
   raw_response: string;
 }
@@ -417,7 +418,28 @@ async function _classifyAndRespondImpl(
     const matchedHkPattern = HOUSEKEEPING_ITEM_PATTERNS.find((p) => p.re.test(input.guestMessage));
     const matchedHkService = !matchedHkPattern && HOUSEKEEPING_SERVICE_PATTERNS.some((re) => re.test(input.guestMessage));
     if (matchedHkPattern || matchedHkService) {
-      // ── SORU KAPISI (IS 8 Option-A, bagaj dalinin ikizi; TEK dedektor) ────────
+      // ── DAL 1: SIKAYET (esya + problem sinyali) — EN ONCE ────────────────────
+      // "havlu neden degismedi?" hem sikayet hem soru; sikayet KAZANIR. Bilgi
+      // dalina duserse misafir KB cevabi alir ve aksaklik kimseye iletilmez
+      // (SESSIZ YUTMA). Departman housekeeping'e zorlanir ki beyin sikayet
+      // isaretini (hkComplaint) uretebilsin; forward bu turda YAPILMAZ — misafir
+      // "Evet, simdi" butonuna basarsa callback forward eder (OTOMATIK ONAY YOK).
+      if (isHousekeepingComplaint(input.guestMessage)) {
+        const hkRouting = routeIntentToDepartment('housekeeping');
+        for (const it of classifiedIntents) {
+          const rd = (it.rawDepartment ?? '').toLowerCase().trim();
+          if (rd === 'allergy') continue;
+          it.department = 'housekeeping';
+          it.shouldForward = false;
+          it.messageType = hkRouting.messageType;
+          it.withButtons = true;
+          it.createsSlaEvent = false;
+        }
+        console.log(
+          `[hk-gate] Housekeeping SIKAYETI -> ozur + onay butonu (forward butona bagli). msg="${input.guestMessage.slice(0, 60)}"`,
+        );
+      } else
+      // ── DAL 2: SORU KAPISI (IS 8 Option-A, bagaj dalinin ikizi; TEK dedektor) ─
       // "havlu ne zaman degisir?" esya kelimesi TASIR ama TALEP DEGIL. Housekeeping'e
       // ZORLANIRSA talep-odakli beyin cagriliyor ve "talebiniz alindi, getirecektir"
       // metni uretiliyordu; forward kesik oldugu icin bu SAHTE ONAY oluyordu (kimseye
@@ -472,7 +494,9 @@ async function _classifyAndRespondImpl(
         hotelContext: hotelContext as Record<string, unknown> | null,
         conversationContext: (input.context ?? []).map((m) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.text ?? '' })),
       });
-      if (brainResult.handled && (brainResult.replyText || brainResult.hkItems?.length)) {
+      // hkComplaint dali replyText'i BOS doner (metin route.ts'te deterministik) —
+      // kosula EKLENMEZSE erken-return atlanir ve isaret KAYBOLUR.
+      if (brainResult.handled && (brainResult.replyText || brainResult.hkItems?.length || brainResult.hkComplaint)) {
         const brainShouldForward =
             primaryIntent.department === 'spa'
               ? false
@@ -512,6 +536,7 @@ async function _classifyAndRespondImpl(
           reservationNotify: brainResult.reservationNotify ?? false,
           normalizedRequest: brainResult.normalizedRequest,
           hkItems: brainResult.hkItems,
+          hkComplaint: brainResult.hkComplaint,
           raw_response: brainResult.replyText ?? '',
         };
       }

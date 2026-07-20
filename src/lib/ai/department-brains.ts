@@ -94,6 +94,9 @@ export interface DepartmentBrainResult {
   normalizedRequest?: string;
   isInfoOnly?: boolean;
   hkItems?: HkItem[];
+  // Housekeeping SIKAYETI: esya belli, tip/adet SORULMAZ. route.ts ozur + onay
+  // butonlarini gonderir; forward yalnizca misafir "Evet, simdi" derse yapilir.
+  hkComplaint?: { code: number };
 }
 
 // ── DIL KURALI — tum beyinlerde ortak ────────────────────────────────────────
@@ -196,6 +199,27 @@ export function isInfoQuestion(text: string): boolean {
     'متى', 'كيف', 'اين', 'أين', 'لماذا', 'هل',
   ];
   return nonLatin.some((m) => n.includes(m));
+}
+
+// ── SIKAYET KAPISI (IS 8) — deterministik, cok dilli DEGIL (TR sinyalleri) ────
+// Housekeeping SIKAYETI = esya VAR **VE** problem sinyali VAR. Soru formunda olsun
+// ("havlu neden degismedi?") olmasin ("havlum degismedi") SIKAYET dali KAZANIR;
+// isInfoQuestion'dan ONCE bakilir. Gerekce: sikayet bilgi dalina duserse misafir
+// "havlulariniz her gun degistirilir" gibi KB cevabi alir ve YASANAN aksaklik
+// kimseye iletilmez = SESSIZ YUTMA. Esya sarti forward kartinin esyayi
+// adlandirabilmesi icin de gerekli (esyasiz "odam temizlenmedi" bu dala GIRMEZ,
+// mevcut talep akisinda kalir).
+// normalizeTr tek normalizer (IKINCI NORMALIZER YASAK). \b kelime-siniri
+// isInfoQuestion'daki disiplinin aynisi: kisa/riskli kokler (yok, pis, degil)
+// yanlis-pozitif uretmesin ("yoklama", "pist", "degisik" ESLESMEZ).
+const HOUSEKEEPING_PROBLEM_RE =
+  /\b(?:degis(?:medi|memis)|degistiril(?:medi|memis)|yenilen(?:medi|memis)|gel(?:medi|memis)|getiril(?:medi|memis)|temizlen(?:medi|memis)|yapil(?:madi|mamis)|veril(?:medi|memis)|yok|yoktu|yoktur|eksik|kirli|pis|lekeli|degil|hala ayni|hala kirli)\b/;
+
+export function isHousekeepingComplaint(text: string): boolean {
+  const raw = String(text ?? '');
+  if (!raw.trim()) return false;
+  if (!matchHousekeepingItem(raw)) return false;
+  return HOUSEKEEPING_PROBLEM_RE.test(normalizeTr(raw));
 }
 
 // Tek bir metinde HOUSEKEEPING_ITEM_PATTERNS icinden ILK eslesen PATTERN'i doner (liste sirasi).
@@ -319,6 +343,16 @@ export function matchHousekeepingItems(text: string): HkItem[] {
 }
 
 async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
+  // ── SIKAYET KAPISI (IS 8) — BILGI KAPISINDAN DA ONCE ────────────────────────
+  // "havlu neden degismedi?" hem sikayet hem soru; SIKAYET kazanir (bilgi dalinda
+  // aksaklik kimseye iletilmezdi). LLM cagrilmaz: misafire gidecek ozur + onay
+  // metni route.ts'te deterministik (hkItems dalindaki gibi replyText BOS).
+  if (isHousekeepingComplaint(input.guestMessage)) {
+    const item = matchHousekeepingItem(input.guestMessage);
+    if (item) {
+      return { handled: true, replyText: '', overLimit: false, hkComplaint: { code: item.code } };
+    }
+  }
   // ── BILGI-SORU KAPISI (IS 8) — TALEP-ODAKLI LLM'DEN ONCE ────────────────────
   // "havlu ne zaman degisir?" esya kelimesi tasir ama TALEP DEGIL. Bu beyin bir
   // TALEP beynidir; cagrilirsa "talebiniz alindi ... getirecektir" uretir. Forward

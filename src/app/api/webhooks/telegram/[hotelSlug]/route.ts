@@ -31,7 +31,7 @@ import { handleSlaCallback } from '@/lib/sla/handle-callback';
 import { handleOrderCallback } from '@/lib/sla/handle-order-callback';
 import { handleNoteCallback } from '@/lib/sla/handle-note-callback';
 import { handleMenuOfferCallback } from '@/lib/sla/handle-menu-offer-callback';
-import { handleHousekeepingCallback, advanceHousekeeping } from '@/lib/sla/handle-housekeeping-callback';
+import { handleHousekeepingCallback, advanceHousekeeping, askHousekeepingComplaintConfirm } from '@/lib/sla/handle-housekeeping-callback';
 import { notifyDuplicateRequest } from '@/lib/sla/notify-duplicate';
 import { parseOrder, extractOrderNote } from '@/lib/menu/parse-order';
 import { bumpPendingOrder } from '@/lib/menu/pending-order';
@@ -3390,6 +3390,40 @@ async function handleMessage(args: {
 
   // intentData artık array — ilk satırın id'si legacy aiIntentId olarak kullanılır
   const aiIntentId = (intentData as Array<{ id: string }> | null)?.[0]?.id as string | undefined;
+
+  // ── HOUSEKEEPING SIKAYET KAPISI (deterministik) ────────────────────────────
+  // Brain hkComplaint dondurduyse misafir bir aksaklik bildirdi (esya belli).
+  // Ozur + TEK onay sorusu ("simdi mi, sonra mi") gonderilir; tip/adet SORULMAZ.
+  // Forward bu turda YAPILMAZ — yalnizca misafir "Evet, simdi" derse callback
+  // forward eder (OTOMATIK ONAY YASAGI). Damga kurulumu hkItems kapisiyla ayni
+  // desen: onceki state'in v'si taze okunur, yeni state v+1 ile yazilir; ekranda
+  // kalan eski butonlar bayatlar. Dogrulama bu turda soruldiysa DOKUNMA.
+  if (aiResult?.hkComplaint && !verificationAskedThisRound) {
+    const { data: prevHkC } = await supa
+      .from('conversations')
+      .select('hk_pending_text')
+      .eq('id', conversationId)
+      .maybeSingle();
+    let prevVC = 0;
+    const prevRawC = prevHkC?.hk_pending_text;
+    if (typeof prevRawC === 'string' && prevRawC.trim()) {
+      try {
+        const parsedC = JSON.parse(prevRawC);
+        if (parsedC && typeof parsedC.v === 'number') prevVC = parsedC.v;
+      } catch { /* bozuk JSON -> prevVC 0 kalir */ }
+    }
+    // Sikayette adet sorulmaz: q=1, a=false (tip sorusu da yok).
+    const stateC = { items: [{ c: aiResult.hkComplaint.code, q: 1, a: false }], i: 0, v: prevVC + 1 };
+    await supa
+      .from('conversations')
+      .update({ hk_pending: true, hk_pending_text: JSON.stringify(stateC) })
+      .eq('id', conversationId);
+    await askHousekeepingComplaintConfirm({
+      supa, botToken, convId: conversationId, guestChatId: chatId, state: stateC,
+    });
+    console.log('[hk-complaint] onay soruldu', { conv: conversationId, code: stateC.items[0].c, v: stateC.v });
+    return;
+  }
 
   // ── HOUSEKEEPING COKLU-ESYA KAPISI (deterministik) ─────────────────────────
   // Brain hkItems dondurduyse mesajdaki TUM esyalar cikarildi. State kur, ilk

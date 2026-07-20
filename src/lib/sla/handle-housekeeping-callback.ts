@@ -205,11 +205,46 @@ export async function advanceHousekeeping(p: {
   console.log('[hk-cb] forward sonucu', { convId, ok: res.ok, duplicate: res.duplicate });
 }
 
+// SIKAYET ONAY SORUSU (IS 8). Esya BELLI oldugu icin tip/adet SORULMAZ; tek soru:
+// "simdi mi, sonra mi". Saat/gunduz-gece mantigi YOK — secim MISAFIRDE. Damga
+// disiplini advanceHousekeeping ile BIREBIR: v ONCE artir + yaz, SONRA kart gonder.
+export async function askHousekeepingComplaintConfirm(p: {
+  supa: SupabaseClient;
+  botToken: string;
+  convId: string;
+  guestChatId: string | number;
+  state: HkState;
+}): Promise<void> {
+  const { supa, botToken, convId, guestChatId, state } = p;
+  state.v = (state.v ?? 0) + 1;
+  await supa.from('conversations').update({ hk_pending_text: JSON.stringify(state) }).eq('id', convId);
+  const askText =
+    'Yaşadığınız aksaklık için özür dileriz. Kat hizmetlerine hemen iletebilirim — şu an getirmemizi/yenilememizi ister misiniz?';
+  await fetch(TG(botToken, 'sendMessage'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: guestChatId,
+      text: askText,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Evet, şimdi', callback_data: `hk:c:1:${convId}:${state.v}` }],
+          [{ text: 'Şimdi değil, sonra', callback_data: `hk:c:0:${convId}:${state.v}` }],
+        ],
+      },
+    }),
+  }).catch(() => {});
+  await supa.from('bot_messages').insert({
+    conversation_id: convId, direction: 'outbound', text: askText, message_type: 'text',
+  });
+  console.log('[hk-cb] sikayet onayi soruldu', { convId, code: state.items[0]?.c, v: state.v });
+}
+
 export async function handleHousekeepingCallback(params: HkCallbackParams): Promise<void> {
   const { action, value, convId, stampRaw } = parseHkCallbackData(params.callbackData);
   console.log('[hk-cb] START', { action, data: params.callbackData });
 
-  if ((action !== 's' && action !== 'q') || Number.isNaN(value) || !convId) {
+  if ((action !== 's' && action !== 'q' && action !== 'c') || Number.isNaN(value) || !convId) {
     await answer(params.botToken, params.callbackQueryId, 'Gecersiz secim.');
     return;
   }
@@ -253,6 +288,47 @@ export async function handleHousekeepingCallback(params: HkCallbackParams): Prom
       true,
     );
     console.log('[hk-cb] RED bayat damga', { stamp: stampRaw, stateV: state.v, convId });
+    return;
+  }
+
+  // ── SIKAYET ONAYI (hk:c) ──────────────────────────────────────────────────
+  // Damga kapisini GECTI. State'i ONCE kapat (cift-tik idempotent: ikinci basim
+  // hk_pending=false gordugu icin "Bu adim zaten islendi" alir), sonra aksiyon.
+  // value=1 -> forward, value=0 -> forward YOK. Otomatik onay YASAK: sistem
+  // misafirin yerine "simdi" secemez.
+  if (action === 'c') {
+    await params.supa
+      .from('conversations')
+      .update({ hk_pending: false, hk_pending_text: null })
+      .eq('id', convId);
+    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, '✅ Secildi');
+    await answer(params.botToken, params.callbackQueryId, 'Secildi.');
+    if (value === 1) {
+      const items = state.items.map((it) => ({ code: it.c, qty: it.q ?? 1, ambiguous: false }));
+      const res = await forwardHousekeepingItems({
+        supa: params.supa,
+        botToken: params.botToken,
+        convId,
+        items,
+        pax: state.p ?? 2,
+        paxKnown: state.p !== null && state.p !== undefined,
+        note: 'sikayet/yenileme',
+      });
+      const msg = res.duplicate
+        ? 'Talebiniz zaten ilgili ekibe iletildi, en kısa sürede ilgileniyoruz.'
+        : res.ok
+          ? 'Tamam, hemen iletiyorum, en kısa sürede ilgileneceğiz.'
+          : 'Bir sorun oluştu, lütfen tekrar deneyin.';
+      await sendGuest(params.botToken, guestChatId, msg);
+      console.log('[hk-cb] sikayet forward sonucu', { convId, ok: res.ok, duplicate: res.duplicate });
+    } else {
+      await sendGuest(
+        params.botToken,
+        guestChatId,
+        'Tabii, dilediğiniz an yazmanız yeterli; hemen ilgileniriz.',
+      );
+      console.log('[hk-cb] sikayet ertelendi (forward YOK)', { convId });
+    }
     return;
   }
 

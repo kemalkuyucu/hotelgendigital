@@ -16,6 +16,9 @@ export async function forwardHousekeepingItems(p: {
   items: HkItem[];
   pax: number;
   paxKnown: boolean;
+  // Kart + DEDUP metnine eklenen isaret (orn. 'sikayet/yenileme'). Personelin
+  // yeni talep ile aksaklik bildirimini ayirt edebilmesi icin.
+  note?: string;
 }): Promise<{ ok: boolean; duplicate: boolean }> {
   const { supa, convId, items, pax, paxKnown } = p;
   console.log('[hk-fwd] START', { convId, items: items.length });
@@ -59,9 +62,9 @@ export async function forwardHousekeepingItems(p: {
   }
 
   // 4) requestText
-  const requestText = items
-    .map((i) => `${i.qty} ${labelForHousekeepingCode(i.code) ?? 'talep'}`)
-    .join(', ');
+  const requestText =
+    items.map((i) => `${i.qty} ${labelForHousekeepingCode(i.code) ?? 'talep'}`).join(', ') +
+    (p.note ? ` (${p.note})` : '');
   console.log('[hk-fwd] requestText', { requestText, roomNumber });
 
   // 5) DEDUP (eski callback 149-184 blogu AYNEN: son 10 dk + acik event + Jaccard>=0.5)
