@@ -20,6 +20,7 @@ import { getHotelAdminFromCookie } from '@/lib/hotel-admin/auth'
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
 import * as XLSX from 'xlsx'
 import { randomUUID } from 'crypto'
+import { planTelegramCarryOver, type InsertedGuestRow } from '@/lib/verification/inhouse-link'
 
 const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager']
 
@@ -304,7 +305,8 @@ export async function POST(
     // ---- 3. Mevcut aktif kayitlari al ----
     const { data: existingRows, error: fetchErr } = await tenant.hotelSupabase
       .from('inhouse_guests_v2')
-      .select('id, room_number, check_in_date, guest_name, guest_count, check_out_date, agency')
+      // telegram_id: C2 tasima icin — arsivlenen satirin Telegram baglantisi
+      .select('id, room_number, check_in_date, guest_name, guest_count, check_out_date, agency, telegram_id')
       .eq('status', 'active')
 
     if (fetchErr) throw new Error('Mevcut kayitlar okunamadi: ' + fetchErr.message)
@@ -317,6 +319,7 @@ export async function POST(
       guest_count: number
       check_out_date: string
       agency: string | null
+      telegram_id: string | null
     }
 
     const existing = (existingRows ?? []) as ExistingRow[]
@@ -365,6 +368,9 @@ export async function POST(
       }
     }
 
+    // C2: INSERT ile acilan yeni satirlar (id'leriyle) — tasima plani icin.
+    let insertedRows: InsertedGuestRow[] = []
+
     // INSERT
     if (toInsert.length > 0) {
       const insertPayload = toInsert.map((g) => ({
@@ -377,10 +383,13 @@ export async function POST(
         status: 'active',
         upload_batch_id: batch_id,
       }))
-      const { error: insertErr } = await tenant.hotelSupabase
+      // .select(): C2 tasima yeni satirlarin id'sine ihtiyac duyar.
+      const { data: insertedRowsData, error: insertErr } = await tenant.hotelSupabase
         .from('inhouse_guests_v2')
         .insert(insertPayload)
+        .select('id, room_number, guest_name')
       if (insertErr) throw new Error('Insert hatasi: ' + insertErr.message)
+      insertedRows = (insertedRowsData ?? []) as InsertedGuestRow[]
       inserted = toInsert.length
       console.log('[import] Inserted:', inserted)
     }
@@ -411,6 +420,67 @@ export async function POST(
       if (archiveErr) throw new Error('Archive hatasi: ' + archiveErr.message)
       archived = toArchiveIds.length
       console.log('[import] Archived:', archived)
+    }
+
+    // ---- 4b. C2: TELEGRAM DAMGASINI YENI SATIRA TASI (yalniz AYNI MISAFIR) ----
+    // Import anahtari room_number::check_in_date oldugu icin ayni misafir yeni bir
+    // check_in ile geldiginde eski satir arsivlenir + YENI id acilir; telegram_id
+    // arsivde kalirsa kart "Oda bilinmiyor" der (canli: 2026-07-19, oda 312).
+    // Plan SAF fonksiyonda (planTelegramCarryOver) uretilir: yalnizca ayni oda +
+    // ayni isim + TEK-ANLAMLI eslesme tasinir; supheli her durumda tasima YOK.
+    // GIZLILIK: yanlis tasima baskasinin odasini gostermek demektir.
+    // Hata import'u DUSURMEZ — yukleme zaten basarili; log'lanip devam edilir.
+    if (toArchiveIds.length > 0 && insertedRows.length > 0) {
+      try {
+        const archiveIdSet = new Set(toArchiveIds)
+        const archivedStamped = existing
+          .filter((e) => archiveIdSet.has(e.id) && e.telegram_id)
+          .map((e) => ({
+            id: e.id,
+            room_number: e.room_number,
+            guest_name: e.guest_name,
+            telegram_id: e.telegram_id,
+          }))
+        const carryPlan = planTelegramCarryOver(archivedStamped, insertedRows)
+        console.log('[import][c2] tasima plani', {
+          damgaliArsiv: archivedStamped.length,
+          yeniSatir: insertedRows.length,
+          tasinacak: carryPlan.length,
+        })
+        for (const carry of carryPlan) {
+          // Tek-damga invaryanti: ONCE eskiyi bosalt, SONRA yeniye yaz.
+          const { error: clearErr } = await tenant.hotelSupabase
+            .from('inhouse_guests_v2')
+            .update({ telegram_id: null })
+            .eq('id', carry.fromId)
+          if (clearErr) {
+            console.error('[import][c2] eski damga temizlenemedi, tasima iptal:', carry.fromId, clearErr.message)
+            continue
+          }
+          const { error: setErr } = await tenant.hotelSupabase
+            .from('inhouse_guests_v2')
+            .update({ telegram_id: carry.telegramId })
+            .eq('id', carry.toId)
+          if (setErr) {
+            console.error('[import][c2] yeni satira damga yazilamadi:', carry.toId, setErr.message)
+            continue
+          }
+          // Konusma isaretcilerini yeni id'ye cevir (eski id ile sinirli, WHERE'siz UPDATE YOK).
+          const { error: convErr } = await tenant.hotelSupabase
+            .from('conversations')
+            .update({ inhouse_match_guest_id: carry.toId })
+            .eq('inhouse_match_guest_id', carry.fromId)
+          if (convErr) console.error('[import][c2] inhouse_match_guest_id re-point hatasi:', convErr.message)
+          const { error: verErr } = await tenant.hotelSupabase
+            .from('conversations')
+            .update({ verified_inhouse_guest_id: carry.toId })
+            .eq('verified_inhouse_guest_id', carry.fromId)
+          if (verErr) console.error('[import][c2] verified_inhouse_guest_id re-point hatasi:', verErr.message)
+          console.log('[import][c2] damga tasindi', { oda: carry.roomNumber, from: carry.fromId, to: carry.toId })
+        }
+      } catch (carryErr) {
+        console.error('[import][c2] tasima blogu hatasi (import etkilenmedi):', carryErr instanceof Error ? carryErr.message : carryErr)
+      }
     }
 
     // ---- 5. Gecmis kaydi ----
