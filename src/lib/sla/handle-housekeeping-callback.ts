@@ -50,6 +50,7 @@ interface HkState {
   p?: number | null; // odadaki kisi sayisi (null = bilinmiyor)
   pl?: boolean; // pax lookup yapildi mi
   v?: number; // damga: her state yazisinda artar; bayat/ezilmis buton reddi icin
+  cm?: boolean; // sikayet akisi mi — final forward'da 'sikayet/yenileme' notu icin
 }
 
 interface HkCallbackParams {
@@ -195,7 +196,13 @@ export async function advanceHousekeeping(p: {
   // 3) hepsi tamam -> forward
   await supa.from('conversations').update({ hk_pending: false, hk_pending_text: null }).eq('id', convId);
   const items = state.items.map((it) => ({ code: it.c, qty: it.q, ambiguous: it.a }));
-  const res = await forwardHousekeepingItems({ supa, botToken, convId, items, pax, paxKnown: state.p !== null });
+  // SIKAYET ETIKETI: zincir sikayet onayiyla baslamissa (cm) kartta ve dedup
+  // metninde 'sikayet/yenileme' isareti kalir — adet artik butondan geldigi icin
+  // etiket state uzerinden tasinir (eski auto q=1 dalindaki sabit not kaldirildi).
+  const res = await forwardHousekeepingItems({
+    supa, botToken, convId, items, pax, paxKnown: state.p !== null,
+    note: state.cm === true ? 'sikayet/yenileme' : undefined,
+  });
   const msg = res.duplicate
     ? 'Talebiniz zaten ilgili ekibe iletildi, en kisa surede ilgileniyoruz.'
     : res.ok
@@ -292,43 +299,45 @@ export async function handleHousekeepingCallback(params: HkCallbackParams): Prom
   }
 
   // ── SIKAYET ONAYI (hk:c) ──────────────────────────────────────────────────
-  // Damga kapisini GECTI. State'i ONCE kapat (cift-tik idempotent: ikinci basim
-  // hk_pending=false gordugu icin "Bu adim zaten islendi" alir), sonra aksiyon.
-  // value=1 -> forward, value=0 -> forward YOK. Otomatik onay YASAK: sistem
-  // misafirin yerine "simdi" secemez.
+  // Damga kapisini GECTI. Otomatik onay YASAK: sistem misafirin yerine "simdi"
+  // secemez; iki dal da misafirin secimiyle acilir.
+  //
+  // value=1 (Evet, simdi): DOGRUDAN forward YAPILMAZ. Odada 3-4 kisi olabilir ->
+  //   adet SECILMELI. Normal cozum makinesi (advanceHousekeeping) baslatilir:
+  //   esya ambiguous ise TIP (banyo/yuz/ayak) -> ADET -> forward. Yeni bir akis
+  //   kurulmaz, normal talep akisiyla BIREBIR ayni zincir. State KAPATILMAZ.
+  //   Cift-tik korumasi damgadan gelir: advanceHousekeeping ilk soruyu sorarken
+  //   v'yi artirir -> ekranda kalan onay butonu bayatlar, ikinci basim damga
+  //   kapisinda RED alir (misafir show_alert ile bilgilendirilir).
+  // value=0 (Simdi degil, sonra): state kapanir, forward YOK.
   if (action === 'c') {
+    if (value === 1) {
+      await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, '✅ Secildi');
+      await answer(params.botToken, params.callbackQueryId, 'Secildi.');
+      console.log('[hk-cb] sikayet onaylandi -> cozum zinciri basliyor', {
+        convId, code: state.items[0]?.c, ambiguous: state.items[0]?.a,
+      });
+      await advanceHousekeeping({
+        supa: params.supa,
+        botToken: params.botToken,
+        convId,
+        guestChatId,
+        state,
+      });
+      return;
+    }
     await params.supa
       .from('conversations')
       .update({ hk_pending: false, hk_pending_text: null })
       .eq('id', convId);
     await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, '✅ Secildi');
     await answer(params.botToken, params.callbackQueryId, 'Secildi.');
-    if (value === 1) {
-      const items = state.items.map((it) => ({ code: it.c, qty: it.q ?? 1, ambiguous: false }));
-      const res = await forwardHousekeepingItems({
-        supa: params.supa,
-        botToken: params.botToken,
-        convId,
-        items,
-        pax: state.p ?? 2,
-        paxKnown: state.p !== null && state.p !== undefined,
-        note: 'sikayet/yenileme',
-      });
-      const msg = res.duplicate
-        ? 'Talebiniz zaten ilgili ekibe iletildi, en kısa sürede ilgileniyoruz.'
-        : res.ok
-          ? 'Tamam, hemen iletiyorum, en kısa sürede ilgileneceğiz.'
-          : 'Bir sorun oluştu, lütfen tekrar deneyin.';
-      await sendGuest(params.botToken, guestChatId, msg);
-      console.log('[hk-cb] sikayet forward sonucu', { convId, ok: res.ok, duplicate: res.duplicate });
-    } else {
-      await sendGuest(
-        params.botToken,
-        guestChatId,
-        'Tabii, dilediğiniz an yazmanız yeterli; hemen ilgileniriz.',
-      );
-      console.log('[hk-cb] sikayet ertelendi (forward YOK)', { convId });
-    }
+    await sendGuest(
+      params.botToken,
+      guestChatId,
+      'Tabii, dilediğiniz an yazmanız yeterli; hemen ilgileniriz.',
+    );
+    console.log('[hk-cb] sikayet ertelendi (forward YOK)', { convId });
     return;
   }
 

@@ -94,9 +94,10 @@ export interface DepartmentBrainResult {
   normalizedRequest?: string;
   isInfoOnly?: boolean;
   hkItems?: HkItem[];
-  // Housekeeping SIKAYETI: esya belli, tip/adet SORULMAZ. route.ts ozur + onay
-  // butonlarini gonderir; forward yalnizca misafir "Evet, simdi" derse yapilir.
-  hkComplaint?: { code: number };
+  // Housekeeping SIKAYETI: route.ts ozur + onay butonlarini gonderir. Misafir
+  // "Evet, simdi" derse normal cozum zinciri isler (ambiguous ise TIP -> ADET ->
+  // forward); ambiguous bu yuzden tasinir — adet ASLA otomatik varsayilmaz.
+  hkComplaint?: { code: number; ambiguous: boolean };
 }
 
 // ── DIL KURALI — tum beyinlerde ortak ────────────────────────────────────────
@@ -350,7 +351,12 @@ async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<Depart
   if (isHousekeepingComplaint(input.guestMessage)) {
     const item = matchHousekeepingItem(input.guestMessage);
     if (item) {
-      return { handled: true, replyText: '', overLimit: false, hkComplaint: { code: item.code } };
+      return {
+        handled: true,
+        replyText: '',
+        overLimit: false,
+        hkComplaint: { code: item.code, ambiguous: item.ambiguous },
+      };
     }
   }
   // ── BILGI-SORU KAPISI (IS 8) — TALEP-ODAKLI LLM'DEN ONCE ────────────────────

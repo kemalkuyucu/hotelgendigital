@@ -93,7 +93,7 @@ export interface ClassifyAndRespondOutput {
   reservationNotify?: boolean;
   normalizedRequest?: string;
   hkItems?: HkItem[];       // housekeeping coklu esya (tip/adet butonlariyla sorulacak)
-  hkComplaint?: { code: number }; // housekeeping sikayeti (ozur + onay butonu; forward butona bagli)
+  hkComplaint?: { code: number; ambiguous: boolean }; // housekeeping sikayeti (ozur + onay butonu; forward butona bagli)
   mapsLink?: string;        // konum cevabına garanti link enjeksiyonu icin
   raw_response: string;
 }

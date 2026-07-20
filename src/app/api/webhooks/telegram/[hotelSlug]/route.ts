@@ -3412,8 +3412,16 @@ async function handleMessage(args: {
         if (parsedC && typeof parsedC.v === 'number') prevVC = parsedC.v;
       } catch { /* bozuk JSON -> prevVC 0 kalir */ }
     }
-    // Sikayette adet sorulmaz: q=1, a=false (tip sorusu da yok).
-    const stateC = { items: [{ c: aiResult.hkComplaint.code, q: 1, a: false }], i: 0, v: prevVC + 1 };
+    // Onay sonrasi normal cozum zinciri isleyecek: q=null -> ADET mutlaka sorulur
+    // (odada 3-4 kisi olabilir, adet VARSAYILMAZ), a=esyanin gercek belirsizligi
+    // -> "havlu" gibi ambiguous esyada once TIP sorulur. cm=sikayet bayragi:
+    // zincirin sonundaki forward 'sikayet/yenileme' notunu bu bayraktan alir.
+    const stateC = {
+      items: [{ c: aiResult.hkComplaint.code, q: null, a: aiResult.hkComplaint.ambiguous }],
+      i: 0,
+      v: prevVC + 1,
+      cm: true,
+    };
     await supa
       .from('conversations')
       .update({ hk_pending: true, hk_pending_text: JSON.stringify(stateC) })
