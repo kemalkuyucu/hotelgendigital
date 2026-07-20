@@ -705,15 +705,7 @@ export function formatContextForPrompt(ctx: HotelContext): string {
  * false → normal akış devam eder.
  */
 export function detectMeetingRoomIntent(message: string): boolean {
-  const normalized = message
-    .toLowerCase()
-    .replace(/[İI]/g, 'i')
-    .replace(/[Şş]/g, 's')
-    .replace(/[Ğğ]/g, 'g')
-    .replace(/[Üü]/g, 'u')
-    .replace(/[Öö]/g, 'o')
-    .replace(/[Çç]/g, 'c')
-    .replace(/[Aa]/g, 'a');
+  const normalized = normalizeTr(message);
 
   const keywords = [
     'toplanti salonu', 'toplanti salonlari', 'toplanti salonu var mi',

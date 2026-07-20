@@ -623,18 +623,10 @@ function detectLanguage(msg: TelegramMessage): string {
 // Yaklaşım: keyword tabanlı pre-classifier (detectInterestTag + social-intent-override
 // ile aynı mantık). AI'dan önce çalışır — ucuz ve hızlı.
 
-function isInfoOnlyQuery(text: string): boolean {
+export function isInfoOnlyQuery(text: string): boolean {
   if (!text || text.trim().length < 2) return false;
 
-  const t = text
-    .toLowerCase()
-    .replace(/[İ]/g, 'i')
-    .replace(/[Şş]/g, 's')
-    .replace(/[Ğğ]/g, 'g')
-    .replace(/[Üü]/g, 'u')
-    .replace(/[Öö]/g, 'o')
-    .replace(/[Çç]/g, 'c')
-    .replace(/[Ii]/g, 'i');
+  const t = normalizeTr(text);
 
   // ── 1. Açık "konaklamıyorum / bilgi almak istiyorum" bildirimleri ─────────
   const nonGuestPatterns = [

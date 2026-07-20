@@ -141,9 +141,14 @@ yeni check-in ile yuklenince anahtar degisir → eski satir **arsivlenir**, YENI
   iki talep, ayni damganin iki hedefe gitmesi → **hicbiri tasinmaz**. Ayni odaya gelen YENI
   misafir hicbir sey devralmaz (yoksa baskasinin odasini/taleplerini gorur); oksuz kalan arsiv
   damgasi zararsizdir.
-- **Veri onarimi deseni (tek-damga invaryanti, reception-approval.ts GUARD A):** ONCE eski
-  satirdan `telegram_id=NULL`, SONRA aktif satira damga, sonra konusma isaretcileri. Her UPDATE
-  **id ile** — WHERE'siz UPDATE YOK. Dogrulama: kart sorgusunun BIREBIR aynisini kosur.
+- **Veri onarimi deseni (tek-damga invaryanti):** Tam id-tabanli 3 adim — ONCE eski satirdan
+  `telegram_id=NULL` (id ile), SONRA aktif satira damga (id ile), sonra konusma isaretcileri
+  (`inhouse_match_guest_id`/`verified_inhouse_guest_id`, eski-deger WHERE ile) — **import route 4b**'de
+  (`src/app/api/hotel-admin/[slug]/inhouse/import/route.ts` ~450-480, `planTelegramCarryOver` planindan).
+  `reception-approval.ts` (`src/lib/verification/` altinda — glob teyitli) GUARD A ise daha BASIT bir
+  tek-damga temizligidir: `telegram_id`+`status='active'` ile NULL'la, sonra YENI satir INSERT
+  (pending misafirin inhouse kaydi olmadigindan konusma-isaretcisi tasima adimi YOK). Her iki yolda da
+  WHERE'siz UPDATE YOK. Dogrulama: kart sorgusunun BIREBIR aynisini kosur.
 
 ### Room-service akisi
 | Dosya | Sorumluluk |

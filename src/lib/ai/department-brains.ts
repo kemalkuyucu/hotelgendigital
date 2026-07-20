@@ -13,7 +13,7 @@ export const DEPARTMENT_BRAINS_ENABLED: boolean = true;
 // kosulunu hem reservationNotify donusunu bu sabitten hesaplar. route.ts:3432
 // yalnizca reservationNotify=true iken spa grubuna bildirim gonderir; boylece
 // "ilettim" vaadi ayni deterministik kapiya baglanir.
-const RESERVATION_KEYWORDS = ['rezervasyon', 'randevu', 'rezerve'];
+export const RESERVATION_KEYWORDS = ['rezervasyon', 'randevu', 'rezerve'];
 
 // 7.4 — Her departman beyninin yetenek profili.
 export interface DepartmentBrainConfig {
@@ -516,7 +516,7 @@ async function runSpaBrain(input: DepartmentBrainInput): Promise<DepartmentBrain
     ctxParts.length > 0 ? `\n\nOTEL BILGILERI:\n${ctxParts.join('\n\n')}` : '';
   // Rezervasyon niyeti prompt KURULMADAN once hesaplanir; hem asagidaki kosullu blok
   // hem reservationNotify donusu ayni degiskeni kullanir (tek hesap, RESERVATION_KEYWORDS).
-  const lowerMsg = input.guestMessage.toLowerCase();
+  const lowerMsg = normalizeTr(input.guestMessage);
   const isReservation = RESERVATION_KEYWORDS.some((k) => lowerMsg.includes(k));
   // KOSULLU BLOK: rezervasyon talebiyse mevcut REZERVASYON/RANDEVU KURALI aynen girer;
   // degilse "ilettim" turu iletme/takip vaadi YASAK — cunku route.ts:3432 rezervasyon-disi
