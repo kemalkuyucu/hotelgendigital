@@ -27,6 +27,27 @@ export function requiresVerification(intent: string | null): intent is Verificat
   return (VERIFICATION_REQUIRED_INTENTS as readonly string[]).includes(intent);
 }
 
+/**
+ * İŞ 9 — doğrulanmamış misafirde boşa giden department brain (callAI) çağrısını keser.
+ *
+ * Neden: requiresVerification(department) olan bir talepte misafir doğrulanmamışsa
+ * brain callAI ile çağrılıp metin üretiyor, ardından route.ts'teki doğrulama gate'i
+ * o metni "oda numaranızı paylaşın" mesajıyla EZİYOR. Üretilen metin misafire HİÇ
+ * ulaşmıyor → boşa LLM maliyeti. Guard yalnız çağrıyı atlar; misafire giden metin
+ * (gate'in kendi mesajı) DEĞİŞMEZ.
+ *
+ * isVerified: "bu turda doğrulama gate'i brain metnini EZMEYECEK" birleşik kararı.
+ * Çağıran taraf hesaplar (damga / kayıtlı doğrulama / mesajdaki kimlik bilgisi /
+ * bilgi sorusu / alerji turu); burası saf karardır — IO yok, test edilebilir.
+ * Şüpheliyse isVerified=true geçilir: yanlış kesme, boşa çağrıdan kötüdür.
+ */
+export function shouldSkipBrainForVerification(
+  department: string | null,
+  isVerified: boolean,
+): boolean {
+  return requiresVerification(department) && !isVerified;
+}
+
 // Doğrulama state TTL (saat) — fallback için, asıl kontrol check_out_date ile yapılıyor
 export const VERIFICATION_TTL_HOURS = 24;
 

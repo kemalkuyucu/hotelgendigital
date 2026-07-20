@@ -2275,6 +2275,11 @@ async function handleMessage(args: {
   let verifiedGuestNameForAI: string | null = null;
   let verifiedRoomNumberForAI: string | null = null;
   let verifiedCheckoutForAI: string | null = null;
+  // İŞ 9: damganın VARLIĞI (guest_name dolu olmasından BAĞIMSIZ). handleVerificationFlow
+  // adım 0 ile BİREBİR aynı sorgu — orada damga bulunursa aiReplyText korunur (ezilmez),
+  // dolayısıyla brain çağrısı boşa gitmez. guest_name NULL olan aktif damgada
+  // verifiedGuestNameForAI null kalır ama damga VARDIR; ayrımı kaybetmek guard'ı yanıltır.
+  let hasActiveInhouseStamp = false;
   if (userId != null) {
     try {
       const { data: vgRows } = await supa
@@ -2285,11 +2290,15 @@ async function handleMessage(args: {
         .gte('check_out_date', getTurkeyToday())
         .limit(1);
       if (vgRows && vgRows.length > 0) {
+        hasActiveInhouseStamp = true;
         verifiedGuestNameForAI = (vgRows[0].guest_name as string) ?? null;
         verifiedRoomNumberForAI = (vgRows[0].room_number != null ? String(vgRows[0].room_number) : null);
         verifiedCheckoutForAI = (vgRows[0].check_out_date != null ? String(vgRows[0].check_out_date) : null);
       }
     } catch (vgErr) {
+      // Sorgu hatasında damga VAR say (C1 deseni): geçici DB hatası yüzünden brain'i
+      // yanlışlıkla kesip metni değiştirmektense boşa çağrıyı göze al.
+      hasActiveInhouseStamp = true;
       console.error('[ai] verifiedGuestName lookup hatası:', vgErr instanceof Error ? vgErr.message : vgErr);
     }
   }
@@ -2535,6 +2544,36 @@ async function handleMessage(args: {
     }
   }
 
+  // ── İŞ 9: doğrulama gate'i bu turda brain metnini EZECEK mi? ───────────────
+  // EZER (settled=false) yalnızca AŞAĞIDAKİLERİN HEPSİ birden tutarsa:
+  //   damga YOK + kayıtlı doğrulama YOK + mesajda kimlik bilgisi YOK + bilgi sorusu DEĞİL.
+  // Bu durumda handleVerificationFlow adım 0/1'i geçemez ve hasCredentials=false
+  // olduğundan KESİN shouldShortCircuit=true döner → finalResponseText ezilir ve
+  // verificationAskedThisRound=true olduğu için hkItems/hkComplaint state'i de zaten
+  // kurulmaz → brain çıktısının TEK tüketicisi kalmaz.
+  // Herhangi biri tutmuyorsa metin korunabilir → settled=true → brain ÇAĞRILIR
+  // (muhafazakâr yön: şüpheliyse çağır; yanlış kesme çıktıyı bozar, boşa çağrı bozmaz).
+  // verified_inhouse_guest_id dolu olması persistentVerifiedGuest / needsReVerification /
+  // TTL passthrough yollarının HEPSİNİ kapsar — o yollarda gate'e ya girilmez ya da
+  // aiReplyText aynen döndürülür.
+  const vgParsedForGate = parseVerificationInput(text);
+  const hasVerificationCredentials =
+    vgParsedForGate.roomNumber !== null &&
+    vgParsedForGate.firstName !== null &&
+    vgParsedForGate.lastName !== null;
+  const verificationIsActiveForGate =
+    !!conversation.verification_pending_intent && !isVerificationValid(conversation.verified_at);
+  const verificationSettledForBrain =
+    hasActiveInhouseStamp ||
+    !!conversation.verified_inhouse_guest_id ||
+    hasVerificationCredentials ||
+    isInfoOnlyQuery(text);
+  // Modül 3 emniyeti: alerji sorusu sorulabilecek turda gate'e HİÇ girilmez
+  // (canAskAllergen), yani metin korunur. isFbIntent departmana bağlı olduğu için
+  // bileşenler classify'a geçirilir, fb/room_service kontrolü orada yapılır.
+  const allergenAskPossibleForBrain =
+    !conversation.allergen_asked && !conversation.allergen_pending && !verificationIsActiveForGate;
+
   // Claude AI çağrısı
   let aiResult: Awaited<ReturnType<typeof classifyAndRespond>> | null = null;
   let aiError: string | null = null;
@@ -2549,6 +2588,8 @@ async function handleMessage(args: {
       verifiedGuestName: verifiedGuestNameForAI,
       verifiedRoomNumber: verifiedRoomNumberForAI,
       verifiedCheckout: verifiedCheckoutForAI,
+      verificationSettled: verificationSettledForBrain,
+      allergenAskPossible: allergenAskPossibleForBrain,
     });
   } catch (err) {
     aiError = err instanceof Error ? err.message : 'unknown AI error';

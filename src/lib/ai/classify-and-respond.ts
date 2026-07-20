@@ -23,6 +23,9 @@ import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { dispatchToDepartmentBrain, isInfoQuestion, isHousekeepingComplaint, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkItem } from '@/lib/ai/department-brains';
 import { enforceReplyLanguage } from './enforce-reply-language';
 import { NO_INFO_FALLBACK_TR } from './fallback-texts';
+// İŞ 9 — doğrulanmamış misafirde boşa brain callAI'sini kesen saf karar
+import { requiresVerification, shouldSkipBrainForVerification } from './verification-intents';
+import { overrideSocialIntent } from './social-intent-override';
 
 // ── ÇOK DİLLİ ALERJİ KÖK-KELİMELERİ (tek kaynak) ───────────────────────────
 // Bu liste iki yerde kullanılır: (1) saglik kapisi alerji istisnasi (satir ~107),
@@ -60,6 +63,18 @@ export interface ClassifyAndRespondInput {
   verifiedGuestName?: string | null; // Doğrulanmış misafir adı (varsa) → oda no SORMA
   verifiedRoomNumber?: string | null; // Doğrulanmış misafir oda no (varsa)
   verifiedCheckout?: string | null; // Doğrulanmış misafir çıkış tarihi (varsa)
+  /**
+   * İŞ 9 — false ise bu turda doğrulama gate'i brain metnini EZECEK demektir;
+   * requiresVerification(department) olan departmanlarda brain callAI ATLANIR.
+   * Varsayılan true (= metin korunabilir) → alan geçilmezse davranış DEĞİŞMEZ.
+   */
+  verificationSettled?: boolean;
+  /**
+   * İŞ 9 — Modül 3 emniyeti: alerji sorusu sorulabilecek tur mu (allergen_asked /
+   * allergen_pending / verification_pending bileşenleri). fb & room_service'te true
+   * ise gate'e girilmez, metin korunur → brain ATLANMAZ. Varsayılan true (güvenli yön).
+   */
+  allergenAskPossible?: boolean;
 }
 
 export interface ClassifiedIntentItem {
@@ -486,7 +501,36 @@ async function _classifyAndRespondImpl(
     // Bayrak acildiginda buradan per-dept beyin devreye girer.
     const primaryIntent = classifiedIntents[0];
     if (primaryIntent) {
-      const brainResult = await dispatchToDepartmentBrain({
+      // ── İŞ 9: doğrulanmamış misafirde boşa brain çağrısını kes ────────────────
+      // Gate metni nasılsa ezecekse (verificationSettled=false) brain'i HİÇ çağırma.
+      // Sürücü requiresVerification() — departmana özel kloz YOK, tek istisna alerji
+      // turu (Modül 3: canAskAllergen olan turda gate'e girilmez, metin korunur).
+      // Skip yalnız LLM çağrısını atlar; brainResult { handled:false } olduğu için
+      // akış aşağıdaki normal return'e düşer — davranış bugünkü "brain handled değil"
+      // yoluyla AYNI. hkItems/hkComplaint bu turda zaten tüketilmiyor
+      // (route.ts verificationAskedThisRound guard'ı) → yan etki DÜŞMEZ.
+      const allergenAskTurn =
+        (primaryIntent.department === 'fb' || primaryIntent.department === 'room_service') &&
+        (input.allergenAskPossible ?? true);
+      const verifiedForBrainGate = (input.verificationSettled ?? true) || allergenAskTurn;
+      // Sosyal override emniyeti: route.ts gate'i override SONRASI intent'e bakar
+      // (aiRawIntent). "evet"/"tamam"/"yok" gibi mesajda intent sosyale dönerse
+      // requiresVerification false olur → gate'e GİRİLMEZ → brain metni misafire
+      // ULAŞIR. O turda kesmek çıktıyı değiştirir; aynı saf fonksiyon burada da
+      // çağrılıp skip iptal edilir.
+      const socialOverridden = overrideSocialIntent(input.guestMessage, primaryIntent.department).overridden;
+      const brainSkipped =
+        !socialOverridden && shouldSkipBrainForVerification(primaryIntent.department, verifiedForBrainGate);
+      console.log('[verify-gate]', {
+        dept: primaryIntent.department,
+        requiresVerification: requiresVerification(primaryIntent.department),
+        verified: verifiedForBrainGate,
+        brainSkipped,
+      });
+
+      const brainResult = brainSkipped
+        ? ({ handled: false } as Awaited<ReturnType<typeof dispatchToDepartmentBrain>>)
+        : await dispatchToDepartmentBrain({
         department: primaryIntent.department,
         requestText: primaryIntent.requestText,
         guestMessage: input.guestMessage,
