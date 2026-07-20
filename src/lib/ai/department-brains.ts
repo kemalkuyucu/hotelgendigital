@@ -319,6 +319,17 @@ export function matchHousekeepingItems(text: string): HkItem[] {
 }
 
 async function runHousekeepingBrain(input: DepartmentBrainInput): Promise<DepartmentBrainResult> {
+  // ── BILGI-SORU KAPISI (IS 8) — TALEP-ODAKLI LLM'DEN ONCE ────────────────────
+  // "havlu ne zaman degisir?" esya kelimesi tasir ama TALEP DEGIL. Bu beyin bir
+  // TALEP beynidir; cagrilirsa "talebiniz alindi ... getirecektir" uretir. Forward
+  // zaten kesildigi icin bu metin SAHTE ONAY olur (kimseye iletilmeyen vaat) ->
+  // SAHTE VAAT YASAGI ihlali. Cozum: BILGI sorusunda beyin HIC calismaz (LLM cagrisi
+  // da yok), handled:false doner; cevabi normal KB/bilgi akisi verir (bagaj Option-A
+  // ikizi). Buton/talep-metni/hkItems URETILMEZ. isInfoQuestion capraz-departman TEK
+  // dedektor (classify hk-gate ve bagaj override'i da ayni fonksiyonu cagirir).
+  if (isInfoQuestion(input.guestMessage)) {
+    return { handled: false };
+  }
   const ctx = input.hotelContext as Record<string, string> | null;
   const ctxParts = ctx
     ? [ctx.hotelInfo, ctx.generalRules, ctx.knowledgeFacts, ctx.nearbyPlaces].filter(
@@ -369,15 +380,6 @@ KAPANIS KURALI:
     messages: [{ role: 'user', content: userContent }],
   });
   const replyText = response.text;
-  // ── BILGI-SORU KAPISI (IS 8): esya iceren mesaj BILGI SORUSU ise talep/buton
-  // akisina DUSURME. hkItems URETME; beyin bilgi cevabini (replyText) isInfoOnly ile
-  // don. Forward, classify brainShouldForward'ta housekeeping+isInfoOnly ile kesilir.
-  // matchHousekeepingItems'ten (talep-pattern) ONCE calisir. "2 banyo havlusu" (soru
-  // yok) ve "havlu getirir misiniz?" (kibar talep) bu kapiyi GECMEZ -> hkItems dalina
-  // duser (TALEP kalir). isInfoQuestion capraz-departman TEK dedektor (bagaj da kullanir).
-  if (isInfoQuestion(input.guestMessage)) {
-    return { handled: true, replyText, overLimit: false, isInfoOnly: true };
-  }
   // Kart ozeti + esya kararlari SADECE guncel mesajdan. Gecmis TARANMAZ (butonlar
   // geldigi icin coklu-turlu metin akisi yok; gecmis fallback'i stale esya uretiyordu).
   const normalizedRequest = maxQty !== null

@@ -417,22 +417,44 @@ async function _classifyAndRespondImpl(
     const matchedHkPattern = HOUSEKEEPING_ITEM_PATTERNS.find((p) => p.re.test(input.guestMessage));
     const matchedHkService = !matchedHkPattern && HOUSEKEEPING_SERVICE_PATTERNS.some((re) => re.test(input.guestMessage));
     if (matchedHkPattern || matchedHkService) {
-      const hkRouting = routeIntentToDepartment('housekeeping');
-      let hkRedirected = false;
-      for (const it of classifiedIntents) {
-        const rd = (it.rawDepartment ?? '').toLowerCase().trim();
-        if (rd === 'allergy') continue;
-        if (it.department !== 'housekeeping') {
-          it.department = 'housekeeping';
-          it.shouldForward = hkRouting.shouldForward;
-          it.messageType = hkRouting.messageType;
-          it.withButtons = hkRouting.withButtons;
-          it.createsSlaEvent = hkRouting.createsSlaEvent;
-          hkRedirected = true;
+      // ── SORU KAPISI (IS 8 Option-A, bagaj dalinin ikizi; TEK dedektor) ────────
+      // "havlu ne zaman degisir?" esya kelimesi TASIR ama TALEP DEGIL. Housekeeping'e
+      // ZORLANIRSA talep-odakli beyin cagriliyor ve "talebiniz alindi, getirecektir"
+      // metni uretiliyordu; forward kesik oldugu icin bu SAHTE ONAY oluyordu (kimseye
+      // iletilmeyen vaat). Bagaj dalindaki gibi: departman ZORLANMAZ, forward
+      // deterministik KESILIR, cevabi normal KB/bilgi akisi verir. Beynin ikiz kapisi
+      // handled:false dondugu icin LLM housekeeping etiketlese bile talep-metni/buton
+      // URETILMEZ. Allergy intent'lerine DOKUNULMAZ (yasamsal; soru da forward edilir).
+      if (isInfoQuestion(input.guestMessage)) {
+        for (const it of classifiedIntents) {
+          const rd = (it.rawDepartment ?? '').toLowerCase().trim();
+          if (rd === 'allergy') continue;
+          it.shouldForward = false;
+          it.messageType = 'BILGI';
+          it.withButtons = false;
+          it.createsSlaEvent = false;
         }
-      }
-      if (hkRedirected) {
-        console.log('[hk-gate] housekeeping tespit edildi, department zorlandi:', matchedHkPattern?.label ?? 'service');
+        console.log(
+          `[hk-gate] Housekeeping SORUSU -> departman zorlanmadi, forward kesildi (bilgi). msg="${input.guestMessage.slice(0, 60)}"`,
+        );
+      } else {
+        const hkRouting = routeIntentToDepartment('housekeeping');
+        let hkRedirected = false;
+        for (const it of classifiedIntents) {
+          const rd = (it.rawDepartment ?? '').toLowerCase().trim();
+          if (rd === 'allergy') continue;
+          if (it.department !== 'housekeeping') {
+            it.department = 'housekeeping';
+            it.shouldForward = hkRouting.shouldForward;
+            it.messageType = hkRouting.messageType;
+            it.withButtons = hkRouting.withButtons;
+            it.createsSlaEvent = hkRouting.createsSlaEvent;
+            hkRedirected = true;
+          }
+        }
+        if (hkRedirected) {
+          console.log('[hk-gate] housekeeping tespit edildi, department zorlandi:', matchedHkPattern?.label ?? 'service');
+        }
       }
     }
 
