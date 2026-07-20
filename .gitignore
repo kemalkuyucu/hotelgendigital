@@ -58,8 +58,19 @@ logs/
 
 .vercel
 
-# Local development helper scripts
+# Local development helper scripts.
+# IS 8 kanonik test korpusu TAKIPLIDIR (bkz. CLAUDE.md "Komutlar" / npm run test:is8).
+# Bu 4 satirin SIRASI ve ANKRAJI onemli — degistirmeden once oku:
+#   "scripts/"   : sonda slash + basta slash YOK -> HER DERINLIKTEKI scripts dizini
+#                  (.claude/skills/*/scripts/ dahil) yoksayilir. Bu davranis KORUNMALI.
+#   "!/scripts/" : yalniz KOK scripts dizinini geri dahil eder ki git icine GIREBILSIN
+#                  (dizin disarida kalirsa icindeki dosya negasyonu CALISMAZ).
+#   "/scripts/*" : kok scripts'in icerigini yoksay (ankraj: sadece kok).
+#   "!/scripts/is8-*" : kanonik korpus haric (en son eslesme kazanir).
 scripts/
+!/scripts/
+/scripts/*
+!/scripts/is8-*
 
 .env*.local
 __*

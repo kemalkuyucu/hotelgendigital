@@ -47,26 +47,103 @@ npm run dev            # next dev --port 3000
 npm run build          # next build
 npm start              # next start
 npm run lint           # eslint .   (eslint 9)  — NOT "next lint"
-npm run type-check     # tsc --noEmit  ← run this to validate TS; there is no test suite
+npm run type-check     # tsc --noEmit  ← run this to validate TS
+npm run test:is8       # IS 8 kanonik korpus (bayrak seviyesi, ag/LLM cagrisi YOK)
 
 npm run seed:demo-knowledge   # tsx scripts/seed-demo-knowledge.ts (needs DEMO_HOTEL_SUPABASE_* env)
 npm run create-admin          # node scripts/create-admin.mjs (master admin bootstrap)
 npm run seed-departments      # node scripts/seed-department-users.mjs
 ```
 
-- **There are no automated tests.** Don't add a `test` npm script expecting CI; validate changes with `npm run type-check` + `npm run build` and manual/UAT. The `__*.js/.mjs`, `scratch_*.mjs`, `__run_*.ps1`, `__test_scenario_*.json` files in the repo root are throwaway diagnostic scripts — not a test suite; don't treat them as reference code or add new ones.
+- **CI test suite YOK — ama IS 8 korpusu COMMIT'LI ve kosulabilir.** `npm run test:is8`
+  (`scripts/is8-run-all.mjs`, `scripts/is8-*-test.ts` dosyalarini otomatik bulup kosar).
+  Kapsam: soru/sikayet kapilari, sikayet->tip/adet zinciri, oda-link tazeligi, import damga
+  tasima. Hepsi **gercek modulleri import eder** (kopya fonksiyon YASAK — kopya yesil doner,
+  canli davranisla celisir; bu tuzak bir kez yasandi) ve **ag/LLM cagrisi yapmaz**, API
+  anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
+  Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
+  LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
+- Kalan dogrulama yine `npm run type-check` + `npm run build` + manuel/UAT. Repo kokundeki
+  `__*.js/.mjs`, `scratch_*.mjs`, `__run_*.ps1`, `__test_scenario_*.json` dosyalari tek
+  kullanimlik teshis scriptleridir — test degil; referans alma, yenisini ekleme.
 - **Migrations do NOT run via npm.** They run from inside the app (admin UI / API routes) per-hotel. See *Migrations* below.
 - Node 20+. Deployed on **Vercel** (`hotelgen-v2.vercel.app`); env vars live in the Vercel dashboard, locally in `.env.local`.
 
 ### Housekeeping akisi
 | Dosya | Sorumluluk |
 |---|---|
-| src/lib/ai/department-brains.ts | pattern listesi + matchHousekeepingItems + extractQtyBefore + brain |
-| src/lib/ai/classify-and-respond.ts | hk-gate (department zorlama) + shouldForward kapisi |
-| src/app/api/webhooks/telegram/[hotelSlug]/route.ts | hkItems -> state kurulumu + advanceHousekeeping + callback dispatch |
-| src/lib/sla/handle-housekeeping-callback.ts | hk:s / hk:q + advanceHousekeeping (pax lookup, butonlar, kuyruk) |
-| src/lib/sla/housekeeping-forward.ts | DEDUP + sla_events + kart + rollback + pax esigi |
+| src/lib/ai/department-brains.ts | pattern listesi + matchHousekeepingItems + extractQtyBefore + brain + **isInfoQuestion / isHousekeepingComplaint** |
+| src/lib/ai/classify-and-respond.ts | **hk-gate 3 DAL** (sikayet / bilgi / talep) + bagaj override + shouldForward kapisi |
+| src/app/api/webhooks/telegram/[hotelSlug]/route.ts | hkItems + **hkComplaint** -> state kurulumu + advanceHousekeeping / askHousekeepingComplaintConfirm + callback dispatch |
+| src/lib/sla/handle-housekeeping-callback.ts | hk:s / hk:q / **hk:c** + advanceHousekeeping (pax lookup, butonlar, kuyruk) |
+| src/lib/sla/housekeeping-forward.ts | DEDUP + sla_events + kart + rollback + pax esigi + opsiyonel `note` |
 | src/lib/sla/notify-duplicate.ts | dedup tekrar bildirimi (acik kartin altina reply) |
+
+### Soru / sikayet kapilari (IS 8 — deterministik, LLM DEGIL)
+
+**`isInfoQuestion(text)`** — capraz-departman **TEK dedektor** (department-brains.ts'te export;
+housekeeping beyni + bagaj override ayni fonksiyonu cagirir, ikinci dedektor YASAK).
+Cok dilli (TR/EN/DE/FR + Kiril/Arap kokler), paylasilan `normalizeTr`.
+**Yalin "?" bilgi TETIKLEMEZ** — karar POZITIF interrogative sinyaline baglidir (ne zaman/
+kacta/nasil/when/where/wann/quand...). Sebep: "havlu getirir misiniz?" gibi KIBAR TALEPLER
+soru isareti tasir; yalin-"?" kurali onlari bilgiye dusurup talebi YUTUYORDU.
+**Bias: supheliyse TALEP** (kayip talep, yanlis bilgiden kotudur).
+
+**`isHousekeepingComplaint(text)`** — esya VAR **VE** problem sinyali VAR
+(degismedi/degistirilmedi/yenilenmedi/gelmedi/temizlenmedi/-memis formlari, yok, eksik,
+kirli, pis, lekeli, degil, hala ayni). Esya sarti forward kartinin esyayi adlandirabilmesi
+icin de gerekli.
+
+**hk-gate ONCELIGI (classify-and-respond.ts) — sira BAGLAYICIDIR:**
+1. **SIKAYET** (esya + problem) → ozur + onay butonlari
+2. **BILGI sorusu** (problem yok) → KB/bilgi akisi, forward KESILIR
+3. diger → normal TALEP akisi (tip/adet butonlari)
+
+Hem soru hem sikayet olan mesaj ("havlu neden degismedi?") **SIKAYET** dalina gider —
+bilgi dalina duserse misafir KB cevabi alir, yasanan aksaklik kimseye iletilmez.
+
+**Sikayet akisi:** bot ozur diler + tek soru sorar → `[Evet, simdi]` / `[Simdi degil, sonra]`.
+"Evet" **DOGRUDAN FORWARD ETMEZ**: normal cozum zincirini baslatir (ambiguous ise TIP → ADET →
+forward) — odada 3-4 kisi olabilir, adet VARSAYILMAZ. State'teki `cm` bayragi zincirin
+sonundaki forward'a `note='sikayet/yenileme'` tasir. "Sonra" → forward YOK. Otomatik onay YOK.
+Yeni buton sistemi KURULMADI: mevcut hk_pending state + `v` damgasi + hkStampAccepts + `hk:`
+dispatch aynen kullanilir; onayda state KAPATILMAZ (zincir surer), cift-tik korumasi damgadan
+gelir (ilk basim v'yi artirir → eski onay butonu RED).
+
+**Bagaj (Option-A):** bagaj keyword'u + `isInfoQuestion` → BILGI, forward kesilir, departman
+ZORLANMAZ. Bagaj TALEBI eskisi gibi on-buroya forward.
+
+Sevkler (hotelgen-v4): `de363f8` · `57e7d5d` · `0591864` · `532a2d5` · `b31e9e0`.
+
+### Misafir-oda eslesmesi (kart "Oda bilinmiyor" ise buraya bak)
+
+Kart/pax cozumu **TEK yoldan** gider:
+`conversations.telegram_chat_id` → `inhouse_guests_v2 WHERE telegram_id = <chat_id> AND status='active'`
+(housekeeping-forward.ts, handle-order-callback.ts, handle-housekeeping-callback.ts).
+**`verified_inhouse_guest_id` ve isim eslesmesi kart tarafindan HIC okunmaz** — orayi
+duzeltmek karti duzeltmez. Damgayi yazan yerler: 17.c oda eslesmesi ve dogrulama basarisi.
+
+| Dosya | Sorumluluk |
+|---|---|
+| src/lib/verification/inhouse-link.ts | `isInhouseRowLinkable` (C1 bayat-link) + `planTelegramCarryOver` (C2 damga tasima) — saf, IO yok |
+
+**KIRILMA (canli, 2026-07-19):** import anahtari `room_number::check_in_date`. Ayni misafir
+yeni check-in ile yuklenince anahtar degisir → eski satir **arsivlenir**, YENI id acilir ve
+`telegram_id` NULL kalir. Damga arsivde kalinca kart "Oda bilinmiyor" der, pax okunamaz.
+
+- **C1 (`47eef98`) — bayat-link self-heal:** "bagli mi?" karari artik isaretcinin DOLULUGUNA
+  degil, isaret edilen SATIRIN durumuna bakar (`status='active'` + `check_out_date` gecmemis).
+  Bayat → **bagsiz** sayilir → 17.c yeniden eslestirir/damgalar. DB sorgu hatasinda ESKI
+  davranis korunur (bagli say) ki gecici hata dogrulanmis misafire oda no sordurmasin.
+- **C2 (`459656c`) — import damgayi TASIR:** arsivleme sonrasi damga + konusma isaretcileri
+  (`inhouse_match_guest_id`, `verified_inhouse_guest_id`) yeni satira gecer.
+  **GIZLILIK: yalniz AYNI oda + AYNI isim + TEK-ANLAMLI eslesme.** 0/coklu eslesme, bir hedefe
+  iki talep, ayni damganin iki hedefe gitmesi → **hicbiri tasinmaz**. Ayni odaya gelen YENI
+  misafir hicbir sey devralmaz (yoksa baskasinin odasini/taleplerini gorur); oksuz kalan arsiv
+  damgasi zararsizdir.
+- **Veri onarimi deseni (tek-damga invaryanti, reception-approval.ts GUARD A):** ONCE eski
+  satirdan `telegram_id=NULL`, SONRA aktif satira damga, sonra konusma isaretcileri. Her UPDATE
+  **id ile** — WHERE'siz UPDATE YOK. Dogrulama: kart sorgusunun BIREBIR aynisini kosur.
 
 ### Room-service akisi
 | Dosya | Sorumluluk |
@@ -177,7 +254,13 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   esikler, esya/adet, alerjen karari, onay.
 - **SESSIZ YUTMA YASAGI:** Bir talep herhangi bir kapida dusuruluyorsa
   (dedup/gate/filtre) personel veya misafir MUTLAKA haberdar edilir.
-  Sessiz continue/return = kayip.
+  Sessiz continue/return = kayip. **Bir SIKAYET'i bilgi cevabiyla kapatmak da
+  sessiz yutmadir** — aksaklik bildiren misafire KB metni donup kimseye
+  iletmemek yasak (IS 8 sikayet dali bunun icin var).
+- **SAHTE VAAT YASAGI:** Forward'i kesen bir kapi, metni ureten LLM'i de
+  susturmak ZORUNDA. Bilgi-sorusu dalinda TALEP beyninin metni KULLANILAMAZ —
+  "talebiniz alindi, getirecegiz" deyip kimseye iletmemek yalan vaattir.
+  Kapi eklerken sor: bu dalda cevabi KIM yaziyor?
 - **OTOMATIK ONAY YASAGI:** SLA zincirini otomatik "cevaplanmis" saymak YASAK.
   responded_at'i sistem dolduramaz. Ihmal gorunur kalmali.
 - **ESIK-ARAYUZ BIRLIKTELIGI:** Bir esigi degistirirken misafirin o esige
@@ -185,7 +268,11 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - **PROMPT CAKISMA KONTROLU:** Kod esigi degistiginde prompt'ta ayni konuyu
   anlatan satir var mi TARA. Celisiyorsa duzelt.
 - **GECMIS TARANMAZ:** Housekeeping esya kararlari SADECE guncel mesajdan.
-- **hkItems dalinda LLM cevabi KULLANILMAZ** (replyText:'').
+- **hkItems dalinda LLM cevabi KULLANILMAZ** (replyText:''). Ayni kural
+  hkComplaint dali icin de gecerli.
+- **KIMLIK/LINK TASIMA:** Bir Telegram damgasini/oturumu otomatik tasiyan her
+  islemde varsayilan **TASIMA YOK**; yalniz TEK-ANLAMLI ayni-kisi kanitinda
+  tasi. Yanlis tasima = misafirin baskasinin odasini gormesi.
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
 ## 4. TUZAKLAR (defalarca saat kaybettirdi)
@@ -193,6 +280,17 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   Kod var + migration yok = sessiz no-op. information_schema ile teyit sart.
 - **Supabase:** .maybeSingle() yerine .order('created_at').limit(1).maybeSingle()
   — PGRST116 onler.
+- **hotel_facts'te `fact_key` UNIQUE DEGIL** (canli information_schema: yalniz
+  PRIMARY KEY(id)). "UNIQUE oldugu icin cakisma olmaz" varsayimi YANLIS —
+  guardsiz INSERT duplicate fact uretir. Once SELECT, sonra
+  `INSERT ... WHERE NOT EXISTS`. Ayrica `fact_label` **NOT NULL** (kolay atlanir).
+- **Kart "Oda bilinmiyor":** cozum SADECE `inhouse_guests_v2.telegram_id` +
+  `status='active'` uzerinden. `verified_inhouse_guest_id`'yi duzeltmek karti
+  DUZELTMEZ. Re-import eski satiri arsivleyip damgayi orada birakabilir
+  (bkz. *Misafir-oda eslesmesi*).
+- **Testte kopya fonksiyon KULLANMA:** scratchpad'e kopyalanan bir fonksiyonu
+  test etmek yanlis guven verir — kopya 49/49 YESIL donerken canli davranisla
+  CELISEBILIR (bir kez yasandi). Test gercek modulu import etmeli.
 - **PowerShell:** && desteklemez, komutlar ayri satir.
   Select-String -Path src\**\*.ts subdirectory'e GIRMEZ.
   Dogru: Get-ChildItem -Path src -Recurse -Filter *.ts | Select-String "..."
@@ -216,7 +314,7 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 ## 5. DEGISIKLIK DONGUSU (her fix icin)
 1. Ilgili dosyalari OKU
 2. Cerrahi degisiklik
-3. `npm run type-check`  (gercek script: `tsc --noEmit` — package.json'da dogrulandi)
+3. `npm run type-check` + (kapi/karar mantigina dokunduysan) `npm run test:is8`
 4. `git diff --stat` ciktisini raporla
 5. Commit ATMA — Claude/Kemal soyleyecek
 6. Rapor: ne degisti, hangi satir, ne dogrulanmadi
@@ -228,3 +326,23 @@ Her is sonunda:
 - FARK EDILEN RISK: dokunmadigin ama bozuk gordugun seyler
 - DOGRULANMAYAN: canli kanit gerektiren kisimlar
 Asla "tamamlandi, calisiyor" yazma. Neyin dogrulanmadigini yaz.
+
+## 7. BILINEN TEKNIK BORC (talimat gelmeden DOKUNMA — sadece bilincinde ol)
+- **Misafire donuk ASCII metin ihlali:** `advanceHousekeeping` misafire
+  "Kac adet ... istersiniz?" ve ASCII esya etiketleri ("yuz havlusu", "carsaf")
+  gonderiyor; forward sonrasi onay mesajlari da ASCII ("en kisa surede").
+  Kural "misafire donuk metinler TAM Turkce" — bu yol kurali ihlal ediyor.
+  Yeni metin YAZARKEN ihlali YAYMA (etiketsiz/tam Turkce yaz).
+- **route.ts damga-okuma kopyasi:** hkItems ve hkComplaint kapilari `prevV`
+  okumasini ayri ayri (yaklasik 12 satir) tekrarliyor. Kritik bir deger iki
+  yerde yasiyor — biri degisirse digeri kayar.
+- **`brainShouldForward` icindeki `isInfoOnly` housekeeping klozu ULASILMAZ**
+  (housekeeping beyni artik isInfoOnly uretmiyor). fb/animation kullanmaya
+  devam ediyor; fail-safe yonde oldugu icin birakildi.
+- **Soru-formatli sikayet kapsami:** sikayet dali ESYA sarti tasir; esyasiz
+  servis sikayeti ("odam temizlenmedi") sikayet dalina GIRMEZ, mevcut talep
+  akisinda kalir.
+- **Housekeeping dogrulama acik sorusu:** `housekeeping` doğrulama gerektiren
+  intent listesinde oldugu halde canli UAT'de bot oda no SORMADI. Hangi dalin
+  atladigi statik okumayla kanitlanamadi — 1 canli Vercel log satiri
+  (`[persistent-verify]` / `[verification]`) gerekiyor.

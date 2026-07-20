@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
+    "test:is8": "node scripts/is8-run-all.mjs",
     "seed:demo-knowledge": "tsx scripts/seed-demo-knowledge.ts",
     "create-admin": "node scripts/create-admin.mjs",
     "seed-departments": "node scripts/seed-department-users.mjs"
