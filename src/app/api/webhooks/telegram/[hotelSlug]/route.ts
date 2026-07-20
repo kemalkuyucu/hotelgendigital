@@ -19,6 +19,7 @@ import { resolveTargetDepartment, type DeptRouteInfo } from '@/lib/telegram/off-
 import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
+import { isInhouseRowLinkable } from '@/lib/verification/inhouse-link';
 import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/verification/verify-guest';
 import { createReceptionApproval, receptionNotifiedMsg, receptionWaitMsg, handlePendingMatchCallback } from '@/lib/verification/reception-approval';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
@@ -1247,7 +1248,37 @@ async function handleMessage(args: {
       .eq('id', conversationId)
       .maybeSingle();
 
-    const isLinkedToInhouse = !!(convMatch?.inhouse_match_guest_id);
+    // ── C1: BAYAT-LINK SELF-HEAL ────────────────────────────────────────────
+    // Eskiden: isaretci dolu mu? (!!inhouse_match_guest_id). Re-import eski satiri
+    // arsivleyip yeni active satir uretince isaretci arsivli satirda kaliyor; kart
+    // sorgusu (telegram_id + active) bos donuyor ("Oda bilinmiyor") ama burasi
+    // "bagli" dedigi icin 17.c yeniden-eslesme ACILMIYOR -> link kendini onaramiyor.
+    // Simdi: isaret edilen SATIR cozulur; active degilse/konaklama bittiyse BAGSIZ
+    // sayilir ve 17.c yeniden sorup telegram_id'yi guncel satira damgalar.
+    // Sorgu hatasinda MEVCUT davranis korunur (bagli say) — gecici DB hatasi
+    // yuzunden dogrulanmis misafire yeniden oda no sorulmasin.
+    let isLinkedToInhouse = false;
+    if (convMatch?.inhouse_match_guest_id) {
+      const { data: linkedRow, error: linkedErr } = await supa
+        .from('inhouse_guests_v2')
+        .select('id, status, check_out_date')
+        .eq('id', convMatch.inhouse_match_guest_id as string)
+        .maybeSingle();
+      if (linkedErr) {
+        isLinkedToInhouse = true;
+        console.error('[17c-link] linked satir sorgu hatasi, bagli sayiliyor:', linkedErr.message);
+      } else {
+        isLinkedToInhouse = isInhouseRowLinkable(linkedRow, getTurkeyToday());
+        if (!isLinkedToInhouse) {
+          console.log('[17c-link] BAYAT link -> bagsiz sayiliyor (17.c yeniden eslestirecek)', {
+            conv: conversationId,
+            guestId: convMatch.inhouse_match_guest_id,
+            status: linkedRow?.status ?? 'SATIR YOK',
+            checkOut: linkedRow?.check_out_date ?? null,
+          });
+        }
+      }
+    }
     const multiMatchPendingRoom = (convMatch?.multi_match_pending_room as string | null) ?? null;
     const multiMatchAttempts = (convMatch?.multi_match_attempts as number) ?? 0;
     const multiMatchNotified = (convMatch?.multi_match_notified as boolean) ?? false;
