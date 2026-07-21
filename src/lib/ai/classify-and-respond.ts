@@ -17,6 +17,7 @@ import {
   CHAT_INTENTS,
   INFO_INTENTS,
   EVENT_CONTACT_NOTIFY,
+  PROMISE_BACKSTOP_NOTIFY,
   type MessageType,
 } from './message-types';
 // Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
@@ -92,7 +93,7 @@ export interface ClassifiedIntentItem {
    * Forward yolunda hangi bildirim şablonunun basılacağını seçer; boşsa bugünkü
    * davranış (bagaj bildirimi / allergy) DEĞİŞMEZ.
    */
-  notifyKind?: 'event_contact';
+  notifyKind?: 'event_contact' | 'promise_backstop';
 }
 
 export interface ClassifyAndRespondOutput {
@@ -654,7 +655,9 @@ async function _classifyAndRespondImpl(
   // front_office forward'i TETIKLE (vaadi dogru yap) -> forward'siz vaat IMKANSIZ olur.
   // NOT: TR ifade taramasi -> yabanci-dil reply'de yakalamaz (bilinen sinir; LEG(a)+prompt
   // birincil koruma, bu backstop TR icin son emniyet). requestText DOLU (bos -> forward edilmez).
-  // LEG(a) ile AYNI teslim sekli: BILDIRIM (SLA/eskalasyon/buton YOK).
+  // LEG(a) ile AYNI teslim sekli: BILDIRIM (SLA/eskalasyon/buton YOK). Ancak bu backstop
+  // JENERIKTIR (konu etkinlik olmayabilir) -> ayri notifyKind: iletisim toplama akisi
+  // (ad-soyad + telefon sorma) bu yolda CALISMAZ, kart tek seferde duser.
   const anyForward = classifiedIntents.some((i) => i.shouldForward);
   const PROMISE_SIGNALS = ['ilettim', 'ilgili ekib', 'aktardim', 'iletiyorum', 'gorusulecek', 'talebinizi aldim'];
   const normGuardedReply = normalizeTr(guardedResponse);
@@ -665,10 +668,10 @@ async function _classifyAndRespondImpl(
       requestText: input.guestMessage,
       shouldForward: true,
       rawDepartment: 'front_office',
-      messageType: EVENT_CONTACT_NOTIFY.messageType,
-      withButtons: EVENT_CONTACT_NOTIFY.withButtons,
-      createsSlaEvent: EVENT_CONTACT_NOTIFY.createsSlaEvent,
-      notifyKind: EVENT_CONTACT_NOTIFY.notifyKind,
+      messageType: PROMISE_BACKSTOP_NOTIFY.messageType,
+      withButtons: PROMISE_BACKSTOP_NOTIFY.withButtons,
+      createsSlaEvent: PROMISE_BACKSTOP_NOTIFY.createsSlaEvent,
+      notifyKind: PROMISE_BACKSTOP_NOTIFY.notifyKind,
     });
     console.log(`[sahte-vaat-guard] Forward'siz vaat tespit -> front_office BILDIRIMI tetiklendi (SLA yok). msg="${input.guestMessage.slice(0, 60)}"`);
   }

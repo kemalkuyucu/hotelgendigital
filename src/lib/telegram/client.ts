@@ -24,6 +24,19 @@ export class TelegramClient {
     return this.call<TelegramMessage>('sendMessage', params);
   }
 
+  /**
+   * Gonderilmis bir mesajin METNINI degistirir (lead capture: ara-kart -> final kart).
+   * Telegram hata dondurursa call() THROW eder — cagiran taraf fallback kurmali.
+   */
+  editMessageText(params: {
+    chat_id: number | string;
+    message_id: number;
+    text: string;
+    parse_mode?: 'HTML' | 'Markdown' | 'MarkdownV2';
+  }): Promise<TelegramMessage | boolean> {
+    return this.call<TelegramMessage | boolean>('editMessageText', params);
+  }
+
   getMe(): Promise<{ id: number; username: string; first_name: string }> {
     return this.call('getMe');
   }

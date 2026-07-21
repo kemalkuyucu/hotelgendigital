@@ -24,6 +24,15 @@ import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/
 import { createReceptionApproval, receptionNotifiedMsg, receptionWaitMsg, handlePendingMatchCallback } from '@/lib/verification/reception-approval';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { formatGuestAddress } from '@/lib/utils/salutation';
+import {
+  startLeadCapture,
+  advanceLead,
+  readLeadCapture,
+  withLeadCapture,
+  clearLeadCapture,
+  buildLeadInterimCard,
+  buildLeadFinalCard,
+} from '@/lib/lead/lead-capture';
 import { downloadTelegramAudio } from '@/lib/voice/download-telegram-audio';
 import { whisperTranscribe } from '@/lib/voice/whisper-transcribe';
 import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
@@ -175,7 +184,7 @@ interface ForwardableItem {
   createsSlaEvent: boolean;
   // BİLDİRİM alt-türü: createsSlaEvent=false dalında hangi şablonun basılacağını seçer.
   // Boş (undefined) → bugünkü davranış (allergy / bagaj) DEĞİŞMEZ.
-  notifyKind?: 'event_contact';
+  notifyKind?: 'event_contact' | 'promise_backstop';
 }
 
 function buildForwardableItems(
@@ -231,9 +240,12 @@ function buildForwardableItems(
       // sessiz SLA kaybı" İMKANSIZ; sonuç daima boolean (alan tipi de boolean).
       withButtons: item.withButtons !== false,
       createsSlaEvent: item.createsSlaEvent !== false,
-      // Bilinen tek değere daralt: sürpriz bir string bildirim dalını kaçıramaz
+      // Bilinen değerlere daralt: sürpriz bir string bildirim dalını kaçıramaz
       // (tanınmayan değer → undefined → bugünkü davranış).
-      notifyKind: item.notifyKind === 'event_contact' ? 'event_contact' : undefined,
+      notifyKind:
+        item.notifyKind === 'event_contact' || item.notifyKind === 'promise_backstop'
+          ? item.notifyKind
+          : undefined,
     });
   }
   return items;
@@ -1233,6 +1245,96 @@ async function handleMessage(args: {
 
   const { guestName, conversationId, conversation } = await upsertGuestAndConversation({ supa, msg });
   const language = detectLanguage(msg);
+
+  // ── LEAD CAPTURE RESUME (etkinlik/organizasyon iletişim toplama) ────────────
+  // Konuşma bir lead turunda mı? State conversations.metadata.lead_capture içinde
+  // (migration YOK). Bu kapı 17.c ODA EŞLEŞME kapısından ÖNCE durur: misafirin
+  // ad-soyad/telefon cevabı oda numarası sanılıp eşleştirme akışına düşmesin.
+  // Kararlar saf modülde (advanceLead) — burada yalnızca IO yapılır.
+  {
+    const { data: leadRow } = await supa
+      .from('conversations')
+      .select('metadata')
+      .eq('id', conversationId)
+      .maybeSingle();
+    const leadState = readLeadCapture(leadRow?.metadata);
+    if (leadState) {
+      await supa.from('bot_messages').insert({
+        conversation_id: conversationId,
+        direction: 'inbound',
+        text,
+        message_type: 'text',
+      });
+      const replyLead = async (t: string): Promise<void> => {
+        await tg.sendMessage({ chat_id: chatId, text: t });
+        await supa.from('bot_messages').insert({
+          conversation_id: conversationId,
+          direction: 'outbound',
+          text: t,
+          message_type: 'text',
+        });
+      };
+      const clearLead = async (): Promise<void> => {
+        await supa
+          .from('conversations')
+          .update({ metadata: clearLeadCapture(leadRow?.metadata) })
+          .eq('id', conversationId);
+      };
+
+      const adv = advanceLead(leadState, text);
+
+      if (adv.action === 'complete') {
+        // ARA-KARTI final karta çevir; edit başarısızsa ikinci mesaj (fallback).
+        const finalCard = buildLeadFinalCard({
+          name: adv.name,
+          phone: adv.phone,
+          topic: leadState.topic,
+          room: leadState.room,
+        });
+        let edited = false;
+        if (leadState.notifyChatId && leadState.notifyMsgId) {
+          try {
+            await tg.editMessageText({
+              chat_id: leadState.notifyChatId,
+              message_id: leadState.notifyMsgId,
+              text: finalCard,
+              parse_mode: 'HTML',
+            });
+            edited = true;
+          } catch (editErr) {
+            console.error(
+              '[lead-capture] editMessageText basarisiz, fallback yeni mesaj:',
+              editErr instanceof Error ? editErr.message : editErr,
+            );
+          }
+        }
+        if (!edited && leadState.notifyChatId) {
+          await tg.sendMessage({ chat_id: leadState.notifyChatId, text: finalCard, parse_mode: 'HTML' });
+        }
+        await clearLead();
+        await replyLead(adv.reply);
+        console.log(`[lead-capture] TAMAMLANDI (edit=${edited}) conversationId=${conversationId}`);
+        return;
+      }
+
+      if (adv.action === 'close') {
+        await clearLead();
+        await replyLead(adv.reply);
+        console.log(`[lead-capture] KAPANDI (iletisim alinamadi; ara-kart yerinde) conversationId=${conversationId}`);
+        return;
+      }
+
+      // ask_phone | retry → state ilerlet, soruyu tekrar sor
+      await supa
+        .from('conversations')
+        .update({ metadata: withLeadCapture(leadRow?.metadata, adv.state) })
+        .eq('id', conversationId);
+      await replyLead(adv.reply);
+      console.log(`[lead-capture] ${adv.action} -> step=${adv.state.step} conversationId=${conversationId}`);
+      return;
+    }
+  }
+  // ── LEAD CAPTURE RESUME SONU ───────────────────────────────────────────────
 
   // ============================================================
   // MODULE 17.c — INHOUSE GUEST MATCHING GATE
@@ -3823,21 +3925,66 @@ async function handleMessage(args: {
             // Düğün/organizasyon/etkinlik ve "yetkiliyle görüşmek istiyorum" talepleri
             // ön büroya ULAŞIR ama TALEP kartı değil BİLDİRİM olarak düşer: sla_events
             // YAZILMAZ → eskalasyon zinciri ve onay butonları oluşmaz ("talep değil,
-            // bildirim"). Aynı bayrakları taşıyan bagaj bildiriminden notifyKind ile
-            // ayrılır. Misafire giden metne DOKUNULMAZ.
+            // bildirim"). Aynı bayrakları taşıyan bagaj bildiriminden notifyKind ile ayrılır.
+            //
+            // LEAD CAPTURE: kart ANINDA düşer ("iletişim bekleniyor" tonunda ARA-KART) ki
+            // talep hiçbir koşulda kaybolmasın; ardından misafire DETERMİNİSTİK soru sorulur
+            // (ad-soyad / telefon — LLM metni DEĞİL). Cevap gelince ara-kart editMessageText
+            // ile tek temiz karta dönüşür (resume: handleMessage başındaki lead kapısı).
             if (fwdItem.notifyKind === 'event_contact') {
               const evRoom = persistentVerifiedGuest?.room_number ?? null;
               const evName = persistentVerifiedGuest
                 ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim()
                 : guestName;
-              const escEv = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-              const evHtml =
+              const evTopic = fwdItem.requestText || text;
+              const sentInterim = await tg.sendMessage({
+                chat_id: targetChatId,
+                text: buildLeadInterimCard({ room: evRoom, guestName: evName, message: evTopic }),
+                parse_mode: 'HTML',
+              });
+              // İsim YALNIZ inhouse misafirde bilinir; Telegram profil adı ad-soyad sayılmaz.
+              const { state: leadState, question: leadQuestion } = startLeadCapture({
+                topic: evTopic,
+                guestName: persistentVerifiedGuest ? evName : null,
+                room: evRoom,
+                notifyChatId: Number(targetChatId),
+                notifyMsgId: sentInterim?.message_id ?? null,
+              });
+              const { data: leadMetaRow } = await supa
+                .from('conversations')
+                .select('metadata')
+                .eq('id', conversationId)
+                .maybeSingle();
+              await supa
+                .from('conversations')
+                .update({
+                  metadata: withLeadCapture(leadMetaRow?.metadata, leadState),
+                  last_intent: targetDept,
+                  last_forwarded_at: new Date().toISOString(),
+                })
+                .eq('id', conversationId);
+              // Misafire giden metin: LLM cevabı DEĞİL, sabit soru (SAHTE VAAT YASAGI).
+              finalResponseText = leadQuestion;
+              console.log(
+                `[lead-capture] ara-kart gonderildi + iletisim sorusu soruldu. step=${leadState.step} msgId=${sentInterim?.message_id ?? 'YOK'} [chatId=${deptChatIdForSla}]`,
+              );
+              continue;
+            }
+
+            // ── SAHTE-VAAT BACKSTOP BİLDİRİMİ (tek seferlik kart, lead akışı YOK) ──
+            if (fwdItem.notifyKind === 'promise_backstop') {
+              const pbRoom = persistentVerifiedGuest?.room_number ?? null;
+              const pbName = persistentVerifiedGuest
+                ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim()
+                : guestName;
+              const escPb = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const pbHtml =
                 `🔔 <b>Bilgilendirme — Etkinlik / Organizasyon</b>\n\n` +
-                `Oda: ${escEv(evRoom || 'bilinmiyor')} · Misafir: <b>${escEv(evName || 'bilinmiyor')}</b>\n\n` +
-                `Misafir mesajı: "${escEv(fwdItem.requestText || text)}"\n\n` +
+                `Oda: ${escPb(pbRoom || 'bilinmiyor')} · Misafir: <b>${escPb(pbName || 'bilinmiyor')}</b>\n\n` +
+                `Misafir mesajı: "${escPb(fwdItem.requestText || text)}"\n\n` +
                 `Konuyu ilgili yetkiliye aktarır mısınız? (Bilgilendirme - SLA yok)`;
-              await tg.sendMessage({ chat_id: targetChatId, text: evHtml, parse_mode: 'HTML' });
-              console.log(`[event-contact-notify] Etkinlik/iletisim bildirimi gönderildi (SLA yok, buton yok) [chatId=${deptChatIdForSla}]`);
+              await tg.sendMessage({ chat_id: targetChatId, text: pbHtml, parse_mode: 'HTML' });
+              console.log(`[promise-backstop-notify] Bildirim gönderildi (SLA yok, buton yok) [chatId=${deptChatIdForSla}]`);
               await supa
                 .from('conversations')
                 .update({ last_intent: targetDept, last_forwarded_at: new Date().toISOString() })

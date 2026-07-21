@@ -16,7 +16,7 @@
  * iki uretim yolu (classify-and-respond LEG a + LEG b2) da bu tek sabiti kullanir.
  */
 import { normalizeTr } from '@/lib/utils/normalize-tr';
-import { EVENT_CONTACT_NOTIFY, messageTypeTraits } from '@/lib/ai/message-types';
+import { EVENT_CONTACT_NOTIFY, PROMISE_BACKSTOP_NOTIFY, messageTypeTraits } from '@/lib/ai/message-types';
 
 // classify-and-respond.ts LEG(a)/LEG(b2) ile BIREBIR ayna (orada local const, export DEGIL):
 const EVENT_KEYWORDS = ['dugun', 'nikah', 'kina', 'organizasyon', 'etkinlik', 'kongre', 'seminer', 'davet', 'balo', 'grup rezervasyon'];
@@ -83,6 +83,16 @@ check('5f BILDIRIM trait uyumu (buton)', EVENT_CONTACT_NOTIFY.withButtons, messa
 check('5g TALEP hala sla_events uretir', messageTypeTraits('TALEP').createsSlaEvent, true);
 check('5h TALEP hala butonlu', messageTypeTraits('TALEP').withButtons, true);
 check('5i housekeeping TALEP kaldi', messageTypeTraits('housekeeping').createsSlaEvent, true);
+
+// (6) LEG(a) ile LEG(b2) AYRI notifyKind tasir: iletisim toplama (ad-soyad+telefon)
+//     YALNIZ gercek etkinlik/iletisim talebinde calisir; jenerik sahte-vaat
+//     backstop'unda CALISMAZ (sikayet mesajina "telefonunuzu verin" denmemeli).
+check('6a event yolu anahtari', EVENT_CONTACT_NOTIFY.notifyKind, 'event_contact');
+check('6b backstop yolu anahtari', PROMISE_BACKSTOP_NOTIFY.notifyKind, 'promise_backstop');
+check('6c iki yol farkli', EVENT_CONTACT_NOTIFY.notifyKind === PROMISE_BACKSTOP_NOTIFY.notifyKind, false);
+check('6d backstop da SLA uretmez', PROMISE_BACKSTOP_NOTIFY.createsSlaEvent, false);
+check('6e backstop da butonsuz', PROMISE_BACKSTOP_NOTIFY.withButtons, false);
+check('6f backstop da BILDIRIM', PROMISE_BACKSTOP_NOTIFY.messageType, 'BILDIRIM');
 
 const total = pass + fails.length;
 if (fails.length > 0) {

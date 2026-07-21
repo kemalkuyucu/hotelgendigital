@@ -153,3 +153,19 @@ export const EVENT_CONTACT_NOTIFY = {
   createsSlaEvent: false,
   notifyKind: 'event_contact',
 } as const;
+
+/**
+ * Sahte-vaat backstop'unun (LEG b2) BİLDİRİM imzası — bayraklar
+ * `EVENT_CONTACT_NOTIFY` ile AYNI, tek fark `notifyKind`.
+ *
+ * Neden ayrı: b2 guard jeneriktir (forward'sız "ilettim" diyen HER cevapta
+ * ateşlenir, konu etkinlik olmayabilir). Etkinlik yoluna bağlı iletişim
+ * toplama akışı (ad-soyad + telefon sorma) bu yolda ÇALIŞMAMALI — şikâyet
+ * mesajına "telefonunuzu paylaşır mısınız?" demek yanlış olur.
+ */
+export const PROMISE_BACKSTOP_NOTIFY = {
+  messageType: 'BILDIRIM',
+  withButtons: false,
+  createsSlaEvent: false,
+  notifyKind: 'promise_backstop',
+} as const;
