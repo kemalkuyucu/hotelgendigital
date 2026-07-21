@@ -49,6 +49,7 @@ npm start              # next start
 npm run lint           # eslint .   (eslint 9)  — NOT "next lint"
 npm run type-check     # tsc --noEmit  ← run this to validate TS
 npm run test:is8       # IS 8 kanonik korpus (bayrak seviyesi, ag/LLM cagrisi YOK)
+npm run doctor         # TEK KOMUT saglik: [A]tsc [B]test:is8 [C]tenant-sema [D]sabit-marka; YEREL, prod'a deploy EDILMEZ
 
 npm run seed:demo-knowledge   # tsx scripts/seed-demo-knowledge.ts (needs DEMO_HOTEL_SUPABASE_* env)
 npm run create-admin          # node scripts/create-admin.mjs (master admin bootstrap)
@@ -63,6 +64,10 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (187) +
+  [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip) +
+  [D] sabit-marka taramasi (src/**, dosya-bazli allowlist). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
+  PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
 - Kalan dogrulama yine `npm run type-check` + `npm run build` + manuel/UAT. Repo kokundeki
   `__*.js/.mjs`, `scratch_*.mjs`, `__run_*.ps1`, `__test_scenario_*.json` dosyalari tek
   kullanimlik teshis scriptleridir — test degil; referans alma, yenisini ekleme.
@@ -351,3 +356,7 @@ Asla "tamamlandi, calisiyor" yazma. Neyin dogrulanmadigini yaz.
   intent listesinde oldugu halde canli UAT'de bot oda no SORMADI. Hangi dalin
   atladigi statik okumayla kanitlanamadi — 1 canli Vercel log satiri
   (`[persistent-verify]` / `[verification]`) gerekiyor.
+- **room_rates icin tenant migration YOK** (`npm run doctor` [C] teyidi: ne migrations/tenant'ta
+  create-table ne canli tenant DB'de). Dusuk oncelik — rezervasyon linki room_rates'ten bagimsiz
+  (hotel-context.ts fetchRoomRates, IS13) + Barboon canli fiyat veriyor. Fiyat listesi icin
+  room_rates migration'i + veri gerekir (ayri is).
