@@ -10,8 +10,13 @@
  * KARAR: sahte vaat (bot "ilettim" der ama forward yok). LEG(a) dugun/organizasyon/etkinlik
  * TALEBI + acik iletisim talebini front_office'e deterministik forward eder; LEG(b2) forward'siz
  * "ilettim" cikarsa front_office forward'i tetikler. YALIN BILGI sorusu forward EDILMEZ.
+ *
+ * TESLIM SEKLI (5. blok): bu iki yol SLA TALEP karti DEGIL, BILDIRIM uretir. Bayraklar
+ * AYNALANMAZ — EVENT_CONTACT_NOTIFY gercek modulden (message-types.ts) import edilir,
+ * iki uretim yolu (classify-and-respond LEG a + LEG b2) da bu tek sabiti kullanir.
  */
 import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { EVENT_CONTACT_NOTIFY, messageTypeTraits } from '@/lib/ai/message-types';
 
 // classify-and-respond.ts LEG(a)/LEG(b2) ile BIREBIR ayna (orada local const, export DEGIL):
 const EVENT_KEYWORDS = ['dugun', 'nikah', 'kina', 'organizasyon', 'etkinlik', 'kongre', 'seminer', 'davet', 'balo', 'grup rezervasyon'];
@@ -64,6 +69,20 @@ check('4a forward yok + ilettim -> guard', guardFires('Talebinizi ilgili ekibe i
 check('4b forward yok + iletiyorum -> guard', guardFires('Bu konuyu ilgili ekibimize iletiyorum.', false), true);
 check('4c forward VAR + ilettim -> guard YOK', guardFires('Talebinizi ilettim.', true), false);
 check('4d forward yok + vaat YOK -> guard YOK', guardFires('Havuz saat 09:00da acilir.', false), false);
+
+// (5) TESLIM SEKLI: event/contact forward'i BILDIRIM (SLA yok, buton yok, eskalasyon yok).
+//     LEG(a) ve LEG(b2) ayni sabiti yazar -> tek kaynak burada dogrulanir.
+check('5a bildirim tipi', EVENT_CONTACT_NOTIFY.messageType, 'BILDIRIM');
+check('5b sla_events YAZILMAZ', EVENT_CONTACT_NOTIFY.createsSlaEvent, false);
+check('5c onay/eskalasyon butonu YOK', EVENT_CONTACT_NOTIFY.withButtons, false);
+check('5d bildirim sablonu anahtari', EVENT_CONTACT_NOTIFY.notifyKind, 'event_contact');
+// Taksonomiyle uyum: bayraklar BILDIRIM trait'inden sapmamali
+check('5e BILDIRIM trait uyumu (sla)', EVENT_CONTACT_NOTIFY.createsSlaEvent, messageTypeTraits('BILDIRIM').createsSlaEvent);
+check('5f BILDIRIM trait uyumu (buton)', EVENT_CONTACT_NOTIFY.withButtons, messageTypeTraits('BILDIRIM').withButtons);
+// Regresyon kapisi: operasyonel TALEP yolu SLA uretmeye DEVAM etmeli (dokunulmadi)
+check('5g TALEP hala sla_events uretir', messageTypeTraits('TALEP').createsSlaEvent, true);
+check('5h TALEP hala butonlu', messageTypeTraits('TALEP').withButtons, true);
+check('5i housekeeping TALEP kaldi', messageTypeTraits('housekeeping').createsSlaEvent, true);
 
 const total = pass + fails.length;
 if (fails.length > 0) {

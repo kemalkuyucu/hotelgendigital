@@ -173,6 +173,9 @@ interface ForwardableItem {
   // bu alanlar ASLA undefined olamaz (Risk 1 — derleme zamanı garanti).
   withButtons: boolean;
   createsSlaEvent: boolean;
+  // BİLDİRİM alt-türü: createsSlaEvent=false dalında hangi şablonun basılacağını seçer.
+  // Boş (undefined) → bugünkü davranış (allergy / bagaj) DEĞİŞMEZ.
+  notifyKind?: 'event_contact';
 }
 
 function buildForwardableItems(
@@ -228,6 +231,9 @@ function buildForwardableItems(
       // sessiz SLA kaybı" İMKANSIZ; sonuç daima boolean (alan tipi de boolean).
       withButtons: item.withButtons !== false,
       createsSlaEvent: item.createsSlaEvent !== false,
+      // Bilinen tek değere daralt: sürpriz bir string bildirim dalını kaçıramaz
+      // (tanınmayan değer → undefined → bugünkü davranış).
+      notifyKind: item.notifyKind === 'event_contact' ? 'event_contact' : undefined,
     });
   }
   return items;
@@ -3813,6 +3819,32 @@ async function handleMessage(args: {
           // late_checkout orchestrator enum'unda YOK → erişilemez). Flag build-site'ta
           // strictly boolean → undefined ASLA bu dala düşemez (Risk 1). Davranış bugünküyle birebir.
           if (!fwdItem.createsSlaEvent) {
+            // ── ETKİNLİK / İLETİŞİM BİLGİLENDİRMESİ (SLA yok, buton yok) ────────
+            // Düğün/organizasyon/etkinlik ve "yetkiliyle görüşmek istiyorum" talepleri
+            // ön büroya ULAŞIR ama TALEP kartı değil BİLDİRİM olarak düşer: sla_events
+            // YAZILMAZ → eskalasyon zinciri ve onay butonları oluşmaz ("talep değil,
+            // bildirim"). Aynı bayrakları taşıyan bagaj bildiriminden notifyKind ile
+            // ayrılır. Misafire giden metne DOKUNULMAZ.
+            if (fwdItem.notifyKind === 'event_contact') {
+              const evRoom = persistentVerifiedGuest?.room_number ?? null;
+              const evName = persistentVerifiedGuest
+                ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim()
+                : guestName;
+              const escEv = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const evHtml =
+                `🔔 <b>Bilgilendirme — Etkinlik / Organizasyon</b>\n\n` +
+                `Oda: ${escEv(evRoom || 'bilinmiyor')} · Misafir: <b>${escEv(evName || 'bilinmiyor')}</b>\n\n` +
+                `Misafir mesajı: "${escEv(fwdItem.requestText || text)}"\n\n` +
+                `Konuyu ilgili yetkiliye aktarır mısınız? (Bilgilendirme - SLA yok)`;
+              await tg.sendMessage({ chat_id: targetChatId, text: evHtml, parse_mode: 'HTML' });
+              console.log(`[event-contact-notify] Etkinlik/iletisim bildirimi gönderildi (SLA yok, buton yok) [chatId=${deptChatIdForSla}]`);
+              await supa
+                .from('conversations')
+                .update({ last_intent: targetDept, last_forwarded_at: new Date().toISOString() })
+                .eq('id', conversationId);
+              continue;
+            }
+
             const isAllergyNotify = (fwdItem.rawDepartment ?? '').toLowerCase().trim() === 'allergy';
             if (!isAllergyNotify) {
               // ── BAGAJ / BELLSERVICE BILDIRIMI (SLA yok, buton yok, alerji DEGIL) ──

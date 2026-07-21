@@ -16,6 +16,7 @@ import {
   messageTypeTraits,
   CHAT_INTENTS,
   INFO_INTENTS,
+  EVENT_CONTACT_NOTIFY,
   type MessageType,
 } from './message-types';
 // Alerji güvenlik ağı — Türkçe-toleranslı keyword eşleşmesi için tek paylaşılan normalize.
@@ -86,6 +87,12 @@ export interface ClassifiedIntentItem {
   messageType: MessageType;
   withButtons: boolean;
   createsSlaEvent: boolean;
+  /**
+   * BİLDİRİM alt-türü (yalnız createsSlaEvent=false olan forward'lar için).
+   * Forward yolunda hangi bildirim şablonunun basılacağını seçer; boşsa bugünkü
+   * davranış (bagaj bildirimi / allergy) DEĞİŞMEZ.
+   */
+  notifyKind?: 'event_contact';
 }
 
 export interface ClassifyAndRespondOutput {
@@ -423,6 +430,8 @@ async function _classifyAndRespondImpl(
     // normalizeTr (M1) uzerinden. SADECE BILGI sorusu (talep/iletisim sinyali YOK, or.
     // "dugun yapiyor musunuz") forward EDILMEZ -> fact cevabi kalir. Operasyonel yollar
     // (housekeeping/fb/technical/spa/animation/room_service) ve allergy KORUNUR.
+    // TESLIM SEKLI: SLA TALEP karti DEGIL, BILDIRIM (EVENT_CONTACT_NOTIFY) -> mesaj on
+    // buroya ULASIR ama sla_events/eskalasyon/onay butonu YOK ("talep degil, bildirim").
     const EVENT_KEYWORDS = ['dugun', 'nikah', 'kina', 'organizasyon', 'etkinlik', 'kongre', 'seminer', 'davet', 'balo', 'grup rezervasyon'];
     const EVENT_REQUEST_SIGNALS = ['organize', 'yaptirmak', 'planl', 'teklif', 'fiyat al', 'rezerv', 'kimle gorus', 'beni ara', 'iletisim', 'gorusme', 'yetkili'];
     const CONTACT_SIGNALS = ['kimle gorus', 'beni ara', 'iletisime gec', 'baglayabilir', 'yetkiliyle gorus'];
@@ -433,7 +442,6 @@ async function _classifyAndRespondImpl(
     // Talep/iletisim sinyali YOKSA (yalin bilgi sorusu) forceEventForward=false -> forward YOK.
     const forceEventForward = (hasEventKw && hasEventReq) || hasContactReq;
     if (forceEventForward) {
-      const evRouting = routeIntentToDepartment('front_office');
       let evRedirected = false;
       for (const it of classifiedIntents) {
         const rd = (it.rawDepartment ?? '').toLowerCase().trim();
@@ -442,13 +450,14 @@ async function _classifyAndRespondImpl(
         it.department = 'front_office';
         it.shouldForward = true;
         it.requestText = it.requestText || input.guestMessage;  // BOS ise doldur (bos -> forward edilmez)
-        it.messageType = evRouting.messageType;
-        it.withButtons = false;
-        it.createsSlaEvent = evRouting.createsSlaEvent;
+        it.messageType = EVENT_CONTACT_NOTIFY.messageType;
+        it.withButtons = EVENT_CONTACT_NOTIFY.withButtons;
+        it.createsSlaEvent = EVENT_CONTACT_NOTIFY.createsSlaEvent;
+        it.notifyKind = EVENT_CONTACT_NOTIFY.notifyKind;
         evRedirected = true;
       }
       if (evRedirected) {
-        console.log(`[event-contact-override] Etkinlik/iletisim talebi front_office'e yonlendirildi. msg="${input.guestMessage.slice(0, 60)}"`);
+        console.log(`[event-contact-override] Etkinlik/iletisim talebi front_office'e BILDIRIM olarak yonlendirildi (SLA yok). msg="${input.guestMessage.slice(0, 60)}"`);
       }
     }
 
@@ -645,22 +654,23 @@ async function _classifyAndRespondImpl(
   // front_office forward'i TETIKLE (vaadi dogru yap) -> forward'siz vaat IMKANSIZ olur.
   // NOT: TR ifade taramasi -> yabanci-dil reply'de yakalamaz (bilinen sinir; LEG(a)+prompt
   // birincil koruma, bu backstop TR icin son emniyet). requestText DOLU (bos -> forward edilmez).
+  // LEG(a) ile AYNI teslim sekli: BILDIRIM (SLA/eskalasyon/buton YOK).
   const anyForward = classifiedIntents.some((i) => i.shouldForward);
   const PROMISE_SIGNALS = ['ilettim', 'ilgili ekib', 'aktardim', 'iletiyorum', 'gorusulecek', 'talebinizi aldim'];
   const normGuardedReply = normalizeTr(guardedResponse);
   const hasFalsePromise = guardedResponse.trim().length > 0 && PROMISE_SIGNALS.some((p) => normGuardedReply.includes(p));
   if (!anyForward && hasFalsePromise) {
-    const guardRouting = routeIntentToDepartment('front_office');
     classifiedIntents.push({
       department: 'front_office',
       requestText: input.guestMessage,
       shouldForward: true,
       rawDepartment: 'front_office',
-      messageType: guardRouting.messageType,
-      withButtons: false,
-      createsSlaEvent: guardRouting.createsSlaEvent,
+      messageType: EVENT_CONTACT_NOTIFY.messageType,
+      withButtons: EVENT_CONTACT_NOTIFY.withButtons,
+      createsSlaEvent: EVENT_CONTACT_NOTIFY.createsSlaEvent,
+      notifyKind: EVENT_CONTACT_NOTIFY.notifyKind,
     });
-    console.log(`[sahte-vaat-guard] Forward'siz vaat tespit -> front_office forward tetiklendi. msg="${input.guestMessage.slice(0, 60)}"`);
+    console.log(`[sahte-vaat-guard] Forward'siz vaat tespit -> front_office BILDIRIMI tetiklendi (SLA yok). msg="${input.guestMessage.slice(0, 60)}"`);
   }
 
   return {

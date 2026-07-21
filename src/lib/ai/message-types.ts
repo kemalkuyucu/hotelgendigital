@@ -135,3 +135,21 @@ export function messageTypeTraits(typeOrIntent: MessageType | string): MessageTy
       : getMessageType(typeOrIntent);
   return MESSAGE_TYPE_TRAITS[type];
 }
+
+/**
+ * Etkinlik/organizasyon + açık iletişim talebinin BİLDİRİM imzası (LEG a / LEG b2).
+ *
+ * Bu yol ön büroya ULAŞIR ama TALEP kartı AÇMAZ: düğün/toplantı/etkinlik ve
+ * "yetkiliyle görüşmek istiyorum" gibi konular operasyonel bir iş emri değil,
+ * "ilgili yetkiliye aktarın" bilgilendirmesidir → SLA takibi + eskalasyon +
+ * onay butonu YOK. Bayraklar BİLDİRİM trait'iyle birebir aynıdır.
+ *
+ * `notifyKind`, forward yolunda (route.ts) hangi bildirim şablonunun basılacağını
+ * seçer — aynı bayrakları taşıyan bagaj bildiriminden bu alanla ayrılır.
+ */
+export const EVENT_CONTACT_NOTIFY = {
+  messageType: 'BILDIRIM',
+  withButtons: false,
+  createsSlaEvent: false,
+  notifyKind: 'event_contact',
+} as const;
