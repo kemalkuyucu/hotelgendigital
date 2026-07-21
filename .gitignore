@@ -67,10 +67,12 @@ logs/
 #                  (dizin disarida kalirsa icindeki dosya negasyonu CALISMAZ).
 #   "/scripts/*" : kok scripts'in icerigini yoksay (ankraj: sadece kok).
 #   "!/scripts/is8-*" : kanonik korpus haric (en son eslesme kazanir).
+#   "!/scripts/doctor.mjs" : doctor saglik-kontrolu araci TAKIPLI (npm run doctor).
 scripts/
 !/scripts/
 /scripts/*
 !/scripts/is8-*
+!/scripts/doctor.mjs
 
 .env*.local
 __*

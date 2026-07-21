@@ -438,7 +438,7 @@ export default function StaffPageClient({ slug, department, departmentLabel, ini
                   style={inputStyle}
                   value={form.telegram_user_id}
                   onChange={(e) => setForm((p) => ({ ...p, telegram_user_id: e.target.value }))}
-                  placeholder="758605940"
+                  placeholder="123456789"
                 />
               </div>
 
