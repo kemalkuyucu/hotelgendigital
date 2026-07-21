@@ -416,6 +416,42 @@ async function _classifyAndRespondImpl(
       }
     }
 
+    // ── ETKINLIK/ORGANIZASYON + ILETISIM ON BURO OVERRIDE (deterministik, KARAR #3) ──
+    // Dugun/organizasyon/etkinlik TALEBI ve acik iletisim/geri-arama talebi islevsel olarak
+    // ON BURO isidir ama deterministik forward yolu YOKTU -> LLM knowledge_query/social
+    // siniflayip "ilettim" diyor ama forward etmiyordu (SAHTE VAAT). Bagaj override ikizi:
+    // normalizeTr (M1) uzerinden. SADECE BILGI sorusu (talep/iletisim sinyali YOK, or.
+    // "dugun yapiyor musunuz") forward EDILMEZ -> fact cevabi kalir. Operasyonel yollar
+    // (housekeeping/fb/technical/spa/animation/room_service) ve allergy KORUNUR.
+    const EVENT_KEYWORDS = ['dugun', 'nikah', 'kina', 'organizasyon', 'etkinlik', 'kongre', 'seminer', 'davet', 'balo', 'grup rezervasyon'];
+    const EVENT_REQUEST_SIGNALS = ['organize', 'yaptirmak', 'planl', 'teklif', 'fiyat al', 'rezerv', 'kimle gorus', 'beni ara', 'iletisim', 'gorusme', 'yetkili'];
+    const CONTACT_SIGNALS = ['kimle gorus', 'beni ara', 'iletisime gec', 'baglayabilir', 'yetkiliyle gorus'];
+    const hasEventKw = EVENT_KEYWORDS.some((k) => normalizedGuestMsg.includes(k));
+    const hasEventReq = EVENT_REQUEST_SIGNALS.some((k) => normalizedGuestMsg.includes(k));
+    const hasContactReq = CONTACT_SIGNALS.some((k) => normalizedGuestMsg.includes(k));
+    // (i) etkinlik keyword + talep sinyali, VEYA (ii) acik iletisim talebi (konu farketmez).
+    // Talep/iletisim sinyali YOKSA (yalin bilgi sorusu) forceEventForward=false -> forward YOK.
+    const forceEventForward = (hasEventKw && hasEventReq) || hasContactReq;
+    if (forceEventForward) {
+      const evRouting = routeIntentToDepartment('front_office');
+      let evRedirected = false;
+      for (const it of classifiedIntents) {
+        const rd = (it.rawDepartment ?? '').toLowerCase().trim();
+        if (rd === 'allergy') continue;                 // alerji dokunulmaz
+        if (OPERATIONAL_INTENTS.has(rd)) continue;      // hk/fb/technical/spa/animation/room_service KORUNUR
+        it.department = 'front_office';
+        it.shouldForward = true;
+        it.requestText = it.requestText || input.guestMessage;  // BOS ise doldur (bos -> forward edilmez)
+        it.messageType = evRouting.messageType;
+        it.withButtons = false;
+        it.createsSlaEvent = evRouting.createsSlaEvent;
+        evRedirected = true;
+      }
+      if (evRedirected) {
+        console.log(`[event-contact-override] Etkinlik/iletisim talebi front_office'e yonlendirildi. msg="${input.guestMessage.slice(0, 60)}"`);
+      }
+    }
+
     // ── HOUSEKEEPING ESYA OVERRIDE (deterministik) ──────────────────────────────
     // "2 havlu istiyorum" somut kat-hizmetleri esyasi talepleri LLM tarafindan bazen
     // housekeeping bazen front_office etiketleniyordu → ayni cumle iki farkli sonuc
@@ -603,6 +639,29 @@ async function _classifyAndRespondImpl(
   // (greeting / knowledge_query / REGISTRY-disi intent) tek emit noktasi. Ayni tek
   // reusable guard fonksiyonu; hata halinde metin AYNEN korunur (fonksiyon try/catch'li).
   const guardedResponse = await enforceReplyLanguage(input.guestMessage, responseToGuest);
+
+  // ── SAHTE-VAAT GUARD (KARAR #3: forward yoksa vaat yok) ─────────────────────────
+  // LEG(a) + prompt kuralina ragmen LLM forward'siz "ilettim/gorusulecek" derse: gercek
+  // front_office forward'i TETIKLE (vaadi dogru yap) -> forward'siz vaat IMKANSIZ olur.
+  // NOT: TR ifade taramasi -> yabanci-dil reply'de yakalamaz (bilinen sinir; LEG(a)+prompt
+  // birincil koruma, bu backstop TR icin son emniyet). requestText DOLU (bos -> forward edilmez).
+  const anyForward = classifiedIntents.some((i) => i.shouldForward);
+  const PROMISE_SIGNALS = ['ilettim', 'ilgili ekib', 'aktardim', 'iletiyorum', 'gorusulecek', 'talebinizi aldim'];
+  const normGuardedReply = normalizeTr(guardedResponse);
+  const hasFalsePromise = guardedResponse.trim().length > 0 && PROMISE_SIGNALS.some((p) => normGuardedReply.includes(p));
+  if (!anyForward && hasFalsePromise) {
+    const guardRouting = routeIntentToDepartment('front_office');
+    classifiedIntents.push({
+      department: 'front_office',
+      requestText: input.guestMessage,
+      shouldForward: true,
+      rawDepartment: 'front_office',
+      messageType: guardRouting.messageType,
+      withButtons: false,
+      createsSlaEvent: guardRouting.createsSlaEvent,
+    });
+    console.log(`[sahte-vaat-guard] Forward'siz vaat tespit -> front_office forward tetiklendi. msg="${input.guestMessage.slice(0, 60)}"`);
+  }
 
   return {
     classifiedIntents,
