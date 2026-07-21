@@ -302,25 +302,8 @@ async function fetchRoomRates(supabase: any): Promise<string> {
     .eq('is_active', true)
     .order('display_order', { ascending: true });
 
-  if (!rates || rates.length === 0) return '';
-
-  const fmt = (r: any) => {
-    const cap = r.capacity ? ' (' + r.capacity + ')' : '';
-    const board = r.board_type ? ', ' + r.board_type : '';
-    return '- ' + r.room_type + cap + ' | ' + r.period_start + ' -> ' + r.period_end + ': ' + r.price + ' ' + r.currency + board;
-  };
-
-  const konaklama = rates.filter((r: any) => (r.rate_kind || 'konaklama') === 'konaklama');
-  const gunubirlik = rates.filter((r: any) => r.rate_kind === 'gunubirlik');
-
-  let lines = '';
-  if (konaklama.length > 0) {
-    lines += 'KONAKLAMA / TATIL FIYATLARI:\n' + konaklama.map(fmt).join('\n');
-  }
-  if (gunubirlik.length > 0) {
-    lines += (lines ? '\n\n' : '') + 'GUNUBIRLIK FIYATLARI:\n' + gunubirlik.map(fmt).join('\n');
-  }
-
+  // Rezervasyon linkleri room_rates'ten BAGIMSIZ cekilir:
+  // oda fiyati bos olsa bile rezervasyon linki context'e girsin.
   const { data: links } = await supabase
     .from('reservation_links')
     .select('label, url, is_official, sort_order')
@@ -334,8 +317,31 @@ async function fetchRoomRates(supabase: any): Promise<string> {
       .map((l: any) => '- ' + (l.label || 'Rezervasyon') + ': ' + l.url)
       .join('\n');
     linkLine =
-      '\n\nREZERVASYON KURALI (SELF-SERVICE): Misafir rezervasyon yapmak isterse asagidaki linkleri SIRAYLA ver (once otelin kendi linki, sonra acentalar). ASLA kart/odeme bilgisi isteme, ASLA "on buro iletisime gececek" deme. Misafir odemesini linkten kendisi yapar:\n' +
+      '\n\nREZERVASYON KURALI (SELF-SERVICE): Misafir rezervasyon yapmak isterse asagidaki linkleri SIRAYLA ver (once otelin kendi linki, sonra acentalar). Linkteki GERCEK URL ADRESINI reply_text icinde AYNEN ve tam haliyle yaz; kisaltma veya parafraz YASAK, "kendi guvenli sayfamiz" gibi link icermeyen muglak ifade KULLANMA. ASLA kart/odeme bilgisi isteme, ASLA "on buro iletisime gececek" deme. Misafir odemesini linkten kendisi yapar:\n' +
       linkList;
+  }
+
+  const hasRates = !!(rates && rates.length > 0);
+
+  // Ne oda fiyati ne de rezervasyon linki varsa bolum komple bos donsun.
+  if (!hasRates && !linkLine) return '';
+
+  const fmt = (r: any) => {
+    const cap = r.capacity ? ' (' + r.capacity + ')' : '';
+    const board = r.board_type ? ', ' + r.board_type : '';
+    return '- ' + r.room_type + cap + ' | ' + r.period_start + ' -> ' + r.period_end + ': ' + r.price + ' ' + r.currency + board;
+  };
+
+  let lines = '';
+  if (hasRates) {
+    const konaklama = rates.filter((r: any) => (r.rate_kind || 'konaklama') === 'konaklama');
+    const gunubirlik = rates.filter((r: any) => r.rate_kind === 'gunubirlik');
+    if (konaklama.length > 0) {
+      lines += 'KONAKLAMA / TATIL FIYATLARI:\n' + konaklama.map(fmt).join('\n');
+    }
+    if (gunubirlik.length > 0) {
+      lines += (lines ? '\n\n' : '') + 'GUNUBIRLIK FIYATLARI:\n' + gunubirlik.map(fmt).join('\n');
+    }
   }
 
   return '=== KONAKLAMA / REZERVASYON FIYATLARI ===\n' + lines + linkLine;
