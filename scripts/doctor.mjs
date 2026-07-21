@@ -135,6 +135,27 @@ function walkSrc(dir, out = []) {
   return out;
 }
 
+// DOSYA-BAZLI allowlist: bilinen-mesru tenant literal'leri. KRITIK — ayni literal allowlist DISI
+// bir dosyada cikarsa (or. bir prompt'a sizarsa) unexpected=FAIL. Boylece [D] yalniz YENI sizintida
+// kirmizi yanar; 13 mesru isabet kalici FAIL uretmez ("13->14 gozden kacar" sorunu cozulur).
+const ALLOW = [
+  {
+    pattern: 'Barboon',
+    files: [
+      'src/app/api/webhooks/telegram/[hotelSlug]/route.ts',
+      'src/lib/ai/barboon-live.ts',
+      'src/lib/ai/room-price-tool.ts',
+    ],
+    reason: 'Barboon IBE adapter — kod tanimlayici, ibe_type ile kosullu',
+  },
+  {
+    pattern: 'v5-pro-test-oteli',
+    files: ['src/lib/telegram/manager-bot-token.ts'],
+    reason: 'manager bot slug->token routing (backlog: config-drive)',
+  },
+];
+const isAllowed = (h) => ALLOW.some((a) => a.pattern === h.needle && a.files.includes(h.file));
+
 function checkHardcoded() {
   const files = walkSrc(join(ROOT, 'src'));
   const hits = [];
@@ -146,9 +167,29 @@ function checkHardcoded() {
       }
     });
   }
-  add('D', 'SABIT-MARKA', hits.length === 0 ? 'PASS' : 'FAIL',
-    hits.length === 0 ? '0 sabit-marka isabeti' : `${hits.length} isabet (asagida listeleniyor)`);
-  return hits;
+  const allowlisted = hits.filter(isAllowed);
+  const unexpected = hits.filter((h) => !isAllowed(h));
+  // stale: allowlist'te olup artik HIC eslesmeyen (pattern, file) ciftleri
+  const stale = [];
+  for (const a of ALLOW) {
+    for (const file of a.files) {
+      if (!hits.some((h) => h.needle === a.pattern && h.file === file)) stale.push(`${a.pattern} @ ${file}`);
+    }
+  }
+
+  let status, line;
+  if (unexpected.length > 0) {
+    status = 'FAIL';
+    line = `${unexpected.length} unexpected (YENI sizinti) / ${allowlisted.length} allowlisted (info)`;
+  } else if (stale.length > 0) {
+    status = 'WARN';
+    line = `0 unexpected / ${allowlisted.length} allowlisted; STALE allowlist: ${stale.join(', ')}`;
+  } else {
+    status = 'PASS';
+    line = `${allowlisted.length} allowlisted (info) / 0 unexpected`;
+  }
+  add('D', 'SABIT-MARKA', status, line);
+  return { unexpected, allowlisted, stale };
 }
 
 // ─────────────────────────────────── main ───────────────────────────────────
@@ -157,14 +198,14 @@ function checkHardcoded() {
   checkTsc();
   checkTests();
   await checkTenantSchema();
-  const hits = checkHardcoded();
+  const d = checkHardcoded();
 
   for (const r of results) {
     console.log(`[${r.id}] ${r.name.padEnd(12)}: ${r.status.padEnd(4)} | ${r.line}`);
   }
-  if (hits.length > 0) {
-    console.log('\n[D] SABIT-MARKA ISABETLERI:');
-    for (const h of hits) console.log(`  ${h.file}:${h.line}  <${h.needle}>  ${h.text}`);
+  if (d.unexpected.length > 0) {
+    console.log('\n[D] UNEXPECTED (allowlist DISI — YENI sizinti):');
+    for (const h of d.unexpected) console.log(`  ${h.file}:${h.line}  <${h.needle}>  ${h.text}`);
   }
 
   const anyFail = results.some((r) => r.status === 'FAIL');
