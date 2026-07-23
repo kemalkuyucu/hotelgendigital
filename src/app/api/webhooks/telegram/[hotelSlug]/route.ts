@@ -30,7 +30,9 @@ import {
   readLeadCapture,
   withLeadCapture,
   clearLeadCapture,
-  buildLeadInterimCard,
+  decideLeadNotify,
+  buildLeadInhouseRequestCard,
+  buildLeadInhouseClosedCard,
   buildLeadFinalCard,
 } from '@/lib/lead/lead-capture';
 // İŞ 17 — misafire giden sabit metinlerin dil seçimi (tek kaynak)
@@ -1298,7 +1300,11 @@ async function handleMessage(args: {
       const adv = advanceLead(leadState, text);
 
       if (adv.action === 'complete') {
-        // ARA-KARTI final karta çevir; edit başarısızsa ikinci mesaj (fallback).
+        // İŞ 17.1: iki yol da BURADA birleşir —
+        //   inhouse (kind='update')    : start'ta düşen kart telefonla GÜNCELLENİR
+        //   non-guest (kind='final_new'): kart İLK KEZ şimdi oluşur (isim+telefon+konu)
+        // Ayrım notifyMsgId'nin doluluğundan gelir; edit patlarsa taze kart fallback'i kalır.
+        const notify = decideLeadNotify({ phase: 'complete', isInhouse: leadState.isInhouse });
         const finalCard = buildLeadFinalCard({
           name: adv.name,
           phone: adv.phone,
@@ -1306,7 +1312,7 @@ async function handleMessage(args: {
           room: leadState.room,
         });
         let edited = false;
-        if (leadState.notifyChatId && leadState.notifyMsgId) {
+        if (notify.send && leadState.notifyChatId && leadState.notifyMsgId) {
           try {
             await tg.editMessageText({
               chat_id: leadState.notifyChatId,
@@ -1322,19 +1328,55 @@ async function handleMessage(args: {
             );
           }
         }
-        if (!edited && leadState.notifyChatId) {
+        if (notify.send && !edited && leadState.notifyChatId) {
           await tg.sendMessage({ chat_id: leadState.notifyChatId, text: finalCard, parse_mode: 'HTML' });
         }
         await clearLead();
         await replyLead(adv.reply);
-        console.log(`[lead-capture] TAMAMLANDI (edit=${edited}) conversationId=${conversationId}`);
+        console.log(
+          `[lead-capture] TAMAMLANDI kind=${notify.kind} inhouse=${leadState.isInhouse} edit=${edited} conversationId=${conversationId}`,
+        );
         return;
       }
 
       if (adv.action === 'close') {
+        // İŞ 17.1-ek: non-guest'te kart YOK (hiç oluşmadı, oluşturulmaz).
+        // Inhouse'ta start kartı DURUYOR ama metni "telefon gelince güncellenecek"
+        // diyor → personel asla gelmeyecek bir telefonu bekler. Kartı SİLMEK yerine
+        // DÜRÜST duruma çeviriyoruz: "telefon alınamadı, oda üzerinden takip edilebilir".
+        const notify = decideLeadNotify({ phase: 'abandon', isInhouse: leadState.isInhouse });
+        let closedEdited = false;
+        if (notify.send && leadState.notifyChatId) {
+          const closedCard = buildLeadInhouseClosedCard({
+            room: leadState.room,
+            guestName: leadState.name,
+            topic: leadState.topic,
+          });
+          if (leadState.notifyMsgId) {
+            try {
+              await tg.editMessageText({
+                chat_id: leadState.notifyChatId,
+                message_id: leadState.notifyMsgId,
+                text: closedCard,
+                parse_mode: 'HTML',
+              });
+              closedEdited = true;
+            } catch (editErr) {
+              console.error(
+                '[lead-capture] kapanis editMessageText basarisiz, fallback yeni mesaj:',
+                editErr instanceof Error ? editErr.message : editErr,
+              );
+            }
+          }
+          if (!closedEdited) {
+            await tg.sendMessage({ chat_id: leadState.notifyChatId, text: closedCard, parse_mode: 'HTML' });
+          }
+        }
         await clearLead();
         await replyLead(adv.reply);
-        console.log(`[lead-capture] KAPANDI (iletisim alinamadi; ara-kart yerinde) conversationId=${conversationId}`);
+        console.log(
+          `[lead-capture] KAPANDI (iletisim alinamadi) kind=${notify.kind ?? 'YOK'} inhouse=${leadState.isInhouse} edit=${closedEdited} conversationId=${conversationId}`,
+        );
         return;
       }
 
@@ -2818,9 +2860,9 @@ async function handleMessage(args: {
       // teyit kartindan onceki ara mesaji sabitle. Fiyatsiz ozet + onay butonu
       // F&B teyit kapisinda gonderiliyor.
       finalResponseText =
-        language === 'en'
+        guestLang === 'en'
           ? 'Preparing your order.'
-          : language === 'de'
+          : guestLang === 'de'
             ? 'Ich bereite Ihre Bestellung vor.'
             : 'Siparişinizi hazırlıyorum.';
       console.log('[rs-code-gate] kod yakalandi, fb ye zorlandi', {
@@ -2861,9 +2903,9 @@ async function handleMessage(args: {
         .map((r) => `${String(r.item_code).trim()} - ${r.item_name}`)
         .join('\n');
       const invalidCodeMsg =
-        language === 'en'
+        guestLang === 'en'
           ? `The code you entered is not in our menu. Valid codes:\n${codeList}`
-          : language === 'de'
+          : guestLang === 'de'
             ? `Der von Ihnen eingegebene Code ist nicht in unserer Speisekarte. Gueltige Codes:\n${codeList}`
             : `Yazdığınız kod menümüzde yok. Geçerli kodlar:\n${codeList}`;
       await tg.sendMessage({ chat_id: chatId, text: invalidCodeMsg });
@@ -2917,9 +2959,9 @@ async function handleMessage(args: {
 
       if (menuImages.length > 0) {
         const menuCaption =
-          language === 'en'
+          guestLang === 'en'
             ? 'Here is our room-service menu 📋 To order, just send the item code and quantity (e.g. 2 RS01).'
-            : language === 'de'
+            : guestLang === 'de'
               ? 'Hier ist unsere Room-Service-Speisekarte 📋 Zum Bestellen senden Sie einfach den Artikelcode und die Menge (z.B. 2 RS01).'
               : 'Room-service menümüz ekte 📋 Sipariş vermek için ürün kodunu ve adedini yazmanız yeterli (ör. 2 RS01).';
 
@@ -3657,7 +3699,7 @@ async function handleMessage(args: {
       .from('conversations')
       .update({ hk_pending: true, hk_pending_text: JSON.stringify(state) })
       .eq('id', conversationId);
-    await advanceHousekeeping({ supa, botToken, convId: conversationId, guestChatId: chatId, state, language });
+    await advanceHousekeeping({ supa, botToken, convId: conversationId, guestChatId: chatId, state, language: guestLang });
     console.log('[hk-ask] state kuruldu', { conv: conversationId, items: state.items.length, v: state.v });
     return;
   }
@@ -3686,9 +3728,9 @@ async function handleMessage(args: {
 
           // SPA iletisim toplama: kart gitti, simdi opsiyonel telefon/mail iste
           const spaContactAsk =
-            language === 'en'
+            guestLang === 'en'
               ? 'The spa team will reach out to you. If you like, share your phone number, email, or both and I will pass them on so they can contact you directly.'
-              : language === 'de'
+              : guestLang === 'de'
               ? 'Das Spa-Team wird sich bei Ihnen melden. Wenn Sie moechten, teilen Sie mir Ihre Telefonnummer, E-Mail oder beides mit, dann leite ich diese weiter, damit man Sie direkt erreichen kann.'
               : 'Spa ekibi sizinle iletişime geçecek. İsterseniz telefon numaranızı, mail adresinizi ya da her ikisini bana iletin; ben kendilerine ulaştırayım, size dönüş yapsınlar.';
           finalResponseText = spaContactAsk;
@@ -3772,19 +3814,19 @@ async function handleMessage(args: {
             const foodCount = foodLines.length;
             const numberedList = foodLines.map((l, i) => `${i + 1}. ${l.name}`).join('\n');
             const noteAskText =
-              language === 'en'
+              guestLang === 'en'
                 ? foodCount > 1
                   ? `Would you like to add a note to your order?\n\n${numberedList}\n\nPlease specify by number for each item (e.g. "1: no onions, 2: lightly browned")`
                   : 'Would you like to add a note to your order (e.g. no onions)?'
-                : language === 'de'
+                : guestLang === 'de'
                   ? foodCount > 1
                     ? `Möchten Sie Ihrer Bestellung eine Notiz hinzufügen?\n\n${numberedList}\n\nBitte geben Sie für jeden Artikel mit Nummer an (z.B. "1: ohne Zwiebeln, 2: leicht getoastet")`
                     : 'Möchten Sie Ihrer Bestellung eine Notiz hinzufügen (z.B. ohne Zwiebeln)?'
                   : foodCount > 1
                     ? `Siparişinize not eklemek ister misiniz?\n\n${numberedList}\n\nHer ürün için numarasıyla yazın (ör. "1: soğansız, 2: az kızarmış")`
                     : 'Siparişinize eklemek istediğiniz bir not var mı (ör. soğansız olsun)?';
-            const noteYesLabel = language === 'en' ? 'Add a note' : language === 'de' ? 'Notiz hinzufuegen' : 'Not var';
-            const noteNoLabel = language === 'en' ? 'No note' : language === 'de' ? 'Keine Notiz' : 'Notum yok';
+            const noteYesLabel = guestLang === 'en' ? 'Add a note' : guestLang === 'de' ? 'Notiz hinzufuegen' : 'Not var';
+            const noteNoLabel = guestLang === 'en' ? 'No note' : guestLang === 'de' ? 'Keine Notiz' : 'Notum yok';
 
             await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
             await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -3818,15 +3860,15 @@ async function handleMessage(args: {
           // KADEMELI MENU ONERISI: tum listeyi hemen dokme. Once nazik red + "bakmak ister misiniz?" + buton.
           // Beynin urettigi "yok + liste" cevabini (finalResponseText) sakla, misafir EVET derse callback gonderir.
           const offerText =
-            language === 'en'
+            guestLang === 'en'
               ? 'Unfortunately this item is not available right now, we are very sorry. Would you like to see our other available items?'
-              : language === 'de'
+              : guestLang === 'de'
               ? 'Dieser Artikel ist derzeit leider nicht verfuegbar, es tut uns sehr leid. Moechten Sie unsere anderen verfuegbaren Artikel sehen?'
               : 'Bu ürün şu an mevcut değil, çok üzgünüz. Elimizdeki diğer ürünlere bakmak ister misiniz?';
           const offerYes =
-            language === 'en' ? 'Yes, show me' : language === 'de' ? 'Ja, zeigen' : 'Evet, bakmak isterim';
+            guestLang === 'en' ? 'Yes, show me' : guestLang === 'de' ? 'Ja, zeigen' : 'Evet, bakmak isterim';
           const offerNo =
-            language === 'en' ? 'No, thanks' : language === 'de' ? 'Nein, danke' : 'Hayır, teşekkürler';
+            guestLang === 'en' ? 'No, thanks' : guestLang === 'de' ? 'Nein, danke' : 'Hayır, teşekkürler';
 
           await supa
             .from('conversations')
@@ -3874,18 +3916,18 @@ async function handleMessage(args: {
         //    (Yol 1 — tutar sadece personel kartinda).
         const itemsBlock = parsed.lines.map((l) => `• ${l.name} × ${l.qty}`).join('\n');
         const confirmText = hasCodes
-          ? language === 'en'
+          ? guestLang === 'en'
             ? `Your order:\n${itemsBlock}\n\nDo you confirm?`
-            : language === 'de'
+            : guestLang === 'de'
               ? `Ihre Bestellung:\n${itemsBlock}\n\nBestaetigen Sie?`
               : `Siparişiniz:\n${itemsBlock}\n\nOnaylıyor musunuz?`
-          : language === 'en'
+          : guestLang === 'en'
             ? 'I am creating your order. To proceed, could you please confirm?'
-            : language === 'de'
+            : guestLang === 'de'
               ? 'Ich erstelle Ihre Bestellung. Bitte bestaetigen Sie zur Fortsetzung.'
               : 'Siparişinizi oluşturuyorum. Onaylarsanız ilgili ekibe hemen ileteceğim. Onaylıyor musunuz?';
-        const yesLabel = language === 'en' ? 'Yes, confirm' : language === 'de' ? 'Ja, bestaetigen' : 'Evet, onaylıyorum';
-        const noLabel = language === 'en' ? 'Cancel' : language === 'de' ? 'Abbrechen' : 'Vazgeçtim';
+        const yesLabel = guestLang === 'en' ? 'Yes, confirm' : guestLang === 'de' ? 'Ja, bestaetigen' : 'Evet, onaylıyorum';
+        const noLabel = guestLang === 'en' ? 'Cancel' : guestLang === 'de' ? 'Abbrechen' : 'Vazgeçtim';
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3959,18 +4001,27 @@ async function handleMessage(args: {
                 ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim()
                 : guestName;
               const evTopic = fwdItem.requestText || text;
-              const sentInterim = await tg.sendMessage({
-                chat_id: targetChatId,
-                text: buildLeadInterimCard({ room: evRoom, guestName: evName, message: evTopic }),
-                parse_mode: 'HTML',
-              });
               // İsim YALNIZ inhouse misafirde bilinir; Telegram profil adı ad-soyad sayılmaz.
+              const evIsInhouse = !!persistentVerifiedGuest;
+              // İŞ 17.1: kart artık KOŞULSUZ düşmüyor. Inhouse'ta (oda+isim belli) talep
+              // anında düşer; non-guest'te kart YALNIZ telefon gelince oluşur — aksi halde
+              // personele "bilinmiyor · bilinmiyor" içeren, üzerine gidilemeyen kart giderdi.
+              const evNotify = decideLeadNotify({ phase: 'start', isInhouse: evIsInhouse });
+              let evNotifyMsgId: number | null = null;
+              if (evNotify.send) {
+                const sentCard = await tg.sendMessage({
+                  chat_id: targetChatId,
+                  text: buildLeadInhouseRequestCard({ room: evRoom, guestName: evName, topic: evTopic }),
+                  parse_mode: 'HTML',
+                });
+                evNotifyMsgId = sentCard?.message_id ?? null;
+              }
               const { state: leadState, question: leadQuestion } = startLeadCapture({
                 topic: evTopic,
                 guestName: persistentVerifiedGuest ? evName : null,
                 room: evRoom,
                 notifyChatId: Number(targetChatId),
-                notifyMsgId: sentInterim?.message_id ?? null,
+                notifyMsgId: evNotifyMsgId,
                 // İŞ 17: soru misafirin dilinde sorulur; dil state'e YAZILIR ki
                 // devam turları (isim/telefon) — classify hiç çalışmadan — aynı
                 // dilde sürsün.
@@ -3992,7 +4043,7 @@ async function handleMessage(args: {
               // Misafire giden metin: LLM cevabı DEĞİL, sabit soru (SAHTE VAAT YASAGI).
               finalResponseText = leadQuestion;
               console.log(
-                `[lead-capture] ara-kart gonderildi + iletisim sorusu soruldu. step=${leadState.step} lang=${leadState.language} msgId=${sentInterim?.message_id ?? 'YOK'} [chatId=${deptChatIdForSla}]`,
+                `[lead-capture] START inhouse=${evIsInhouse} kart=${evNotify.kind ?? 'YOK'} step=${leadState.step} lang=${leadState.language} msgId=${evNotifyMsgId ?? 'YOK'} [chatId=${deptChatIdForSla}]`,
               );
               continue;
             }
@@ -4115,9 +4166,9 @@ async function handleMessage(args: {
 
             // (4) Misafire özel cevap
             finalResponseText =
-              language === 'en'
+              guestLang === 'en'
                 ? 'We have noted your allergy and informed the relevant team. Enjoy your meal!'
-                : language === 'de'
+                : guestLang === 'de'
                   ? 'Wir haben Ihre Allergie notiert und das zuständige Team informiert. Guten Appetit!'
                   : 'Not aldık, ilgili ekibe ilettik. Afiyet olsun.';
 
@@ -4428,9 +4479,9 @@ async function handleMessage(args: {
   // (a) Alerji sorusu — F&B cevabından 900ms sonra ayrı mesaj
   if (canAskAllergen) {
     const allergenQuestion =
-      language === 'en'
+      guestLang === 'en'
         ? 'Do you have any food allergies or dietary requirements? If yes, please let us know. If not, just reply \'none\'.'
-        : language === 'de'
+        : guestLang === 'de'
           ? 'Haben Sie Lebensmittelallergien oder besondere Ernährungsbedürfnisse? Falls ja, teilen Sie uns diese bitte mit. Falls nein, schreiben Sie einfach \'nein\'.'
           : 'Herhangi bir gıda alerjiniz var mı? Varsa belirtir misiniz, yoksa \'yok\' yazmanız yeterli.';
     await new Promise<void>((resolve) => setTimeout(resolve, 900));

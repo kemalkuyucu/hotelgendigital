@@ -19,9 +19,11 @@ import {
   readLeadCapture,
   withLeadCapture,
   clearLeadCapture,
-  buildLeadInterimCard,
+  buildLeadInhouseRequestCard,
+  buildLeadInhouseClosedCard,
   buildLeadFinalCard,
   buildAskPhone,
+  decideLeadNotify,
   leadAskName,
   leadAskPhone,
   leadRetryPhone,
@@ -118,9 +120,13 @@ check('5g topic yoksa -> state YOK', readLeadCapture({ [LEAD_METADATA_KEY]: { st
 check('5h metadata null -> state YOK', readLeadCapture(null), null);
 
 // (6) PERSONEL KARTLARI — misafirin dili ne olursa olsun TR (personel bildirimi kurali)
-const interim = buildLeadInterimCard({ room: '102', guestName: 'AHMET YILMAZ', message: TOPIC });
-check('6a ara-kart guncelleme vaadi', interim.includes('güncellenecektir'), true);
-check('6b ara-kart SLA yok ibaresi', interim.includes('SLA yok'), true);
+const interim = buildLeadInhouseRequestCard({ room: '102', guestName: 'AHMET YILMAZ', topic: TOPIC });
+check('6a inhouse kart guncelleme vaadi', interim.includes('güncellenecektir'), true);
+check('6b inhouse kart SLA yok ibaresi', interim.includes('SLA yok'), true);
+check('6a2 inhouse kart oda', interim.includes('Oda 102'), true);
+check('6a3 inhouse kart isim', interim.includes('AHMET YILMAZ'), true);
+check('6a4 inhouse kart konu', interim.includes(TOPIC), true);
+check('6a5 inhouse kart talep ifadesi', interim.includes('talebinde bulundu'), true);
 const finalCard = buildLeadFinalCard({ name: 'Ahmet Yılmaz', phone: '0532 123 45 67', topic: TOPIC, room: '102' });
 check('6c final kart ad-soyad', finalCard.includes('Ahmet Yılmaz'), true);
 check('6d final kart telefon', finalCard.includes('0532 123 45 67'), true);
@@ -206,6 +212,104 @@ check('10c eski state tekrar metni TR', legacyState ? (advanceLead(legacyState, 
 check('10d dil round-trip korunur', readLeadCapture(withLeadCapture({}, deStart.state))?.language, 'de');
 check('10e bozuk dil kodu okunurken normalize edilir',
   readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'name', topic: TOPIC, language: 'zz' } })?.language, 'en');
+
+// ── IS 17.1: BILDIRIM ZAMANLAMASI ────────────────────────────────────────────
+// KARAR: kart, personelin USTUNE GIDEBILECEGI bilgi olustugu anda duser.
+//   non-guest -> start'ta kart YOK (isim de telefon da yok), YALNIZ complete'te
+//   inhouse   -> start'ta kart VAR (oda+isim belli), complete'te AYNI kart guncellenir
+//   abandon   -> her iki durumda da YENI kart YOK
+
+// (11) decideLeadNotify — 6 dalin TAMAMI (3 faz x 2 misafir turu)
+check('11a start + non-guest -> kart YOK',
+  decideLeadNotify({ phase: 'start', isInhouse: false }).send, false);
+check('11b start + non-guest -> kind null',
+  decideLeadNotify({ phase: 'start', isInhouse: false }).kind, null);
+check('11c start + inhouse -> kart VAR',
+  decideLeadNotify({ phase: 'start', isInhouse: true }).send, true);
+check('11d start + inhouse -> kind inhouse_request',
+  decideLeadNotify({ phase: 'start', isInhouse: true }).kind, 'inhouse_request');
+check('11e complete + non-guest -> kart VAR',
+  decideLeadNotify({ phase: 'complete', isInhouse: false }).send, true);
+check('11f complete + non-guest -> kind final_new (ILK kart)',
+  decideLeadNotify({ phase: 'complete', isInhouse: false }).kind, 'final_new');
+check('11g complete + inhouse -> kart VAR',
+  decideLeadNotify({ phase: 'complete', isInhouse: true }).send, true);
+check('11h complete + inhouse -> kind update (acik kart guncellenir)',
+  decideLeadNotify({ phase: 'complete', isInhouse: true }).kind, 'update');
+check('11i abandon + non-guest -> kart YOK',
+  decideLeadNotify({ phase: 'abandon', isInhouse: false }).send, false);
+check('11j abandon + non-guest -> kind null',
+  decideLeadNotify({ phase: 'abandon', isInhouse: false }).kind, null);
+// IS 17.1-ek: inhouse'ta acik kart SILINMEZ ama "telefon bekleniyor" vaadi
+// KALDIRILIR -> personel gelmeyecek telefonu beklemesin.
+check('11k abandon + inhouse -> kart GUNCELLENIR (durustlestirme)',
+  decideLeadNotify({ phase: 'abandon', isInhouse: true }).send, true);
+check('11l abandon + inhouse -> kind inhouse_closed',
+  decideLeadNotify({ phase: 'abandon', isInhouse: true }).kind, 'inhouse_closed');
+// Invaryant: send=false ise kind DAIMA null (kart yokken sablon secilemez)
+const ALL_DECISIONS = (['start', 'complete', 'abandon'] as const).flatMap((phase) =>
+  [true, false].map((isInhouse) => decideLeadNotify({ phase, isInhouse })),
+);
+check('11m send=false -> kind null invaryanti',
+  ALL_DECISIONS.every((d) => d.send || d.kind === null), true);
+check('11n send=true -> kind DOLU invaryanti',
+  ALL_DECISIONS.every((d) => !d.send || d.kind !== null), true);
+
+// (12) isInhouse state'e dogru yazilir + tasinir
+const inhouseStart = startLeadCapture({
+  topic: TOPIC, guestName: 'AHMET YILMAZ', room: '102', notifyChatId: 1, notifyMsgId: 55, language: 'tr',
+});
+const guestlessStart = startLeadCapture({
+  topic: TOPIC, guestName: null, room: null, notifyChatId: 1, notifyMsgId: null, language: 'tr',
+});
+check('12a inhouse state isInhouse=true', inhouseStart.state.isInhouse, true);
+check('12b non-guest state isInhouse=false', guestlessStart.state.isInhouse, false);
+// Non-guest isim VERSE bile inhouse OLMAZ (isim misafirin yazdigi metin, oda kaydi degil)
+const guestlessNamed = advanceLead(guestlessStart.state, 'Ali Veli');
+check('12c non-guest isim verince de isInhouse=false',
+  guestlessNamed.action === 'ask_phone' ? guestlessNamed.state.isInhouse : null, false);
+check('12d retry turunda isInhouse korunur',
+  (() => { const r = advanceLead(inhouseStart.state, 'yok'); return r.action === 'retry' ? r.state.isInhouse : null; })(), true);
+check('12e isInhouse round-trip (metadata)',
+  readLeadCapture(withLeadCapture({}, guestlessStart.state))?.isInhouse, false);
+
+// (13) GERIYE UYUM — IS 17.1 oncesi state'te isInhouse alani YOK.
+//      O turlarda kart KOSULSUZ dusmustu; isInhouse yalnizca oda bilgisinden turetilir.
+check('13a eski state + oda VAR -> inhouse sayilir',
+  readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'phone', topic: TOPIC, notifyChatId: -1, notifyMsgId: 7, room: '102' } })?.isInhouse, true);
+check('13b eski state + oda YOK -> non-guest sayilir',
+  readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'name', topic: TOPIC, notifyChatId: -1, notifyMsgId: 7 } })?.isInhouse, false);
+check('13c eski state + oda null -> non-guest sayilir',
+  readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'name', topic: TOPIC, notifyChatId: -1, notifyMsgId: 7, room: null } })?.isInhouse, false);
+// Acik alan varsa oda fallback'ini EZER
+check('13d acik isInhouse=false, oda dolu olsa bile kazanir',
+  readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'phone', topic: TOPIC, notifyChatId: -1, notifyMsgId: 7, room: '102', isInhouse: false } })?.isInhouse, false);
+
+// (15) INHOUSE VAZGECME KARTI (IS 17.1-ek) — talep gorunur kalir, vaat kalkar
+const closedCard = buildLeadInhouseClosedCard({ room: '102', guestName: 'AHMET YILMAZ', topic: TOPIC });
+check('15a kapanis karti oda', closedCard.includes('Oda 102'), true);
+check('15b kapanis karti isim', closedCard.includes('AHMET YILMAZ'), true);
+check('15c kapanis karti konu', closedCard.includes(TOPIC), true);
+check('15d kapanis karti talep ifadesi', closedCard.includes('talebinde bulundu'), true);
+check('15e kapanis karti "Telefon alinamadi" der', closedCard.includes('Telefon alınamadı'), true);
+// KRITIK: gelmeyecek telefon vaadi KALKMALI (personel bosuna beklememeli)
+check('15f kapanis kartinda "gelince güncellenecektir" YOK', closedCard.includes('güncellenecektir'), false);
+check('15g kapanis kartinda "Telefon isteniyor" YOK', closedCard.includes('Telefon isteniyor'), false);
+check('15h kapanis karti takip yolu (oda) gosterir', closedCard.includes('üzerinden takip edilebilir'), true);
+check('15i kapanis karti SLA yok ibaresi', closedCard.includes('SLA yok'), true);
+// Ayni girdide start karti ile kapanis karti FARKLI olmali (edit gercekten degistirir)
+check('15j start karti ile kapanis karti farkli',
+  buildLeadInhouseRequestCard({ room: '102', guestName: 'AHMET YILMAZ', topic: TOPIC }) === closedCard, false);
+check('15k oda bilinmiyorsa da patlamaz',
+  buildLeadInhouseClosedCard({ room: null, guestName: 'Ali', topic: TOPIC }).includes('bilinmiyor'), true);
+check('15l HTML escape (enjeksiyon)',
+  buildLeadInhouseClosedCard({ room: '1', guestName: '<b>Ali', topic: TOPIC }).includes('&lt;b&gt;Ali'), true);
+
+// (14) NON-GUEST tamamlanma kartinda oda satiri YOK, isim+telefon VAR
+const ngFinal = buildLeadFinalCard({ name: 'Ali Veli', phone: '05320000000', topic: TOPIC, room: null });
+check('14a non-guest final kart isim', ngFinal.includes('Ali Veli'), true);
+check('14b non-guest final kart telefon', ngFinal.includes('05320000000'), true);
+check('14c non-guest final kartta oda YOK', ngFinal.includes('Oda:'), false);
 
 const total = pass + fails.length;
 if (fails.length > 0) {

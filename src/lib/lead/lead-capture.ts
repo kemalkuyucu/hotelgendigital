@@ -37,12 +37,19 @@ export interface LeadCaptureState {
   name?: string;
   /** Misafirin orijinal etkinlik mesaji — final kartta "Konu" satiri. */
   topic: string;
-  /** Ara-kartin dustugu grup (edit hedefi). */
+  /** Kartin dustugu / dusecegi grup (edit hedefi). */
   notifyChatId: number;
-  /** Ara-kart message_id; null ise edit denenmez, fallback yeni mesaj gider. */
+  /** Acik kartin message_id'si; null ise HENUZ kart YOK -> tamamlaninca taze kart gider. */
   notifyMsgId: number | null;
   /** inhouse ise oda no; non-guest'te null. */
   room?: string | null;
+  /**
+   * IS 17.1 — misafir INHOUSE mu (isim + oda BELLI)? Bildirim zamanlamasini bu belirler:
+   * inhouse'ta talep ANINDA kart duser, non-guest'te kart YALNIZ telefon gelince olusur
+   * (bkz. decideLeadNotify). start turunda hesaplanip state'te tasinir — devam turlarinda
+   * classify calismadigi icin yeniden turetilemez.
+   */
+  isInhouse: boolean;
   /** Telefon icin nazik tekrar YAPILDI mi (yalniz BIR kez). */
   phoneRetried?: boolean;
   /**
@@ -137,6 +144,50 @@ export function buildAskPhone(name?: string | null, lang?: string | null): strin
   return n ? ASK_PHONE_NAMED[l](n) : ASK_PHONE[l];
 }
 
+// ── BILDIRIM ZAMANLAMASI (IS 17.1) ───────────────────────────────────────────
+//
+// KOK SORUN: kart HER etkinlik talebinde ANINDA dusuyordu. Disaridan yazan (non-guest)
+// kiside o anda elde ne isim ne oda var -> personele "bilinmiyor · bilinmiyor" iceren,
+// uzerine gidilemeyen bir kart gidiyordu; misafir yarida birakirsa kart oksuz kaliyordu.
+//
+// KARAR (Kemal): kart, PERSONELIN USTUNE GIDEBILECEGI bilgi olustugu anda duser.
+//   NON-GUEST : start'ta kart YOK -> once ad-soyad, sonra telefon; kart YALNIZ telefon
+//               gelince (isim+telefon+konu). Yarida birakirsa kart HIC olusmaz.
+//   INHOUSE   : oda+isim ZATEN biliniyor -> talep aninda kart DUSER (personel odaya
+//               ulasabilir); telefon gelince AYNI kart guncellenir, gelmezse yerinde kalir.
+//
+// SESSIZ YUTMA YASAGI ihlali DEGIL: non-guest'te "kaybolan" bir talep yok — misafir
+// akisi yarida birakmissa personele iletilecek uzerine-gidilebilir bir lead de yoktur
+// (isim ve telefon ikisi de eksik). Inhouse'ta ise talep ANINDA iletilir.
+//
+// VAZGECME DURUSTLUGU (IS 17.1-ek): inhouse misafir telefon vermeden vazgecerse kart
+// KALIR ama metni DURUSTLESIR. Aksi halde kart "Telefon isteniyor; gelince
+// guncellenecektir" yazili donar ve personel ASLA gelmeyecek bir telefonu bekler —
+// bu da bir tur sessiz yanlis-bilgilendirmedir. Kart 'inhouse_closed' ile "telefon
+// alinamadi, oda uzerinden takip edilebilir" haline cevrilir.
+export type LeadNotifyKind = 'inhouse_request' | 'update' | 'final_new' | 'inhouse_closed';
+
+export function decideLeadNotify(input: {
+  phase: 'start' | 'complete' | 'abandon';
+  isInhouse: boolean;
+}): { send: boolean; kind: LeadNotifyKind | null } {
+  switch (input.phase) {
+    case 'start':
+      return input.isInhouse
+        ? { send: true, kind: 'inhouse_request' }
+        : { send: false, kind: null };
+    case 'complete':
+      return input.isInhouse
+        ? { send: true, kind: 'update' }      // acik kart telefonla GUNCELLENIR
+        : { send: true, kind: 'final_new' };  // ilk ve tek kart SIMDI olusur
+    case 'abandon':
+    default:
+      return input.isInhouse
+        ? { send: true, kind: 'inhouse_closed' } // acik kart DURUST duruma cevrilir
+        : { send: false, kind: null };           // hic kart olusmadi -> olusturulmaz
+  }
+}
+
 // ── Personel kartlari (HTML) ─────────────────────────────────────────────────
 // PERSONELE gider -> TR kalir (kural: personel bildirimi her zaman Turkce).
 
@@ -145,19 +196,41 @@ function esc(s: string): string {
 }
 
 /**
- * ARA-KART: talep ANINDA duser (ilgi kaybolmasin — SESSIZ YUTMA YASAGI).
- * Iletisim bilgisi gelince editMessageText ile final karta donusur.
+ * INHOUSE TALEP KARTI (IS 17.1): yalniz inhouse misafirde, talep ANINDA duser.
+ * Oda + isim BELLI oldugu icin personel telefon beklemeden ulasabilir.
+ * Telefon gelince ayni mesaj buildLeadFinalCard ile GUNCELLENIR (editMessageText).
+ * Non-guest'te bu kart HIC uretilmez — bkz. decideLeadNotify.
  */
-export function buildLeadInterimCard(p: {
+export function buildLeadInhouseRequestCard(p: {
   room?: string | null;
   guestName?: string | null;
-  message: string;
+  topic: string;
 }): string {
   return (
     `🔔 <b>Bilgilendirme — Etkinlik / Organizasyon</b>\n\n` +
-    `Oda: ${esc(p.room || 'bilinmiyor')} · Misafir: <b>${esc(p.guestName || 'bilinmiyor')}</b>\n\n` +
-    `Misafir mesajı: "${esc(p.message)}"\n\n` +
-    `⏳ Misafirden ad-soyad ve telefon bilgisi isteniyor; alınınca bu kart güncellenecektir. (Bilgilendirme - SLA yok)`
+    `Oda ${esc(p.room || 'bilinmiyor')} · <b>${esc(p.guestName || 'bilinmiyor')}</b> · ` +
+    `"${esc(p.topic)}" talebinde bulundu.\n\n` +
+    `⏳ Telefon isteniyor; gelince bu kart güncellenecektir. (Bildirim - SLA yok)`
+  );
+}
+
+/**
+ * INHOUSE VAZGECME KARTI (IS 17.1-ek): misafir telefon vermeden akisi birakti.
+ * Kart SILINMEZ (talep gercek), ama "telefon bekleniyor" vaadi KALDIRILIR — personel
+ * gelmeyecek bir bilgiyi beklemesin. Takip yolu oda numarasidir.
+ * Non-guest'te bu kart HIC uretilmez: orada zaten bir kart olusmamistir.
+ */
+export function buildLeadInhouseClosedCard(p: {
+  room?: string | null;
+  guestName?: string | null;
+  topic: string;
+}): string {
+  const room = esc(p.room || 'bilinmiyor');
+  return (
+    `🔔 <b>Bilgilendirme — Etkinlik / Organizasyon</b>\n\n` +
+    `Oda ${room} · <b>${esc(p.guestName || 'bilinmiyor')}</b> · ` +
+    `"${esc(p.topic)}" talebinde bulundu.\n\n` +
+    `📵 Telefon alınamadı (misafir paylaşmadı); Oda ${room} üzerinden takip edilebilir. (Bildirim - SLA yok)`
   );
 }
 
@@ -199,6 +272,10 @@ export function readLeadCapture(metadata: unknown): LeadCaptureState | null {
     // TR gitmisti -> 'tr' varsayilir (normalizeGuestLang'in 'en' fallback'i BURADA
     // yanlis olurdu: konusma ortasinda dil degistirmek misafiri sasirtir).
     language: typeof o.language === 'string' ? normalizeGuestLang(o.language) : 'tr',
+    // GERIYE UYUM: IS 17.1 oncesi state'te alan YOK. O turlarda kart KOSULSUZ dusmustu,
+    // yani notifyMsgId doludur ve tamamlanma edit'e gider — davranis korunur. isInhouse
+    // yalnizca "oda biliniyor mu" bilgisinden turetilir (inhouse start'inin tek kaniti).
+    isInhouse: typeof o.isInhouse === 'boolean' ? o.isInhouse : (typeof o.room === 'string' && !!o.room),
   };
 }
 
@@ -240,6 +317,9 @@ export function startLeadCapture(p: {
     notifyMsgId: p.notifyMsgId,
     room: p.room ?? null,
     language: lang,
+    // Cagiran taraf inhouse misafirde ismi DOLU gecer (Telegram profil adi ad-soyad
+    // SAYILMAZ, route.ts orada null gecer) -> isim varligi inhouse'un tek olcutudur.
+    isInhouse: !!name,
   };
   return { state, question: name ? ASK_PHONE[lang] : ASK_NAME[lang] };
 }
