@@ -1,44 +1,29 @@
 /**
- * IS 13 — etkinlik/iletisim ON BURO override (LEG a) + sahte-vaat guard (LEG b2) testi
+ * IS 13 + IS 17 — etkinlik/iletisim ON BURO override (LEG a) + sahte-vaat guard (LEG b2)
  * (local, is8 korpusu).
  *
- * classify-and-respond.ts forceEventForward + sahte-vaat-guard KARARLARININ bayrak-seviyesi
- * aynasi. is8-info-gate-test.ts bagBranch deseni gibi: karar GIRDISI gercek modulden
- * (normalizeTr), dallanma ifadesi (tek satir) burada aynalanir (LLM-sonrasi kod offline
- * calistirilamaz -> classify-and-respond callAI import eder). Ag/LLM cagrisi YOK.
+ * IS 17'DE AYNA KALKTI: karar mantigi artik `@/lib/ai/event-contact-gate` icinde SAF
+ * yasiyor ve bu test GERCEK modulu import ediyor (kopya fonksiyon YASAK — kopya YESIL
+ * donerken canli davranisla celisebilir; bir kez yasandi). Onceki surumde listeler ve
+ * dallanma ifadesi burada aynalanmisti cunku classify-and-respond.ts callAI import
+ * ediyor ve offline kosulamiyor.
  *
- * KARAR: sahte vaat (bot "ilettim" der ama forward yok). LEG(a) dugun/organizasyon/etkinlik
- * TALEBI + acik iletisim talebini front_office'e deterministik forward eder; LEG(b2) forward'siz
- * "ilettim" cikarsa front_office forward'i tetikler. YALIN BILGI sorusu forward EDILMEZ.
+ * KARAR: sahte vaat (bot "ilettim" der ama forward yok). LEG(a) etkinlik TALEBI +
+ * acik iletisim talebini front_office'e deterministik forward eder; LEG(b2) forward'siz
+ * vaat cikarsa front_office forward'i tetikler. YALIN BILGI sorusu forward EDILMEZ.
  *
- * TESLIM SEKLI (5. blok): bu iki yol SLA TALEP karti DEGIL, BILDIRIM uretir. Bayraklar
- * AYNALANMAZ — EVENT_CONTACT_NOTIFY gercek modulden (message-types.ts) import edilir,
- * iki uretim yolu (classify-and-respond LEG a + LEG b2) da bu tek sabiti kullanir.
+ * IS 17 EKI: forward karari artik CIFT kaynakli — LLM'in dil-BAGIMSIZ etiketi
+ * (`event_contact_request` / `claims_forward`) BIRINCIL, TR keyword listesi BACKSTOP.
+ * Ag/LLM cagrisi YOK: LLM alanlari test girdisi olarak ELDEN verilir.
  */
+import {
+  decideEventContactForward,
+  shouldFireFalsePromiseGuard,
+  hasEventKeyword,
+  hasForwardPromiseTr,
+} from '@/lib/ai/event-contact-gate';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { EVENT_CONTACT_NOTIFY, PROMISE_BACKSTOP_NOTIFY, messageTypeTraits } from '@/lib/ai/message-types';
-
-// classify-and-respond.ts LEG(a)/LEG(b2) ile BIREBIR ayna (orada local const, export DEGIL):
-const EVENT_KEYWORDS = ['dugun', 'nikah', 'kina', 'organizasyon', 'etkinlik', 'kongre', 'seminer', 'davet', 'balo', 'grup rezervasyon'];
-const EVENT_REQUEST_SIGNALS = ['organize', 'yaptirmak', 'planl', 'teklif', 'fiyat al', 'rezerv', 'kimle gorus', 'beni ara', 'iletisim', 'gorusme', 'yetkili'];
-const CONTACT_SIGNALS = ['kimle gorus', 'beni ara', 'iletisime gec', 'baglayabilir', 'yetkiliyle gorus'];
-const PROMISE_SIGNALS = ['ilettim', 'ilgili ekib', 'aktardim', 'iletiyorum', 'gorusulecek', 'talebinizi aldim'];
-
-// LEG(a) forceEventForward dallanmasi:
-function eventBranch(msg: string): 'FORWARD' | 'NO_FORWARD' {
-  const n = normalizeTr(msg);
-  const hasEventKw = EVENT_KEYWORDS.some((k) => n.includes(k));
-  const hasEventReq = EVENT_REQUEST_SIGNALS.some((k) => n.includes(k));
-  const hasContactReq = CONTACT_SIGNALS.some((k) => n.includes(k));
-  return (hasEventKw && hasEventReq) || hasContactReq ? 'FORWARD' : 'NO_FORWARD';
-}
-
-// LEG(b2) sahte-vaat-guard dallanmasi:
-function guardFires(reply: string, anyForward: boolean): boolean {
-  const norm = normalizeTr(reply);
-  const hasPromise = reply.trim().length > 0 && PROMISE_SIGNALS.some((p) => norm.includes(p));
-  return !anyForward && hasPromise;
-}
 
 let pass = 0;
 const fails: string[] = [];
@@ -47,28 +32,43 @@ function check(name: string, got: unknown, exp: unknown): void {
   else fails.push(`${name}: got=${JSON.stringify(got)} exp=${JSON.stringify(exp)}`);
 }
 
+/** TR backstop yolu: LLM alani HIC gelmemis gibi (llm=null), operasyonel baglam YOK. */
+function trBranch(msg: string): 'FORWARD' | 'NO_FORWARD' {
+  return decideEventContactForward({
+    guestMessage: msg,
+    llmEventContactRequest: null,
+    hasOperationalOrComplaintIntent: false,
+  }).forward
+    ? 'FORWARD'
+    : 'NO_FORWARD';
+}
+
 // (1) Etkinlik TALEBI (keyword + talep sinyali) -> forward front_office
-check('1a dugun organizasyonu yaptirmak', eventBranch('dugun organizasyonu yaptirmak istiyorum'), 'FORWARD');
-check('1b balo salonu icin teklif', eventBranch('balo salonu icin teklif alabilir miyim'), 'FORWARD');
-check('1c kina organizasyonu planlamak', eventBranch('kina organizasyonu planliyoruz'), 'FORWARD');
-check('1d grup rezervasyonu yaptirmak', eventBranch('grup rezervasyonu yaptirmak istiyorum'), 'FORWARD');
+check('1a dugun organizasyonu yaptirmak', trBranch('dugun organizasyonu yaptirmak istiyorum'), 'FORWARD');
+check('1b balo salonu icin teklif', trBranch('balo salonu icin teklif alabilir miyim'), 'FORWARD');
+check('1c kina organizasyonu planlamak', trBranch('kina organizasyonu planliyoruz'), 'FORWARD');
+check('1d grup rezervasyonu yaptirmak', trBranch('grup rezervasyonu yaptirmak istiyorum'), 'FORWARD');
 
 // (2) Etkinlik BILGI sorusu (talep sinyali YOK) -> forward YOK (fact cevabi kalir)
-check('2a dugun yapiyor musunuz', eventBranch('dugun yapiyor musunuz'), 'NO_FORWARD');
-check('2b dugun var mi', eventBranch('dugun var mi'), 'NO_FORWARD');
-check('2c balo salonu var mi', eventBranch('balo salonunuz var mi'), 'NO_FORWARD');
+check('2a dugun yapiyor musunuz', trBranch('dugun yapiyor musunuz'), 'NO_FORWARD');
+check('2b dugun var mi', trBranch('dugun var mi'), 'NO_FORWARD');
+check('2c balo salonu var mi', trBranch('balo salonunuz var mi'), 'NO_FORWARD');
 
 // (3) Acik iletisim/geri-arama -> forward front_office (konu farketmez)
-check('3a kimle gorusebilirim', eventBranch('kimle gorusebilirim'), 'FORWARD');
-check('3b beni arayin', eventBranch('beni arayin lutfen'), 'FORWARD');
-check('3c yetkiliyle gorusmek', eventBranch('yetkiliyle gorusmek istiyorum'), 'FORWARD');
-check('3d alakasiz bilgi -> forward yok', eventBranch('havuz kacta aciliyor'), 'NO_FORWARD');
+check('3a kimle gorusebilirim', trBranch('kimle gorusebilirim'), 'FORWARD');
+check('3b beni arayin', trBranch('beni arayin lutfen'), 'FORWARD');
+check('3c yetkiliyle gorusmek', trBranch('yetkiliyle gorusmek istiyorum'), 'FORWARD');
+check('3d alakasiz bilgi -> forward yok', trBranch('havuz kacta aciliyor'), 'NO_FORWARD');
 
-// (4) shouldForward=false + reply forward-vaadi -> guard tetikler; aksi -> tetiklemez
-check('4a forward yok + ilettim -> guard', guardFires('Talebinizi ilgili ekibe ilettim, gorusulecek.', false), true);
-check('4b forward yok + iletiyorum -> guard', guardFires('Bu konuyu ilgili ekibimize iletiyorum.', false), true);
-check('4c forward VAR + ilettim -> guard YOK', guardFires('Talebinizi ilettim.', true), false);
-check('4d forward yok + vaat YOK -> guard YOK', guardFires('Havuz saat 09:00da acilir.', false), false);
+// (4) LEG(b2) guard: forward YOK + vaat VAR -> tetikler
+check('4a forward yok + ilettim -> guard',
+  shouldFireFalsePromiseGuard({ anyForward: false, llmClaimsForward: null, replyText: 'Talebinizi ilgili ekibe ilettim, gorusulecek.' }), true);
+check('4b forward yok + iletiyorum -> guard',
+  shouldFireFalsePromiseGuard({ anyForward: false, llmClaimsForward: null, replyText: 'Bu konuyu ilgili ekibimize iletiyorum.' }), true);
+check('4c forward VAR + ilettim -> guard YOK',
+  shouldFireFalsePromiseGuard({ anyForward: true, llmClaimsForward: null, replyText: 'Talebinizi ilettim.' }), false);
+check('4d forward yok + vaat YOK -> guard YOK',
+  shouldFireFalsePromiseGuard({ anyForward: false, llmClaimsForward: null, replyText: 'Havuz saat 09:00da acilir.' }), false);
 
 // (5) TESLIM SEKLI: event/contact forward'i BILDIRIM (SLA yok, buton yok, eskalasyon yok).
 //     LEG(a) ve LEG(b2) ayni sabiti yazar -> tek kaynak burada dogrulanir.
@@ -93,6 +93,71 @@ check('6c iki yol farkli', EVENT_CONTACT_NOTIFY.notifyKind === PROMISE_BACKSTOP_
 check('6d backstop da SLA uretmez', PROMISE_BACKSTOP_NOTIFY.createsSlaEvent, false);
 check('6e backstop da butonsuz', PROMISE_BACKSTOP_NOTIFY.withButtons, false);
 check('6f backstop da BILDIRIM', PROMISE_BACKSTOP_NOTIFY.messageType, 'BILDIRIM');
+
+// ── IS 17 ─────────────────────────────────────────────────────────────────────
+
+// (7) LLM ETIKETI BIRINCIL — TR keyword HIC gecmeyen yabanci dil mesaji forward EDILIR.
+//     Bu, IS 17'nin cozdugu asil kirilma: "I'd like to organize a wedding" TR listeye
+//     takilmadigi icin forward EDILMIYORDU (sessiz yutma).
+const enWedding = "I'd like to organize a wedding at your hotel, who can I speak to?";
+const deWedding = 'Ich moechte bei Ihnen eine Hochzeit organisieren';
+check('7a EN dugun talebi TR backstop ile YAKALANMAZ (kirilmanin kaniti)', trBranch(enWedding), 'NO_FORWARD');
+check('7b EN dugun talebi LLM etiketiyle FORWARD',
+  decideEventContactForward({ guestMessage: enWedding, llmEventContactRequest: true, hasOperationalOrComplaintIntent: false }).forward, true);
+check('7c DE dugun talebi LLM etiketiyle FORWARD',
+  decideEventContactForward({ guestMessage: deWedding, llmEventContactRequest: true, hasOperationalOrComplaintIntent: false }).forward, true);
+check('7d karar kaynagi llm olarak isaretlenir',
+  decideEventContactForward({ guestMessage: enWedding, llmEventContactRequest: true, hasOperationalOrComplaintIntent: false }).source, 'llm');
+check('7e TR yolunda kaynak tr-keyword',
+  decideEventContactForward({ guestMessage: 'dugun organizasyonu yaptirmak istiyorum', llmEventContactRequest: null, hasOperationalOrComplaintIntent: false }).source, 'tr-keyword');
+check('7f duz bilgi sorusu (LLM false) -> forward YOK',
+  decideEventContactForward({ guestMessage: 'do you host weddings?', llmEventContactRequest: false, hasOperationalOrComplaintIntent: false }).forward, false);
+check('7g DE duz bilgi sorusu (LLM false) -> forward YOK',
+  decideEventContactForward({ guestMessage: 'Haben Sie einen Tagungsraum?', llmEventContactRequest: false, hasOperationalOrComplaintIntent: false }).forward, false);
+check('7h LLM false ama TR backstop dolu -> yine FORWARD (backstop korunur)',
+  decideEventContactForward({ guestMessage: 'dugun organizasyonu yaptirmak istiyorum', llmEventContactRequest: false, hasOperationalOrComplaintIntent: false }).forward, true);
+
+// (8) OPERASYONEL / SIKAYET baglaminda "tek basina iletisim sinyali" backstop'u KAPANIR
+//     -> lead akisi (telefon isteme) baslamaz; talep kendi departman akisinda kalir.
+const acBroken = 'klimam bozuk, yetkiliyle gorusmek istiyorum';
+check('8a operasyonel baglam YOKken contact sinyali forward eder', trBranch(acBroken), 'FORWARD');
+check('8b operasyonel baglamda contact backstop KAPALI',
+  decideEventContactForward({ guestMessage: acBroken, llmEventContactRequest: null, hasOperationalOrComplaintIntent: true }).forward, false);
+check('8c sikayet baglaminda beni arayin -> lead baslamaz',
+  decideEventContactForward({ guestMessage: 'odam cok kirli, beni arayin', llmEventContactRequest: null, hasOperationalOrComplaintIntent: true }).forward, false);
+// Etkinlik keyword + talep sinyali kombinasyonu operasyonel baglamdan ETKILENMEZ
+check('8d operasyonel baglamda bile gercek etkinlik talebi FORWARD',
+  decideEventContactForward({ guestMessage: 'dugun organizasyonu icin teklif alabilir miyim', llmEventContactRequest: null, hasOperationalOrComplaintIntent: true }).forward, true);
+
+// (9) KELIME-SINIRI: gunluk kelimeler etkinlik keyword'u SANILMAMALI
+check('9a toplant EKLENDI (kw)', hasEventKeyword(normalizeTr('toplantı salonu')), true);
+check('9b toplanti + rezerv -> FORWARD', trBranch('toplanti salonu rezerve etmek istiyorum'), 'FORWARD');
+check('9c toplanti salonu var mi -> NO_FORWARD (bilgi)', trBranch('toplanti salonunuz var mi'), 'NO_FORWARD');
+check('9d makina "kina" SAYILMAZ', hasEventKeyword(normalizeTr('makina arizali')), false);
+check('9e balon "balo" SAYILMAZ', hasEventKeyword(normalizeTr('odaya balon suslemesi')), false);
+check('9f davetsiz "davet" SAYILMAZ', hasEventKeyword(normalizeTr('davetsiz misafir geldi')), false);
+check('9g kina hala yakalanir', hasEventKeyword(normalizeTr('kına gecesi')), true);
+check('9h balo hala yakalanir', hasEventKeyword(normalizeTr('balo salonu')), true);
+check('9i davet hala yakalanir', hasEventKeyword(normalizeTr('davetimiz var')), true);
+// Regresyon: yanlis-pozitif kelimeler talep sinyaliyle birleşse bile forward ETMEMELI
+check('9j makina + rezerv -> NO_FORWARD', trBranch('makina icin rezervasyon'), 'NO_FORWARD');
+check('9k balon + teklif -> NO_FORWARD', trBranch('balon icin teklif'), 'NO_FORWARD');
+
+// (10) LEG(b2) DIL-BAGIMSIZ: claims_forward=true + forward YOK -> backstop ateslenir
+const enPromise = "I've notified our team, someone will get back to you shortly.";
+check('10a EN vaat TR taramasiyla GORULMEZ (kirilmanin kaniti)', hasForwardPromiseTr(enPromise), false);
+check('10b EN vaat + forward yok -> LLM etiketiyle guard',
+  shouldFireFalsePromiseGuard({ anyForward: false, llmClaimsForward: true, replyText: enPromise }), true);
+check('10c claims_forward=true ama forward VAR -> guard YOK',
+  shouldFireFalsePromiseGuard({ anyForward: true, llmClaimsForward: true, replyText: enPromise }), false);
+check('10d claims_forward=false ama TR vaat kacmis -> ikincil backstop yakalar',
+  shouldFireFalsePromiseGuard({ anyForward: false, llmClaimsForward: false, replyText: 'Talebinizi ilettim.' }), true);
+check('10e claims_forward=false + vaat yok -> guard YOK',
+  shouldFireFalsePromiseGuard({ anyForward: false, llmClaimsForward: false, replyText: 'Pool opens at 09:00.' }), false);
+check('10f DE vaat + LLM etiketi -> guard',
+  shouldFireFalsePromiseGuard({ anyForward: false, llmClaimsForward: true, replyText: 'Ich habe es an unser Team weitergeleitet.' }), true);
+check('10g bos cevap + etiket yok -> guard YOK',
+  shouldFireFalsePromiseGuard({ anyForward: false, llmClaimsForward: null, replyText: '   ' }), false);
 
 const total = pass + fails.length;
 if (fails.length > 0) {

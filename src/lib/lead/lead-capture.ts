@@ -19,8 +19,13 @@
 //
 // Misafire giden metinler TAM Turkce karakterli ve SABIT (prompt degil): forward'i
 // kesen/yoneten kapinin metni de deterministik olmali (SAHTE VAAT YASAGI).
+//
+// IS 17 (cok dillilik): metinler ARTIK dil-basina STATIK map. LLM'e metin YAZDIRILMAZ;
+// yalnizca DIL kodu LLM'den gelir (classify `language`) ve state'te tasinir — boylece
+// sonraki turlar (isim/telefon) da ayni dilde sorulur. Personel KARTLARI TR kalir.
 
 import { extractPhone } from '@/lib/utils/phone';
+import { normalizeGuestLang, type GuestLang } from '@/lib/i18n/guest-text';
 
 /** conversations.metadata icindeki anahtar. */
 export const LEAD_METADATA_KEY = 'lead_capture';
@@ -40,35 +45,100 @@ export interface LeadCaptureState {
   room?: string | null;
   /** Telefon icin nazik tekrar YAPILDI mi (yalniz BIR kez). */
   phoneRetried?: boolean;
+  /**
+   * Misafirin dili — akisin GERI KALANI bu dilde sorulur. Turn'ler arasinda burada
+   * tasinir cunku devam turlarinda classify HIC calismaz (lead kapisi 17.c'nin de
+   * ustunde erken doner) -> dil baska yerden okunamaz.
+   */
+  language?: GuestLang;
 }
 
-// ── Misafire giden sabit metinler (TAM Turkce) ───────────────────────────────
+// ── Misafire giden sabit metinler (dil-basina STATIK) ────────────────────────
+// TR metinler TAM Turkce karakterli ve mevcut sevkten BIREBIR ayni (davranis-notr);
+// diger diller EKLENDI. Bilinmeyen dil -> normalizeGuestLang ile 'en'.
 
-export const LEAD_ASK_NAME_TR =
-  'Memnuniyetle. Satış ve etkinlik ekibimizin size ulaşabilmesi için önce ad-soyadınızı alabilir miyim?';
+const ASK_NAME: Record<GuestLang, string> = {
+  tr: 'Memnuniyetle. Satış ve etkinlik ekibimizin size ulaşabilmesi için önce ad-soyadınızı alabilir miyim?',
+  en: 'With pleasure. So that our sales and events team can reach you, may I first have your full name?',
+  de: 'Sehr gerne. Damit unser Vertriebs- und Veranstaltungsteam Sie erreichen kann, darf ich zuerst Ihren vollständigen Namen erfahren?',
+  ru: 'С удовольствием. Чтобы наша команда по продажам и мероприятиям могла с вами связаться, подскажите, пожалуйста, ваши имя и фамилию.',
+  ar: 'بكل سرور. حتى يتمكن فريق المبيعات والفعاليات من التواصل معك، هل يمكنني معرفة اسمك الكامل أولاً؟',
+};
 
-export const LEAD_ASK_PHONE_TR =
-  'Memnuniyetle. Satış ve etkinlik ekibimizin size ulaşabilmesi için telefon numaranızı paylaşır mısınız?';
+const ASK_PHONE: Record<GuestLang, string> = {
+  tr: 'Memnuniyetle. Satış ve etkinlik ekibimizin size ulaşabilmesi için telefon numaranızı paylaşır mısınız?',
+  en: 'With pleasure. Could you share your phone number so that our sales and events team can reach you?',
+  de: 'Sehr gerne. Könnten Sie uns Ihre Telefonnummer mitteilen, damit unser Vertriebs- und Veranstaltungsteam Sie erreichen kann?',
+  ru: 'С удовольствием. Не могли бы вы поделиться номером телефона, чтобы наша команда по продажам и мероприятиям могла с вами связаться?',
+  ar: 'بكل سرور. هل يمكنك مشاركة رقم هاتفك حتى يتمكن فريق المبيعات والفعاليات من التواصل معك؟',
+};
 
-export const LEAD_RETRY_PHONE_TR =
-  'Numaranızı tam olarak alamadım. Örneğin 0532 000 00 00 biçiminde yazabilir misiniz?';
+const RETRY_PHONE: Record<GuestLang, string> = {
+  tr: 'Numaranızı tam olarak alamadım. Örneğin 0532 000 00 00 biçiminde yazabilir misiniz?',
+  en: "I couldn't quite read your number. Could you write it with the country code, for example +90 532 000 00 00?",
+  de: 'Ich konnte Ihre Nummer nicht genau lesen. Könnten Sie sie mit Ländervorwahl schreiben, zum Beispiel +90 532 000 00 00?',
+  ru: 'Мне не удалось разобрать ваш номер. Напишите его, пожалуйста, с кодом страны, например +90 532 000 00 00.',
+  ar: 'لم أتمكن من قراءة رقمك بوضوح. هل يمكنك كتابته مع رمز الدولة، مثل +90 532 000 00 00؟',
+};
 
 /** Telefon alinamadi: akis kapanir. Ara-kart ZATEN dustugu icin "ilettim" DOGRU (sahte vaat degil). */
-export const LEAD_CLOSE_TR =
-  'Sorun değil. Talebinizi ekibimize ilettim, en kısa sürede sizinle ilgilenecekler.';
+const CLOSE: Record<GuestLang, string> = {
+  tr: 'Sorun değil. Talebinizi ekibimize ilettim, en kısa sürede sizinle ilgilenecekler.',
+  en: "No problem. I've passed your request on to our team; they will get back to you shortly.",
+  de: 'Kein Problem. Ich habe Ihre Anfrage an unser Team weitergeleitet; man wird sich in Kürze bei Ihnen melden.',
+  ru: 'Ничего страшного. Я передал ваш запрос нашей команде, с вами свяжутся в ближайшее время.',
+  ar: 'لا مشكلة. لقد أحلت طلبك إلى فريقنا وسيتواصلون معك في أقرب وقت.',
+};
 
-export const LEAD_THANKS_TR =
-  'Teşekkürler, bilgilerinizi ilettim; ekibimiz en kısa sürede sizinle iletişime geçecek.';
+const THANKS: Record<GuestLang, string> = {
+  tr: 'Teşekkürler, bilgilerinizi ilettim; ekibimiz en kısa sürede sizinle iletişime geçecek.',
+  en: "Thank you, I've passed your details on; our team will contact you shortly.",
+  de: 'Vielen Dank, ich habe Ihre Angaben weitergeleitet; unser Team wird sich in Kürze bei Ihnen melden.',
+  ru: 'Спасибо, я передал ваши данные; наша команда свяжется с вами в ближайшее время.',
+  ar: 'شكرًا لك، لقد أرسلت بياناتك؛ سيتواصل معك فريقنا في أقرب وقت.',
+};
+
+/** Isim alindiktan sonraki telefon sorusu — isim bilinmiyorsa duz kalip (ASK_PHONE). */
+const ASK_PHONE_NAMED: Record<GuestLang, (n: string) => string> = {
+  tr: (n) => `Teşekkür ederim ${n}. Ekibimizin size ulaşabilmesi için telefon numaranızı paylaşır mısınız?`,
+  en: (n) => `Thank you, ${n}. Could you share your phone number so that our team can reach you?`,
+  de: (n) => `Vielen Dank, ${n}. Könnten Sie uns Ihre Telefonnummer mitteilen, damit unser Team Sie erreichen kann?`,
+  ru: (n) => `Спасибо, ${n}. Не могли бы вы поделиться номером телефона, чтобы наша команда могла с вами связаться?`,
+  ar: (n) => `شكرًا لك، ${n}. هل يمكنك مشاركة رقم هاتفك حتى يتمكن فريقنا من التواصل معك؟`,
+};
+
+// Geriye donuk TR sabitleri — mevcut tuketiciler (is8 korpusu) icin KORUNDU.
+export const LEAD_ASK_NAME_TR = ASK_NAME.tr;
+export const LEAD_ASK_PHONE_TR = ASK_PHONE.tr;
+export const LEAD_RETRY_PHONE_TR = RETRY_PHONE.tr;
+export const LEAD_CLOSE_TR = CLOSE.tr;
+export const LEAD_THANKS_TR = THANKS.tr;
+
+export function leadAskName(lang?: string | null): string {
+  return ASK_NAME[normalizeGuestLang(lang)];
+}
+export function leadAskPhone(lang?: string | null): string {
+  return ASK_PHONE[normalizeGuestLang(lang)];
+}
+export function leadRetryPhone(lang?: string | null): string {
+  return RETRY_PHONE[normalizeGuestLang(lang)];
+}
+export function leadClose(lang?: string | null): string {
+  return CLOSE[normalizeGuestLang(lang)];
+}
+export function leadThanks(lang?: string | null): string {
+  return THANKS[normalizeGuestLang(lang)];
+}
 
 /** Isim alindiktan sonraki telefon sorusu (isim bilinmiyorsa duz kalip). */
-export function buildAskPhone(name?: string | null): string {
+export function buildAskPhone(name?: string | null, lang?: string | null): string {
   const n = (name ?? '').trim();
-  return n
-    ? `Teşekkür ederim ${n}. Ekibimizin size ulaşabilmesi için telefon numaranızı paylaşır mısınız?`
-    : LEAD_ASK_PHONE_TR;
+  const l = normalizeGuestLang(lang);
+  return n ? ASK_PHONE_NAMED[l](n) : ASK_PHONE[l];
 }
 
 // ── Personel kartlari (HTML) ─────────────────────────────────────────────────
+// PERSONELE gider -> TR kalir (kural: personel bildirimi her zaman Turkce).
 
 function esc(s: string): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -125,6 +195,10 @@ export function readLeadCapture(metadata: unknown): LeadCaptureState | null {
     notifyMsgId: typeof o.notifyMsgId === 'number' ? o.notifyMsgId : null,
     room: typeof o.room === 'string' && o.room ? o.room : null,
     phoneRetried: o.phoneRetried === true,
+    // GERIYE UYUM: IS 17 oncesi acilmis state'te alan YOK. O turlarin ilk sorusu
+    // TR gitmisti -> 'tr' varsayilir (normalizeGuestLang'in 'en' fallback'i BURADA
+    // yanlis olurdu: konusma ortasinda dil degistirmek misafiri sasirtir).
+    language: typeof o.language === 'string' ? normalizeGuestLang(o.language) : 'tr',
   };
 }
 
@@ -153,8 +227,11 @@ export function startLeadCapture(p: {
   room?: string | null;
   notifyChatId: number;
   notifyMsgId: number | null;
+  /** Misafirin dili (classify `language`); verilmezse 'en' (normalizeGuestLang). */
+  language?: string | null;
 }): { state: LeadCaptureState; question: string } {
   const name = (p.guestName ?? '').trim();
+  const lang = normalizeGuestLang(p.language);
   const state: LeadCaptureState = {
     step: name ? 'phone' : 'name',
     name: name || undefined,
@@ -162,8 +239,9 @@ export function startLeadCapture(p: {
     notifyChatId: p.notifyChatId,
     notifyMsgId: p.notifyMsgId,
     room: p.room ?? null,
+    language: lang,
   };
-  return { state, question: name ? LEAD_ASK_PHONE_TR : LEAD_ASK_NAME_TR };
+  return { state, question: name ? ASK_PHONE[lang] : ASK_NAME[lang] };
 }
 
 export type LeadAdvance =
@@ -178,24 +256,27 @@ export type LeadAdvance =
  * isim turu   : mesajin TAMAMI isimdir (deterministik; LLM'e sorulmaz) -> telefon turu.
  * telefon turu: paylasilan extractPhone. Bulunursa TAMAMLA; bulunamazsa BIR kez
  *               nazik tekrar, ikincide akisi kapat (ara-kart zaten dustu).
+ *
+ * @param language opsiyonel override; verilmezse state.language kullanilir (tek kaynak).
  */
-export function advanceLead(state: LeadCaptureState, text: string): LeadAdvance {
+export function advanceLead(state: LeadCaptureState, text: string, language?: string | null): LeadAdvance {
   const incoming = String(text ?? '').trim();
+  const lang = normalizeGuestLang(language ?? state.language ?? 'tr');
 
   if (state.step === 'name') {
     // Bos mesaj pratikte bu noktaya ulasmaz (webhook bos metni islemez); yine de
     // sonsuz soru dongusu olmasin diye akis kapatilir.
-    if (!incoming) return { action: 'close', reply: LEAD_CLOSE_TR };
-    const next: LeadCaptureState = { ...state, step: 'phone', name: incoming };
-    return { action: 'ask_phone', state: next, reply: buildAskPhone(incoming) };
+    if (!incoming) return { action: 'close', reply: CLOSE[lang] };
+    const next: LeadCaptureState = { ...state, step: 'phone', name: incoming, language: lang };
+    return { action: 'ask_phone', state: next, reply: buildAskPhone(incoming, lang) };
   }
 
   const phone = extractPhone(incoming);
   if (phone) {
-    return { action: 'complete', name: state.name ?? '', phone, reply: LEAD_THANKS_TR };
+    return { action: 'complete', name: state.name ?? '', phone, reply: THANKS[lang] };
   }
   if (!state.phoneRetried) {
-    return { action: 'retry', state: { ...state, phoneRetried: true }, reply: LEAD_RETRY_PHONE_TR };
+    return { action: 'retry', state: { ...state, phoneRetried: true, language: lang }, reply: RETRY_PHONE[lang] };
   }
-  return { action: 'close', reply: LEAD_CLOSE_TR };
+  return { action: 'close', reply: CLOSE[lang] };
 }

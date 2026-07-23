@@ -33,6 +33,10 @@ import {
   buildLeadInterimCard,
   buildLeadFinalCard,
 } from '@/lib/lead/lead-capture';
+// İŞ 17 — misafire giden sabit metinlerin dil seçimi (tek kaynak)
+import { guestText, normalizeGuestLang, type GuestLang } from '@/lib/i18n/guest-text';
+// İŞ 17 — telefon tespiti TEK KAYNAK (SPA kapısındaki ikinci regex kopyası kaldırıldı)
+import { extractPhone } from '@/lib/utils/phone';
 import { downloadTelegramAudio } from '@/lib/voice/download-telegram-audio';
 import { whisperTranscribe } from '@/lib/voice/whisper-transcribe';
 import { overrideSocialIntent } from '@/lib/ai/social-intent-override';
@@ -620,7 +624,13 @@ function getVerificationSuccessMsg(
   return msgs[lang] ?? msgs['tr'];
 }
 
-// ── Dil tespiti (basit — misafirin Telegram language_code veya önceki mesaj dili) ──
+// ── Dil tespiti — ARAYÜZ dili (Telegram language_code) ────────────────────────
+//
+// İŞ 17 UYARISI: bu fonksiyon misafirin MESAJ METNİNE bakmaz, Telegram uygulamasının
+// arayüz diline bakar. İkisi sık sık ayrışır (arayüzü Türkçe olan misafir İngilizce
+// yazar) → bu değer artık yalnızca classify ÖNCESİ erken fallback'tir. classify
+// döndükten sonra ölçüt `aiResult.language` (mesaj metninden LLM tespiti) olur;
+// aşağıda `guestLang` bunu kurar ve classify SONRASI tüm yollar onu kullanır.
 
 function detectLanguage(msg: TelegramMessage): string {
   const code = msg.from?.language_code ?? 'tr';
@@ -1251,6 +1261,10 @@ async function handleMessage(args: {
   // (migration YOK). Bu kapı 17.c ODA EŞLEŞME kapısından ÖNCE durur: misafirin
   // ad-soyad/telefon cevabı oda numarası sanılıp eşleştirme akışına düşmesin.
   // Kararlar saf modülde (advanceLead) — burada yalnızca IO yapılır.
+  //
+  // İŞ 17 (dil): bu turda classify HİÇ çalışmaz (akış burada erken döner) → misafirin
+  // dili buradan tespit EDİLEMEZ. Dil, akış başlarken state'e yazıldı; advanceLead onu
+  // state'ten okur ve cevabı aynı dilde üretir (soru DE sorulduysa tekrar da DE olur).
   {
     const { data: leadRow } = await supa
       .from('conversations')
@@ -1669,7 +1683,9 @@ async function handleMessage(args: {
 
           await tg.sendMessage({
             chat_id: chatId,
-            text: 'İsminizi eşleştiremedik. Ön büromuz sizinle iletişime geçecek, lütfen bekleyiniz.',
+            // İŞ 17: TR-hardcoded idi. Bu kapı classify'dan ÖNCE olduğu için ölçüt
+            // arayüz dilidir (elde tek sinyal o) — TR arayüzde metin AYNEN aynı kalır.
+            text: guestText('name_match_failed', language),
           });
           return;
         }
@@ -1733,9 +1749,10 @@ async function handleMessage(args: {
       .maybeSingle();
     if (spaPendRow?.spa_contact_pending === true) {
       // Deterministik tespit (KALICI KARAR #3): telefon veya mail regex
-      const phoneRe = /(\+?\d[\d\s().-]{8,}\d)/;
+      // İŞ 17: telefon deseni artık phone.ts'ten (TEK KAYNAK) — buradaki ikinci
+      // regex kopyası kaldırıldı. Yan kazanç: AR/FA rakamları da yakalanır.
       const mailRe = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
-      const phoneMatch = text.match(phoneRe);
+      const phoneMatch = extractPhone(text);
       const mailMatch = text.match(mailRe);
       const hasContact = Boolean(phoneMatch || mailMatch);
 
@@ -1781,7 +1798,7 @@ async function handleMessage(args: {
             const spaRoomPart2 = spaRoomFresh ? `Oda ${spaRoomFresh}` : 'Oda bilgisi yok';
             const spaNamePart2 = spaNameFresh ?? 'Misafir';
             const contactParts: string[] = [];
-            if (phoneMatch) contactParts.push(`Telefon: ${phoneMatch[0].trim()}`);
+            if (phoneMatch) contactParts.push(`Telefon: ${phoneMatch}`);
             if (mailMatch) contactParts.push(`Mail: ${mailMatch[0].trim()}`);
             const spaContactText =
               `Spa rezervasyon - ek iletisim bilgisi\n\n` +
@@ -2690,6 +2707,8 @@ async function handleMessage(args: {
       verifiedCheckout: verifiedCheckoutForAI,
       verificationSettled: verificationSettledForBrain,
       allergenAskPossible: allergenAskPossibleForBrain,
+      // İŞ 17: LLM dili döndüremezse (alan yok / eski model) düşülecek fallback.
+      uiLanguage: language,
     });
   } catch (err) {
     aiError = err instanceof Error ? err.message : 'unknown AI error';
@@ -2701,6 +2720,15 @@ async function handleMessage(args: {
     'Mesajınız alındı, en kısa sürede ilgili departmandan dönüş yapılacaktır.';
 
   const aiReplyText = stripMarkdown(rawResponseText);
+
+  // ── İŞ 17: misafirin GERÇEK dili (bu noktadan SONRAKİ tüm metinler için) ────
+  // Öncelik: classify'ın mesaj metninden tespiti → arayüz dili → 'tr'.
+  // AI çağrısı patlarsa aiResult null olur; o zaman arayüz dili devreye girer.
+  // normalizeGuestLang desteklenen 5 dile indirger (fr/es → 'en'): sabit metin
+  // sözlükleri bu 5 dili taşır, klemp edilmeyen kod TR'ye düşerdi.
+  const guestLang: GuestLang = normalizeGuestLang(aiResult?.language ?? language);
+  console.log(`[lang] ui=${language} ai=${aiResult?.language ?? 'YOK'} -> guestLang=${guestLang}`);
+
   // Modül 10.6: Ham AI intent'i (routing kararı için)
   const aiRawIntentRaw = aiResult?.department ?? null; // department zaten routeIntentToDepartment çıktısı
   const aiShouldForwardRaw = aiResult?.shouldForward ?? true; // sosyal intent ise false
@@ -3193,12 +3221,12 @@ async function handleMessage(args: {
           newRoom: reParsed.roomNumber,
         });
 
-        const reVerMsg =
-          language === 'en'
-            ? `I've updated your information, ${reVerResult.guestFirstName ?? ''}. I've recorded that you are now in room ${reParsed.roomNumber}. Would you like me to forward your request?`
-            : language === 'de'
-              ? `Ihre Informationen wurden aktualisiert, ${reVerResult.guestFirstName ?? ''}. Ich habe notiert, dass Sie nun in Zimmer ${reParsed.roomNumber} sind. Soll ich Ihre Anfrage weiterleiten?`
-              : `Bilgilerinizi güncelledim, ${reVerResult.guestFirstName ?? ''} Bey. Şu an ${reParsed.roomNumber} numaralı odada konakladığınızı kayıt ettim. Talebinizi iletmemi ister misiniz?`;
+        // İŞ 17: en/de/tr üçlüsü guestText'e taşındı → ru/ar da kapsandı, dil ölçütü
+        // arayüz değil mesaj metni (guestLang). TR metin BİREBİR korundu.
+        const reVerMsg = guestText('reverify_updated', guestLang, {
+          name: reVerResult.guestFirstName,
+          room: reParsed.roomNumber,
+        });
 
         await supa.from('bot_messages').insert({
           conversation_id: conversationId,
@@ -3211,12 +3239,7 @@ async function handleMessage(args: {
       } else {
         // Eşleşme yok → ön büroya yönlendir, eski verified guest devam eder
         console.log('[re-verify] Eşleşme yok — eski verified devam ediyor');
-        const noMatchMsg =
-          language === 'en'
-            ? `I couldn't find a match for the details you provided. Our front desk will assist you.`
-            : language === 'de'
-              ? `Die von Ihnen angegebenen Daten konnten nicht gefunden werden. Unsere Rezeption wird Ihnen helfen.`
-              : `Verdiğiniz bilgilerle in-house listesinde eşleşme bulamadım. Ön büromuza yönlendiriyorum, sizinle ilgilenecekler.`;
+        const noMatchMsg = guestText('reverify_no_match', guestLang);
 
         await supa.from('bot_messages').insert({
           conversation_id: conversationId,
@@ -3322,12 +3345,9 @@ async function handleMessage(args: {
     ) {
       // Forward ETME, BİLDİRİM dalına GİRME — basit "zaten doğrulandı" cevabı dön.
       skipForward = true;
-      const alreadyVerifiedMsg =
-        language === 'en'
-          ? `You're already verified, ${currentVerifiedGuest.first_name ?? ''}. Just send your request whenever you need something.`
-          : language === 'de'
-            ? `Sie sind bereits verifiziert, ${currentVerifiedGuest.first_name ?? ''}. Schreiben Sie einfach Ihre Anfrage, wann immer Sie etwas brauchen.`
-            : `Bilgileriniz zaten doğrulanmış, ${currentVerifiedGuest.first_name ?? ''} Bey. Bir talebiniz olduğunda yazmanız yeterli.`;
+      const alreadyVerifiedMsg = guestText('already_verified', guestLang, {
+        name: currentVerifiedGuest.first_name,
+      });
       await supa.from('bot_messages').insert({
         conversation_id: conversationId,
         direction: 'outbound',
@@ -3368,7 +3388,7 @@ async function handleMessage(args: {
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent} skipForward=${skipForward}`);
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
-    const reVerMsg = getReVerificationMsg(language);
+    const reVerMsg = getReVerificationMsg(guestLang);
     finalResponseText = reVerMsg;
     finalIntent = 'front_office';
     skipForward = true;
@@ -3404,7 +3424,9 @@ async function handleMessage(args: {
       guestTelegramUsername: msg.from?.username ?? null,
       aiIntent: effectiveIntent,
       aiReplyText,
-      language,
+      // İŞ 17: doğrulama metinleri (oda no sorusu, başarı, hata) artık mesaj
+      // metninden tespit edilen dile göre — arayüz diline göre DEĞİL.
+      language: guestLang,
     });
 
     if (vResult.shouldShortCircuit) {
@@ -3949,6 +3971,10 @@ async function handleMessage(args: {
                 room: evRoom,
                 notifyChatId: Number(targetChatId),
                 notifyMsgId: sentInterim?.message_id ?? null,
+                // İŞ 17: soru misafirin dilinde sorulur; dil state'e YAZILIR ki
+                // devam turları (isim/telefon) — classify hiç çalışmadan — aynı
+                // dilde sürsün.
+                language: guestLang,
               });
               const { data: leadMetaRow } = await supa
                 .from('conversations')
@@ -3966,7 +3992,7 @@ async function handleMessage(args: {
               // Misafire giden metin: LLM cevabı DEĞİL, sabit soru (SAHTE VAAT YASAGI).
               finalResponseText = leadQuestion;
               console.log(
-                `[lead-capture] ara-kart gonderildi + iletisim sorusu soruldu. step=${leadState.step} msgId=${sentInterim?.message_id ?? 'YOK'} [chatId=${deptChatIdForSla}]`,
+                `[lead-capture] ara-kart gonderildi + iletisim sorusu soruldu. step=${leadState.step} lang=${leadState.language} msgId=${sentInterim?.message_id ?? 'YOK'} [chatId=${deptChatIdForSla}]`,
               );
               continue;
             }
@@ -4362,7 +4388,7 @@ async function handleMessage(args: {
               : null,
             guestTelegramId: String(userId),
             skipGroupMessage: true, // Modül 11: grup mesajı zaten SLA butonlu gönderildi
-            guestLanguage: language,
+            guestLanguage: guestLang,
             guestMessageTr: needsTr ? requestTr : undefined, // ceviri yukarida yapildi, tekrarlama
           });
 

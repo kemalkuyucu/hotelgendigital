@@ -24,6 +24,9 @@ import {
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { dispatchToDepartmentBrain, isInfoQuestion, isHousekeepingComplaint, HOUSEKEEPING_ITEM_PATTERNS, HOUSEKEEPING_SERVICE_PATTERNS, type HkItem } from '@/lib/ai/department-brains';
 import { enforceReplyLanguage } from './enforce-reply-language';
+// İŞ 17 — etkinlik/iletişim forward kapısı + sahte-vaat backstop'unun SAF tek kaynağı
+// (burada local const olarak yaşarsa is8 testi onu aynalamak zorunda kalır).
+import { decideEventContactForward, shouldFireFalsePromiseGuard } from './event-contact-gate';
 import { NO_INFO_FALLBACK_TR } from './fallback-texts';
 // İŞ 9 — doğrulanmamış misafirde boşa brain callAI'sini kesen saf karar
 import { requiresVerification, shouldSkipBrainForVerification } from './verification-intents';
@@ -77,6 +80,12 @@ export interface ClassifyAndRespondInput {
    * ise gate'e girilmez, metin korunur → brain ATLANMAZ. Varsayılan true (güvenli yön).
    */
   allergenAskPossible?: boolean;
+  /**
+   * İŞ 17 — arayüz dili (Telegram `language_code`), YALNIZCA fallback.
+   * LLM `language` alanını döndüremezse çıktıdaki `language` buna düşer.
+   * Ölçüt olarak mesaj metni (LLM tespiti) her zaman ÖNCELİKLİDİR.
+   */
+  uiLanguage?: string | null;
 }
 
 export interface ClassifiedIntentItem {
@@ -118,7 +127,24 @@ export interface ClassifyAndRespondOutput {
   hkItems?: HkItem[];       // housekeeping coklu esya (tip/adet butonlariyla sorulacak)
   hkComplaint?: { code: number; ambiguous: boolean }; // housekeeping sikayeti (ozur + onay butonu; forward butona bagli)
   mapsLink?: string;        // konum cevabına garanti link enjeksiyonu icin
+  /**
+   * İŞ 17 — misafirin MESAJ METNİNDEN tespit edilen dil (ISO-639-1, 2 harf).
+   * Kaynak önceliği: LLM `language` → `input.uiLanguage` (arayüz) → 'tr'.
+   * Tüketiciler (lead soruları, doğrulama metinleri, personel kartı dil etiketi)
+   * arayüz dili yerine BUNU kullanır.
+   */
+  language: string;
   raw_response: string;
+}
+
+/**
+ * LLM'in `language` alanını ISO-639-1'e indirger. "en-US"→"en", "English"→"en",
+ * "Deutsch"→"de". İki harfe düşmeyen/harf olmayan her şey → null (fallback zinciri).
+ */
+function normalizeIsoLang(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const c = v.trim().toLowerCase().slice(0, 2);
+  return /^[a-z]{2}$/.test(c) ? c : null;
 }
 
 // LLM ciktisindan ```json ... ``` fence'lerini soyar. classify parse + retry'da kullanilir.
@@ -201,6 +227,9 @@ async function _classifyAndRespondImpl(
       prompt_tokens: safetyResponse.inputTokens,
       completion_tokens: safetyResponse.outputTokens,
       latency_ms: safetyLatency,
+      // Safety yolunda classify JSON'u HİÇ üretilmez (odaklı düz-metin cevap) →
+      // LLM dil alanı yok; arayüz dili tek elde kalan sinyal.
+      language: normalizeIsoLang(input.uiLanguage) ?? 'tr',
       raw_response: safetyText,
     };
   }
@@ -262,6 +291,12 @@ async function _classifyAndRespondImpl(
     confidence: number;
     reasoning: string;
     answered_from_knowledge?: boolean;
+    // İŞ 17 — çok dilli kontrat. Üçü de OPSİYONEL okunur: alan hiç gelmezse
+    // davranış İŞ 17 öncesiyle AYNI kalır (dil→uiLanguage, event→TR keyword,
+    // vaat→TR PROMISE_SIGNALS taraması).
+    language?: string;
+    event_contact_request?: boolean;
+    claims_forward?: boolean;
   };
 
   // ILK DENEME: API cagrisi + parse AYNI try icinde. API hatasi (400/500/timeout) VEYA
@@ -319,6 +354,16 @@ async function _classifyAndRespondImpl(
   // Yeni format öncelikli, legacy fallback
   const responseToGuest = parsed.reply_text ?? parsed.response_to_guest ?? '';
   const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
+
+  // ── İŞ 17: çok dilli kontrat alanları (güvenli okuma) ──────────────────────
+  // DİL: mesaj metninden LLM tespiti BİRİNCİL; arayüz dili yalnız fallback
+  // (Telegram language_code yanlış olabilir — İngilizce yazan misafirin arayüzü
+  // Türkçe olabiliyor, bu yüzden metin ölçüt).
+  const guestLanguage = normalizeIsoLang(parsed.language) ?? normalizeIsoLang(input.uiLanguage) ?? 'tr';
+  // ETİKET: alan gelmezse null → kapı TR keyword backstop'una düşer (regresyon yok).
+  const llmEventContactRequest =
+    typeof parsed.event_contact_request === 'boolean' ? parsed.event_contact_request : null;
+  const llmClaimsForward = typeof parsed.claims_forward === 'boolean' ? parsed.claims_forward : null;
 
   // Modül 12: intents[] array varsa çoklu routing; yoksa tek intent'e fallback
   const rawIntents =
@@ -433,15 +478,21 @@ async function _classifyAndRespondImpl(
     // (housekeeping/fb/technical/spa/animation/room_service) ve allergy KORUNUR.
     // TESLIM SEKLI: SLA TALEP karti DEGIL, BILDIRIM (EVENT_CONTACT_NOTIFY) -> mesaj on
     // buroya ULASIR ama sla_events/eskalasyon/onay butonu YOK ("talep degil, bildirim").
-    const EVENT_KEYWORDS = ['dugun', 'nikah', 'kina', 'organizasyon', 'etkinlik', 'kongre', 'seminer', 'davet', 'balo', 'grup rezervasyon'];
-    const EVENT_REQUEST_SIGNALS = ['organize', 'yaptirmak', 'planl', 'teklif', 'fiyat al', 'rezerv', 'kimle gorus', 'beni ara', 'iletisim', 'gorusme', 'yetkili'];
-    const CONTACT_SIGNALS = ['kimle gorus', 'beni ara', 'iletisime gec', 'baglayabilir', 'yetkiliyle gorus'];
-    const hasEventKw = EVENT_KEYWORDS.some((k) => normalizedGuestMsg.includes(k));
-    const hasEventReq = EVENT_REQUEST_SIGNALS.some((k) => normalizedGuestMsg.includes(k));
-    const hasContactReq = CONTACT_SIGNALS.some((k) => normalizedGuestMsg.includes(k));
-    // (i) etkinlik keyword + talep sinyali, VEYA (ii) acik iletisim talebi (konu farketmez).
-    // Talep/iletisim sinyali YOKSA (yalin bilgi sorusu) forceEventForward=false -> forward YOK.
-    const forceEventForward = (hasEventKw && hasEventReq) || hasContactReq;
+    //
+    // IS 17: karar artik SAF modulde (event-contact-gate.ts) — TR keyword listesi orada
+    // BACKSTOP olarak duruyor, birincil sinyal LLM'in dil-bagimsiz `event_contact_request`
+    // etiketi. "Tek basina iletisim sinyali" backstop'u operasyonel/sikayet turunda
+    // KAPANIR: "klimam bozuk, yetkiliyle gorusmek istiyorum" bir lead degildir.
+    const hasOperationalOrComplaintIntent = classifiedIntents.some((it) => {
+      const rd = (it.rawDepartment ?? '').toLowerCase().trim();
+      return OPERATIONAL_INTENTS.has(rd) || COMPLAINT_INTENTS.has(rd) || rd === 'allergy';
+    });
+    const eventDecision = decideEventContactForward({
+      guestMessage: input.guestMessage,
+      llmEventContactRequest,
+      hasOperationalOrComplaintIntent,
+    });
+    const forceEventForward = eventDecision.forward;
     if (forceEventForward) {
       let evRedirected = false;
       for (const it of classifiedIntents) {
@@ -458,7 +509,7 @@ async function _classifyAndRespondImpl(
         evRedirected = true;
       }
       if (evRedirected) {
-        console.log(`[event-contact-override] Etkinlik/iletisim talebi front_office'e BILDIRIM olarak yonlendirildi (SLA yok). msg="${input.guestMessage.slice(0, 60)}"`);
+        console.log(`[event-contact-override] Etkinlik/iletisim talebi front_office'e BILDIRIM olarak yonlendirildi (SLA yok). source=${eventDecision.source} lang=${guestLanguage} msg="${input.guestMessage.slice(0, 60)}"`);
       }
     }
 
@@ -627,6 +678,7 @@ async function _classifyAndRespondImpl(
           normalizedRequest: brainResult.normalizedRequest,
           hkItems: brainResult.hkItems,
           hkComplaint: brainResult.hkComplaint,
+          language: guestLanguage,
           raw_response: brainResult.replyText ?? '',
         };
       }
@@ -653,16 +705,16 @@ async function _classifyAndRespondImpl(
   // ── SAHTE-VAAT GUARD (KARAR #3: forward yoksa vaat yok) ─────────────────────────
   // LEG(a) + prompt kuralina ragmen LLM forward'siz "ilettim/gorusulecek" derse: gercek
   // front_office forward'i TETIKLE (vaadi dogru yap) -> forward'siz vaat IMKANSIZ olur.
-  // NOT: TR ifade taramasi -> yabanci-dil reply'de yakalamaz (bilinen sinir; LEG(a)+prompt
-  // birincil koruma, bu backstop TR icin son emniyet). requestText DOLU (bos -> forward edilmez).
   // LEG(a) ile AYNI teslim sekli: BILDIRIM (SLA/eskalasyon/buton YOK). Ancak bu backstop
   // JENERIKTIR (konu etkinlik olmayabilir) -> ayri notifyKind: iletisim toplama akisi
   // (ad-soyad + telefon sorma) bu yolda CALISMAZ, kart tek seferde duser.
+  //
+  // IS 17: BIRINCIL sinyal LLM'in dil-bagimsiz `claims_forward` etiketi (eski TR-only
+  // tarama Ingilizce "I've notified our team" vaadini GORMUYORDU). TR PROMISE_SIGNALS
+  // taramasi IKINCIL backstop olarak KALIR (OR): alan hic gelmezse ya da LLM false
+  // derken metinde TR vaat kacarsa yine tetiklenir.
   const anyForward = classifiedIntents.some((i) => i.shouldForward);
-  const PROMISE_SIGNALS = ['ilettim', 'ilgili ekib', 'aktardim', 'iletiyorum', 'gorusulecek', 'talebinizi aldim'];
-  const normGuardedReply = normalizeTr(guardedResponse);
-  const hasFalsePromise = guardedResponse.trim().length > 0 && PROMISE_SIGNALS.some((p) => normGuardedReply.includes(p));
-  if (!anyForward && hasFalsePromise) {
+  if (shouldFireFalsePromiseGuard({ anyForward, llmClaimsForward, replyText: guardedResponse })) {
     classifiedIntents.push({
       department: 'front_office',
       requestText: input.guestMessage,
@@ -673,7 +725,7 @@ async function _classifyAndRespondImpl(
       createsSlaEvent: PROMISE_BACKSTOP_NOTIFY.createsSlaEvent,
       notifyKind: PROMISE_BACKSTOP_NOTIFY.notifyKind,
     });
-    console.log(`[sahte-vaat-guard] Forward'siz vaat tespit -> front_office BILDIRIMI tetiklendi (SLA yok). msg="${input.guestMessage.slice(0, 60)}"`);
+    console.log(`[sahte-vaat-guard] Forward'siz vaat tespit -> front_office BILDIRIMI tetiklendi (SLA yok). source=${llmClaimsForward === true ? 'llm' : 'tr-keyword'} lang=${guestLanguage} msg="${input.guestMessage.slice(0, 60)}"`);
   }
 
   return {
@@ -691,6 +743,7 @@ async function _classifyAndRespondImpl(
     completion_tokens: response?.outputTokens ?? 0,
     latency_ms,
     mapsLink: mapsLink ?? undefined,
+    language: guestLanguage,
     raw_response: rawText,
   };
 }
