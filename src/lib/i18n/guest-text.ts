@@ -29,7 +29,14 @@ export type GuestTextKey =
   | 'name_match_failed'   // 17.7-B: coklu eslesmede isim tutmadi, on buro devrede
   | 'reverify_updated'    // re-verify basarili: yeni oda kaydedildi, talep iletilsin mi
   | 'reverify_no_match'   // re-verify: in-house listesinde eslesme yok
-  | 'already_verified';   // salt-dogrulama tekrari (forward YOK)
+  | 'already_verified'    // salt-dogrulama tekrari (forward YOK)
+  // IS 18 — etkinlik/organizasyon lead akisi (bkz. src/lib/lead/lead-capture.ts).
+  // Misafir turu ayrimi YOK: inhouse da olsa disaridan da yazsa AYNI metinler gider.
+  | 'lead_ask_all'        // acilis: isim + soyisim + telefon TEK seferde istenir
+  | 'lead_ask_phone'      // yalniz telefon eksik
+  | 'lead_ask_name'       // yalniz isim-soyisim eksik
+  | 'lead_close'          // misafir vazgecti: kart DUSMEZ -> iletim VAAT EDILMEZ
+  | 'lead_thanks';        // isim+telefon tamam: kart dustu -> "ilettim" DOGRU
 
 // Yer tutucular: {name} misafir adi, {room} oda numarasi.
 // TR metinler mevcut route.ts karsiliklarindan BIREBIR tasindi (hitap dahil) —
@@ -62,6 +69,47 @@ const TEXTS: Record<GuestTextKey, Record<GuestLang, string>> = {
     de: 'Sie sind bereits verifiziert, {name}. Schreiben Sie einfach Ihre Anfrage, wann immer Sie etwas brauchen.',
     ru: 'Ваши данные уже подтверждены, {name}. Просто напишите, когда вам что-то понадобится.',
     ar: 'تم التحقق من بياناتك بالفعل، {name}. اكتب لي متى احتجت أي شيء.',
+  },
+  // ── IS 18 lead metinleri ────────────────────────────────────────────────────
+  // Yer tutucu YOK: metin misafirin adiyla kisisellestirilmez (isim daha yeni
+  // soruluyor; yanlis/eksik ada hitap etmek riskli).
+  lead_ask_all: {
+    tr: 'Organizasyon veya toplantı salonu için fiyat almak istiyorsanız, sizi ilgili sorumluya aktarabilmem için isim, soyisim ve telefon bilgilerinizi rica ediyorum.',
+    en: "If you'd like to get pricing for an event or meeting room, could you please share your name, surname and phone number so I can connect you with the relevant person?",
+    de: 'Wenn Sie einen Preis für eine Veranstaltung oder einen Tagungsraum erhalten möchten, teilen Sie mir bitte Ihren Vornamen, Nachnamen und Ihre Telefonnummer mit, damit ich Sie an die zuständige Person weiterleiten kann.',
+    ru: 'Если вы хотите узнать стоимость проведения мероприятия или аренды конференц-зала, пожалуйста, укажите ваше имя, фамилию и номер телефона, чтобы я мог передать вас ответственному сотруднику.',
+    ar: 'إذا كنت ترغب في الحصول على سعر لتنظيم فعالية أو قاعة اجتماعات، فيرجى تزويدي باسمك واسم عائلتك ورقم هاتفك حتى أتمكن من تحويلك إلى الشخص المسؤول.',
+  },
+  lead_ask_phone: {
+    tr: 'Teşekkürler. Sizi sorumluya aktarabilmem için bir de telefon numaranızı rica ediyorum.',
+    en: 'Thank you. Could you also share your phone number so I can connect you with the relevant person?',
+    de: 'Danke. Bitte teilen Sie mir auch Ihre Telefonnummer mit, damit ich Sie weiterleiten kann.',
+    ru: 'Спасибо. Пожалуйста, укажите также номер телефона, чтобы я мог передать вас ответственному сотруднику.',
+    ar: 'شكرًا لك. يرجى تزويدي أيضًا برقم هاتفك حتى أتمكن من تحويلك إلى الشخص المسؤول.',
+  },
+  lead_ask_name: {
+    tr: 'Teşekkürler. Sizi sorumluya aktarabilmem için isim ve soyisminizi de rica ediyorum.',
+    en: 'Thank you. Could you also share your name and surname so I can connect you with the relevant person?',
+    de: 'Danke. Bitte teilen Sie mir auch Ihren Vor- und Nachnamen mit, damit ich Sie weiterleiten kann.',
+    ru: 'Спасибо. Пожалуйста, сообщите также ваше имя и фамилию, чтобы я мог передать вас ответственному сотруднику.',
+    ar: 'شكرًا لك. يرجى تزويدي أيضًا باسمك واسم عائلتك حتى أتمكن من تحويلك إلى الشخص المسؤول.',
+  },
+  // VAZGECME: kart DUSMEDIGI icin "ilettim/ekibimiz ilgilenecek" DENMEZ (SAHTE VAAT
+  // YASAGI) — iletilmemis bir talebi iletilmis gibi gostermek yalan olurdu.
+  lead_close: {
+    tr: 'Sorun değil. Dilediğiniz zaman tekrar yazabilirsiniz, yardımcı olmaktan memnuniyet duyarım.',
+    en: 'No problem. You can write to me again anytime; I would be glad to help.',
+    de: 'Kein Problem. Sie können mir jederzeit wieder schreiben, ich helfe Ihnen gerne.',
+    ru: 'Хорошо. Вы можете написать мне снова в любое время, буду рад помочь.',
+    ar: 'لا مشكلة. يمكنك مراسلتي مرة أخرى في أي وقت، ويسعدني مساعدتك.',
+  },
+  // TAMAMLANDI: kart On Buro'ya DUSTU -> "ilettim" DOGRU (vaat degil, olmus is).
+  lead_thanks: {
+    tr: 'Teşekkürler, bilgilerinizi ilettim; ekibimiz en kısa sürede sizinle iletişime geçecek.',
+    en: "Thank you, I've passed your details on; our team will contact you shortly.",
+    de: 'Vielen Dank, ich habe Ihre Angaben weitergeleitet; unser Team wird sich in Kürze bei Ihnen melden.',
+    ru: 'Спасибо, я передал ваши данные; наша команда свяжется с вами в ближайшее время.',
+    ar: 'شكرًا لك، لقد أرسلت بياناتك؛ سيتواصل معك فريقنا في أقرب وقت.',
   },
 };
 

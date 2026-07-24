@@ -6,12 +6,14 @@
  * `@/lib/lead/lead-capture` icinde saf oldugu icin burada AYNA YOK — canli kodun
  * ta kendisi kosulur. Ag/LLM cagrisi YOK.
  *
- * KAPSAM: baslangic turu (inhouse -> telefon / non-guest -> isim), isim turu
- * (mesajin TAMAMI isimdir), telefon turu (paylasilan extractPhone; yoksa 1 nazik
- * tekrar, sonra kapanis), metadata state round-trip ve personel kartlari.
- * IS 17 EKI (7-9. blok): dil-basina STATIK metin secimi, dilin state'te tasinmasi
- * ve geriye uyum (IS 17 oncesi state -> 'tr').
- * DOGRULANAMAZ (canli UAT): Telegram editMessageText, gercek kart gorunumu.
+ * KAPSAM (IS 18 — TEK AKIS):
+ *  - baslangic: kart YOK (misafir turu ne olursa olsun), tek acilista uc bilgi istenir
+ *  - esnek doldurma: isim-only -> telefon sor / telefon-only -> isim sor / ikisi -> TAMAM
+ *  - vazgecme sozcugu -> kart YOK, iletim VAAT EDILMEZ
+ *  - decideLeadNotify: yalniz 'complete' fazinda kart
+ *  - metadata state round-trip + IS 18 ONCESI state ile geriye uyum
+ *  - cok dillilik (5 dil), dilin state'te tasinmasi, personel kartinin TR kalmasi
+ * DOGRULANAMAZ (canli UAT): gercek Telegram karti, misafirin ekranda gordugu metin.
  */
 import {
   startLeadCapture,
@@ -19,24 +21,13 @@ import {
   readLeadCapture,
   withLeadCapture,
   clearLeadCapture,
-  buildLeadInhouseRequestCard,
-  buildLeadInhouseClosedCard,
   buildLeadFinalCard,
-  buildAskPhone,
   decideLeadNotify,
-  leadAskName,
-  leadAskPhone,
-  leadRetryPhone,
-  leadClose,
-  leadThanks,
-  LEAD_ASK_NAME_TR,
-  LEAD_ASK_PHONE_TR,
-  LEAD_RETRY_PHONE_TR,
-  LEAD_CLOSE_TR,
-  LEAD_THANKS_TR,
+  isLeadAbandon,
   LEAD_METADATA_KEY,
   type LeadCaptureState,
 } from '@/lib/lead/lead-capture';
+import { guestText } from '@/lib/i18n/guest-text';
 import { extractPhone } from '@/lib/utils/phone';
 
 let pass = 0;
@@ -47,269 +38,191 @@ function check(name: string, got: unknown, exp: unknown): void {
 }
 
 const TOPIC = 'dugun organizasyonu icin kimle gorusebilirim';
+const start = (over: Partial<Parameters<typeof startLeadCapture>[0]> = {}) =>
+  startLeadCapture({ topic: TOPIC, room: null, notifyChatId: -100123, language: 'tr', ...over });
 
-// (1) BASLANGIC — etkinlik talebi geldiginde hangi soru sorulur?
-const inhouse = startLeadCapture({
-  topic: TOPIC, guestName: 'AHMET YILMAZ', room: '102', notifyChatId: -100123, notifyMsgId: 55, language: 'tr',
-});
-check('1a inhouse -> telefon turu', inhouse.state.step, 'phone');
-check('1b inhouse sorusu', inhouse.question, LEAD_ASK_PHONE_TR);
-check('1c inhouse isim tasindi', inhouse.state.name, 'AHMET YILMAZ');
-check('1d ara-kart msgId tasindi', inhouse.state.notifyMsgId, 55);
-check('1e topic tasindi', inhouse.state.topic, TOPIC);
+// (1) BASLANGIC — herkes AYNI: tek acilista isim + soyisim + telefon istenir
+const fresh = start();
+const verified = start({ room: '102' }); // dogrulanmis misafir (oda BILINIYOR)
+check('1a acilis sorusu lead_ask_all', fresh.question, guestText('lead_ask_all', 'tr'));
+check('1b oda bilinse de AYNI soru', verified.question, fresh.question);
+check('1c baslangicta isim YOK', fresh.state.name, undefined);
+check('1d baslangicta telefon YOK', fresh.state.phone, undefined);
+check('1e topic tasindi', fresh.state.topic, TOPIC);
+check('1f notifyChatId tasindi', fresh.state.notifyChatId, -100123);
+check('1g oda tasindi (kart icin)', verified.state.room, '102');
+check('1h oda yoksa null', fresh.state.room, null);
+check('1i dil state e yazildi', fresh.state.language, 'tr');
 
-const guestless = startLeadCapture({
-  topic: TOPIC, guestName: null, room: null, notifyChatId: -100123, notifyMsgId: 56, language: 'tr',
-});
-check('1f non-guest -> isim turu', guestless.state.step, 'name');
-check('1g non-guest sorusu', guestless.question, LEAD_ASK_NAME_TR);
-check('1h non-guest isim BOS', guestless.state.name, undefined);
-// Telegram profil adi ad-soyad SAYILMAZ: cagiran taraf null gecer (route.ts inhouse sarti)
-check('1i bosluklu isim isim sayilmaz', startLeadCapture({
-  topic: TOPIC, guestName: '   ', room: null, notifyChatId: 1, notifyMsgId: null, language: 'tr',
-}).state.step, 'name');
+// (2) ESNEK DOLDURMA — yalniz ISIM geldi -> SADECE telefon istenir
+const nameOnly = advanceLead(fresh.state, 'Ahmet Yılmaz');
+check('2a isim -> telefon sorusu', nameOnly.action, 'ask_phone');
+check('2b telefon sorusu metni', nameOnly.action === 'ask_phone' ? nameOnly.reply : null, guestText('lead_ask_phone', 'tr'));
+check('2c isim state e yazildi', nameOnly.action === 'ask_phone' ? nameOnly.state.name : null, 'Ahmet Yılmaz');
+check('2d telefon hala YOK', nameOnly.action === 'ask_phone' ? nameOnly.state.phone : 'X', undefined);
+check('2e cok kelimeli isim kirpilir + tek bosluga iner',
+  (() => { const r = advanceLead(fresh.state, '  Ayşe  Naz Demir  '); return r.action === 'ask_phone' ? r.state.name : null; })(),
+  'Ayşe Naz Demir');
 
-// (2) ISIM TURU — mesajin TAMAMI isimdir (deterministik, LLM'e sorulmaz)
-const nameTurn = advanceLead(guestless.state, 'Ahmet Yılmaz');
-check('2a isim -> telefon sorusu', nameTurn.action, 'ask_phone');
-check('2b isim mesajin TAMAMI', nameTurn.action === 'ask_phone' ? nameTurn.state.name : null, 'Ahmet Yılmaz');
-check('2c step ilerledi', nameTurn.action === 'ask_phone' ? nameTurn.state.step : null, 'phone');
-check('2d cok kelimeli isim kirpilir', advanceLead(guestless.state, '  Ayşe Naz Demir  ').action === 'ask_phone'
-  ? (advanceLead(guestless.state, '  Ayşe Naz Demir  ') as { state: LeadCaptureState }).state.name
-  : null, 'Ayşe Naz Demir');
-check('2e telefon sorusu isimle kisisellesir',
-  nameTurn.action === 'ask_phone' ? nameTurn.reply.includes('Ahmet Yılmaz') : false, true);
-check('2f bos mesaj -> akis kapanir', advanceLead(guestless.state, '   ').action, 'close');
+// (3) ESNEK DOLDURMA — yalniz TELEFON geldi -> SADECE isim istenir
+const phoneOnly = advanceLead(fresh.state, '0532 123 45 67');
+check('3a telefon -> isim sorusu', phoneOnly.action, 'ask_name');
+check('3b isim sorusu metni', phoneOnly.action === 'ask_name' ? phoneOnly.reply : null, guestText('lead_ask_name', 'tr'));
+check('3c telefon state e yazildi', phoneOnly.action === 'ask_name' ? phoneOnly.state.phone : null, '0532 123 45 67');
+check('3d isim hala YOK', phoneOnly.action === 'ask_name' ? phoneOnly.state.name : 'X', undefined);
 
-// (3) TELEFON TURU
-const phoneState = nameTurn.action === 'ask_phone' ? nameTurn.state : guestless.state;
-const done = advanceLead(phoneState, '0532 123 45 67');
-check('3a telefon -> tamamla', done.action, 'complete');
-check('3b telefon aynen tasinir', done.action === 'complete' ? done.phone : null, '0532 123 45 67');
-check('3c isim state ten gelir', done.action === 'complete' ? done.name : null, 'Ahmet Yılmaz');
-check('3d tamamlama cevabi', done.action === 'complete' ? done.reply : null, LEAD_THANKS_TR);
+// (4) TAMAMLANMA — iki sirayla da, tek mesajda da
+const doneAfterName = advanceLead(nameOnly.action === 'ask_phone' ? nameOnly.state : fresh.state, '05321234567');
+check('4a isim sonra telefon -> TAMAM', doneAfterName.action, 'complete');
+check('4b isim state ten gelir', doneAfterName.action === 'complete' ? doneAfterName.name : null, 'Ahmet Yılmaz');
+check('4c telefon aynen tasinir', doneAfterName.action === 'complete' ? doneAfterName.phone : null, '05321234567');
+check('4d tamamlanma cevabi', doneAfterName.action === 'complete' ? doneAfterName.reply : null, guestText('lead_thanks', 'tr'));
 
-const retry = advanceLead(phoneState, 'vermek istemiyorum');
-check('3e telefon yok -> nazik tekrar', retry.action, 'retry');
-check('3f tekrar bayragi', retry.action === 'retry' ? retry.state.phoneRetried : null, true);
-check('3g tekrar metni', retry.action === 'retry' ? retry.reply : null, LEAD_RETRY_PHONE_TR);
+const doneAfterPhone = advanceLead(phoneOnly.action === 'ask_name' ? phoneOnly.state : fresh.state, 'Ahmet Yılmaz');
+check('4e telefon sonra isim -> TAMAM', doneAfterPhone.action, 'complete');
+check('4f state teki telefon korunmus', doneAfterPhone.action === 'complete' ? doneAfterPhone.phone : null, '0532 123 45 67');
+check('4g isim yeni mesajdan', doneAfterPhone.action === 'complete' ? doneAfterPhone.name : null, 'Ahmet Yılmaz');
 
-const retried = retry.action === 'retry' ? retry.state : phoneState;
-check('3h ikinci kez yok -> kapan', advanceLead(retried, 'yok dedim').action, 'close');
-check('3i kapanis metni', (advanceLead(retried, 'yok dedim') as { reply: string }).reply, LEAD_CLOSE_TR);
-check('3j tekrardan sonra telefon gelirse tamamlanir', advanceLead(retried, '+90 532 000 00 00').action, 'complete');
+const oneShot = advanceLead(fresh.state, 'Ahmet Yılmaz 0532 123 45 67');
+check('4h tek mesajda isim+telefon -> TAMAM', oneShot.action, 'complete');
+check('4i telefon ayiklandi', oneShot.action === 'complete' ? oneShot.phone : null, '0532 123 45 67');
+check('4j kalan metin isim sayildi', oneShot.action === 'complete' ? oneShot.name : null, 'Ahmet Yılmaz');
+// Ilk verilen isim KORUNUR (misafir ismini tekrar yazmak zorunda degil)
+check('4k sonraki mesaj ismi EZMEZ',
+  (() => {
+    const s: LeadCaptureState = { ...fresh.state, name: 'Ahmet Yılmaz' };
+    const r = advanceLead(s, 'Mehmet 05321234567');
+    return r.action === 'complete' ? r.name : null;
+  })(), 'Ahmet Yılmaz');
 
-// (4) PAYLASILAN TELEFON DEDEKTORU (tek kaynak — ikinci kopya YASAK)
-check('4a uluslararasi format', extractPhone('numaram +90 532 123 45 67'), '+90 532 123 45 67');
-check('4b bitisik format', extractPhone('05321234567'), '05321234567');
-check('4c metinde telefon yok', extractPhone('merhaba nasilsiniz'), null);
-check('4d oda no telefon DEGIL', extractPhone('102'), null);
-check('4e isim telefon DEGIL', extractPhone('Ahmet Yılmaz'), null);
+// (5) VAZGECME — kart YOK, iletim VAAT EDILMEZ
+const abandonWords = ['istemiyorum', 'vermek istemiyorum', 'yok', 'Hayır', 'vazgeçtim', 'gerek yok', 'iptal',
+  'no thanks', 'not interested', "I don't want to share", 'never mind', 'cancel',
+  'kein Interesse', 'nein', 'nein danke', 'не хочу', 'нет', 'لا أريد'];
+for (const w of abandonWords) {
+  check(`5a["${w}"] vazgecme algilanir`, isLeadAbandon(w), true);
+  check(`5b["${w}"] akis kapanir`, advanceLead(fresh.state, w).action, 'close');
+}
+check('5c kapanis metni (vaat YOK)', (advanceLead(fresh.state, 'istemiyorum') as { reply: string }).reply, guestText('lead_close', 'tr'));
+check('5d kapanis metni "ilettim" DEMEZ', guestText('lead_close', 'tr').includes('ilettim'), false);
+check('5e kapanis metni "ekibimiz" VAAT ETMEZ', guestText('lead_close', 'tr').includes('ekibimiz'), false);
+// YANLIS POZITIF olmamali: normal isim/telefon vazgecme sayilmaz
+for (const w of ['Ahmet Yılmaz', 'Nolan Yoksal', '05321234567', 'Иван Иванов', 'Hans Meier']) {
+  check(`5f["${w}"] vazgecme DEGIL`, isLeadAbandon(w), false);
+}
+// Numara TASIYAN mesaj asla vazgecme sayilmaz (talep yutulmasin)
+const abandonWithPhone = advanceLead(
+  { ...fresh.state, name: 'Ahmet Yılmaz' },
+  'aslında istemiyorum ama numaram 0532 123 45 67',
+);
+check('5g vazgecme sozu + numara -> TAMAMLANIR', abandonWithPhone.action, 'complete');
+check('5h bos mesaj -> kapanis', advanceLead(fresh.state, '   ').action, 'close');
 
-// (5) STATE — conversations.metadata jsonb (MIGRATION YOK)
+// (6) BILDIRIM KARARI — kart YALNIZ tamamlanmada
+check('6a start -> kart YOK', decideLeadNotify({ phase: 'start' }).send, false);
+check('6b start -> kind null', decideLeadNotify({ phase: 'start' }).kind, null);
+check('6c complete -> kart VAR', decideLeadNotify({ phase: 'complete' }).send, true);
+check('6d complete -> kind final_new', decideLeadNotify({ phase: 'complete' }).kind, 'final_new');
+check('6e abandon -> kart YOK', decideLeadNotify({ phase: 'abandon' }).send, false);
+check('6f abandon -> kind null', decideLeadNotify({ phase: 'abandon' }).kind, null);
+const ALL_DECISIONS = (['start', 'complete', 'abandon'] as const).map((phase) => decideLeadNotify({ phase }));
+check('6g send=false -> kind null invaryanti', ALL_DECISIONS.every((d) => d.send || d.kind === null), true);
+check('6h send=true -> kind DOLU invaryanti', ALL_DECISIONS.every((d) => !d.send || d.kind !== null), true);
+check('6i tek kart kurali (3 fazdan yalniz 1 i gonderir)', ALL_DECISIONS.filter((d) => d.send).length, 1);
+
+// (7) PAYLASILAN TELEFON DEDEKTORU (tek kaynak — ikinci kopya YASAK)
+check('7a uluslararasi format', extractPhone('numaram +90 532 123 45 67'), '+90 532 123 45 67');
+check('7b bitisik format', extractPhone('05321234567'), '05321234567');
+check('7c metinde telefon yok', extractPhone('merhaba nasilsiniz'), null);
+check('7d oda no telefon DEGIL', extractPhone('102'), null);
+check('7e isim telefon DEGIL', extractPhone('Ahmet Yılmaz'), null);
+// Oda no gibi kisa sayilar isim adayi olarak akar, telefon SAYILMAZ
+check('7f kisa sayi -> hala isim sorulur', advanceLead(fresh.state, '102').action, 'ask_phone');
+
+// (8) STATE — conversations.metadata jsonb (MIGRATION YOK)
 const meta0 = { baska_anahtar: 'korunmali' };
-const meta1 = withLeadCapture(meta0, inhouse.state);
-check('5a state geri okunur', readLeadCapture(meta1)?.step, 'phone');
-check('5b yabanci anahtar korunur (yazarken)', meta1.baska_anahtar, 'korunmali');
-check('5c anahtar adi', Object.prototype.hasOwnProperty.call(meta1, LEAD_METADATA_KEY), true);
+const meta1 = withLeadCapture(meta0, nameOnly.action === 'ask_phone' ? nameOnly.state : fresh.state);
+check('8a state geri okunur', readLeadCapture(meta1)?.name, 'Ahmet Yılmaz');
+check('8b yabanci anahtar korunur (yazarken)', meta1.baska_anahtar, 'korunmali');
+check('8c anahtar adi', Object.prototype.hasOwnProperty.call(meta1, LEAD_METADATA_KEY), true);
 const meta2 = clearLeadCapture(meta1);
-check('5d temizlenince state YOK', readLeadCapture(meta2), null);
-check('5e yabanci anahtar korunur (temizlerken)', meta2.baska_anahtar, 'korunmali');
-check('5f bozuk step -> state YOK', readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'x', topic: 't' } }), null);
-check('5g topic yoksa -> state YOK', readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'name' } }), null);
-check('5h metadata null -> state YOK', readLeadCapture(null), null);
+check('8d temizlenince state YOK', readLeadCapture(meta2), null);
+check('8e yabanci anahtar korunur (temizlerken)', meta2.baska_anahtar, 'korunmali');
+check('8f topic yoksa -> state YOK', readLeadCapture({ [LEAD_METADATA_KEY]: { name: 'Ahmet' } }), null);
+check('8g metadata null -> state YOK', readLeadCapture(null), null);
+check('8h telefon round-trip',
+  readLeadCapture(withLeadCapture({}, phoneOnly.action === 'ask_name' ? phoneOnly.state : fresh.state))?.phone, '0532 123 45 67');
 
-// (6) PERSONEL KARTLARI — misafirin dili ne olursa olsun TR (personel bildirimi kurali)
-const interim = buildLeadInhouseRequestCard({ room: '102', guestName: 'AHMET YILMAZ', topic: TOPIC });
-check('6a inhouse kart guncelleme vaadi', interim.includes('güncellenecektir'), true);
-check('6b inhouse kart SLA yok ibaresi', interim.includes('SLA yok'), true);
-check('6a2 inhouse kart oda', interim.includes('Oda 102'), true);
-check('6a3 inhouse kart isim', interim.includes('AHMET YILMAZ'), true);
-check('6a4 inhouse kart konu', interim.includes(TOPIC), true);
-check('6a5 inhouse kart talep ifadesi', interim.includes('talebinde bulundu'), true);
+// (9) GERIYE UYUM — IS 18 ONCESI state (step/notifyMsgId/isInhouse/phoneRetried)
+// Toplanan isim TASINIR; kalkan alanlar sessizce yok sayilir, akis yeni kurala gore surer.
+const legacy = readLeadCapture({
+  [LEAD_METADATA_KEY]: {
+    step: 'phone', topic: TOPIC, notifyChatId: -1, notifyMsgId: 7, name: 'Ahmet', room: '102',
+    isInhouse: true, phoneRetried: true, language: 'de',
+  },
+});
+check('9a eski state okunur', legacy?.topic, TOPIC);
+check('9b eski state ismi tasinir', legacy?.name, 'Ahmet');
+check('9c eski state odasi tasinir', legacy?.room, '102');
+check('9d eski state dili tasinir', legacy?.language, 'de');
+check('9e eski state te telefon YOK', legacy?.phone, undefined);
+check('9f eski akis telefonla TAMAMLANIR', legacy ? advanceLead(legacy, '05321234567').action : null, 'complete');
+// IS 17 oncesi state: `language` alani YOK -> 'tr' varsayilir ('en' fallback DEGIL)
+check('9g cok eski state dili tr sayilir',
+  readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'name', topic: TOPIC, notifyChatId: -1 } })?.language, 'tr');
+check('9h bozuk dil kodu okunurken normalize edilir',
+  readLeadCapture({ [LEAD_METADATA_KEY]: { topic: TOPIC, language: 'zz' } })?.language, 'en');
+
+// (10) PERSONEL KARTI — misafirin dili ne olursa olsun TR (personel bildirimi kurali)
 const finalCard = buildLeadFinalCard({ name: 'Ahmet Yılmaz', phone: '0532 123 45 67', topic: TOPIC, room: '102' });
-check('6c final kart ad-soyad', finalCard.includes('Ahmet Yılmaz'), true);
-check('6d final kart telefon', finalCard.includes('0532 123 45 67'), true);
-check('6e final kart konu', finalCard.includes(TOPIC), true);
-check('6f final kart oda (inhouse)', finalCard.includes('Oda: 102'), true);
-check('6g final kart SLA yok ibaresi', finalCard.includes('(SLA yok)'), true);
-check('6h non-guest kartinda oda satiri YOK',
-  buildLeadFinalCard({ name: 'Ali Veli', phone: '05320000000', topic: TOPIC, room: null }).includes('Oda:'), false);
-check('6i HTML escape (enjeksiyon)',
+check('10a final kart ad-soyad', finalCard.includes('Ahmet Yılmaz'), true);
+check('10b final kart telefon', finalCard.includes('0532 123 45 67'), true);
+check('10c final kart konu', finalCard.includes(TOPIC), true);
+check('10d final kart oda (dogrulanmis misafir)', finalCard.includes('Oda: 102'), true);
+check('10e final kart SLA yok ibaresi', finalCard.includes('(SLA yok)'), true);
+const ngFinal = buildLeadFinalCard({ name: 'Ali Veli', phone: '05320000000', topic: TOPIC, room: null });
+check('10f oda bilinmiyorsa oda satiri YOK', ngFinal.includes('Oda:'), false);
+check('10g oda yokken isim+telefon yine VAR', ngFinal.includes('Ali Veli') && ngFinal.includes('05320000000'), true);
+check('10h HTML escape (enjeksiyon)',
   buildLeadFinalCard({ name: '<b>Ali', phone: '05320000000', topic: TOPIC, room: null }).includes('&lt;b&gt;Ali'), true);
 
-// ── IS 17: COK DILLILIK ───────────────────────────────────────────────────────
-
-// (7) BASLANGIC SORUSU misafirin dilinde — 5 dilin HEPSI ayri metin
+// (11) COK DILLILIK — 5 dilin HEPSI ayri metin, dil state te tasinir
 const langs = ['tr', 'en', 'de', 'ru', 'ar'] as const;
 for (const l of langs) {
-  const s = startLeadCapture({ topic: TOPIC, guestName: null, room: null, notifyChatId: 1, notifyMsgId: null, language: l });
-  check(`7a[${l}] isim sorusu o dilde`, s.question, leadAskName(l));
-  check(`7b[${l}] dil state'e yazildi`, s.state.language, l);
-  const si = startLeadCapture({ topic: TOPIC, guestName: 'Hans Meier', room: '204', notifyChatId: 1, notifyMsgId: null, language: l });
-  check(`7c[${l}] inhouse telefon sorusu o dilde`, si.question, leadAskPhone(l));
+  const s = start({ language: l });
+  check(`11a[${l}] acilis sorusu o dilde`, s.question, guestText('lead_ask_all', l));
+  check(`11b[${l}] dil state e yazildi`, s.state.language, l);
+  const nm = advanceLead(s.state, 'Hans Meier');
+  check(`11c[${l}] telefon sorusu o dilde`, nm.action === 'ask_phone' ? nm.reply : null, guestText('lead_ask_phone', l));
+  const ph = advanceLead(s.state, '+90 532 000 00 00');
+  check(`11d[${l}] isim sorusu o dilde`, ph.action === 'ask_name' ? ph.reply : null, guestText('lead_ask_name', l));
 }
-// 5 dilin metinleri BIRBIRINDEN farkli olmali (kopyala-yapistir kaymasi yakalanir)
-check('7d 5 dil 5 ayri isim sorusu', new Set(langs.map((l) => leadAskName(l))).size, 5);
-check('7e 5 dil 5 ayri telefon sorusu', new Set(langs.map((l) => leadAskPhone(l))).size, 5);
-check('7f 5 dil 5 ayri tekrar metni', new Set(langs.map((l) => leadRetryPhone(l))).size, 5);
-check('7g 5 dil 5 ayri kapanis', new Set(langs.map((l) => leadClose(l))).size, 5);
-check('7h 5 dil 5 ayri tesekkur', new Set(langs.map((l) => leadThanks(l))).size, 5);
-// TR sabitleri geriye donuk AYNI metin (davranis-notr)
-check('7i TR isim sorusu degismedi', leadAskName('tr'), LEAD_ASK_NAME_TR);
-check('7j TR telefon sorusu degismedi', leadAskPhone('tr'), LEAD_ASK_PHONE_TR);
-check('7k TR tekrar degismedi', leadRetryPhone('tr'), LEAD_RETRY_PHONE_TR);
-check('7l TR kapanis degismedi', leadClose('tr'), LEAD_CLOSE_TR);
-check('7m TR tesekkur degismedi', leadThanks('tr'), LEAD_THANKS_TR);
+check('11e 5 dil 5 ayri acilis sorusu', new Set(langs.map((l) => guestText('lead_ask_all', l))).size, 5);
+check('11f 5 dil 5 ayri telefon sorusu', new Set(langs.map((l) => guestText('lead_ask_phone', l))).size, 5);
+check('11g 5 dil 5 ayri isim sorusu', new Set(langs.map((l) => guestText('lead_ask_name', l))).size, 5);
+check('11h 5 dil 5 ayri kapanis', new Set(langs.map((l) => guestText('lead_close', l))).size, 5);
+check('11i 5 dil 5 ayri tesekkur', new Set(langs.map((l) => guestText('lead_thanks', l))).size, 5);
+check('11j bilinmeyen dil -> en', start({ language: 'fr' }).question, guestText('lead_ask_all', 'en'));
+check('11k dilsiz -> en', startLeadCapture({ topic: TOPIC, notifyChatId: 1 }).state.language, 'en');
 
-// (8) BILINMEYEN DIL -> 'en' fallback (TR'ye DUSMEZ: misafir TR yazmadigini gosterdi)
-check('8a fr -> en', leadAskName('fr'), leadAskName('en'));
-check('8b es -> en', leadAskPhone('es'), leadAskPhone('en'));
-check('8c bos kod -> en', leadClose(''), leadClose('en'));
-check('8d null -> en', leadThanks(null), leadThanks('en'));
-check('8e en-US -> en', leadAskName('en-US'), leadAskName('en'));
-check('8f DE (buyuk harf) -> de', leadAskName('DE'), leadAskName('de'));
-check('8g startLeadCapture dilsiz -> en',
-  startLeadCapture({ topic: TOPIC, guestName: null, room: null, notifyChatId: 1, notifyMsgId: null }).state.language, 'en');
-
-// (9) DEVAM TURLARI ayni dilde (classify o turlarda CALISMAZ -> dil state'ten gelir)
-const deStart = startLeadCapture({ topic: TOPIC, guestName: null, room: null, notifyChatId: 1, notifyMsgId: 9, language: 'de' });
+// (12) DEVAM TURLARI ayni dilde (classify o turlarda CALISMAZ -> dil state ten gelir)
+const deStart = start({ language: 'de' });
 const deName = advanceLead(deStart.state, 'Hans Meier');
-check('9a DE isim turu -> DE telefon sorusu', deName.action === 'ask_phone' ? deName.reply : null, buildAskPhone('Hans Meier', 'de'));
-check('9b DE dil state icinde korunur', deName.action === 'ask_phone' ? deName.state.language : null, 'de');
-const deRetry = advanceLead(deName.action === 'ask_phone' ? deName.state : deStart.state, 'kein Interesse');
-check('9c DE tekrar metni DE', deRetry.action === 'retry' ? deRetry.reply : null, leadRetryPhone('de'));
-const deClose = advanceLead(deRetry.action === 'retry' ? deRetry.state : deStart.state, 'nein');
-check('9d DE kapanis metni DE', deClose.action === 'close' ? deClose.reply : null, leadClose('de'));
+check('12a DE dil state icinde korunur', deName.action === 'ask_phone' ? deName.state.language : null, 'de');
+check('12b DE kapanis metni DE', (advanceLead(deStart.state, 'kein Interesse') as { reply: string }).reply, guestText('lead_close', 'de'));
+check('12c override verilirse o dil kullanilir',
+  (advanceLead(deStart.state, 'nein', 'ru') as { reply: string }).reply, guestText('lead_close', 'ru'));
 // Yabanci dilde isim/telefon ICERIK olarak dogru islenir (dil metni degistirir, karari DEGIL)
-const ruStart = startLeadCapture({ topic: TOPIC, guestName: null, room: null, notifyChatId: 1, notifyMsgId: 9, language: 'ru' });
-const ruName = advanceLead(ruStart.state, 'Иван Иванов');
-check('9e RU isim mesajin TAMAMI', ruName.action === 'ask_phone' ? ruName.state.name : null, 'Иван Иванов');
-check('9f RU telefon sorusu RU', ruName.action === 'ask_phone' ? ruName.reply : null, buildAskPhone('Иван Иванов', 'ru'));
-const ruDone = advanceLead(ruName.action === 'ask_phone' ? ruName.state : ruStart.state, '+7 916 000 00 00');
-check('9g RU telefon tamamlanir', ruDone.action, 'complete');
-check('9h RU tesekkur RU', ruDone.action === 'complete' ? ruDone.reply : null, leadThanks('ru'));
+const ruName = advanceLead(start({ language: 'ru' }).state, 'Иван Иванов');
+check('12d RU isim mesajin TAMAMI', ruName.action === 'ask_phone' ? ruName.state.name : null, 'Иван Иванов');
+const ruDone = advanceLead(ruName.action === 'ask_phone' ? ruName.state : fresh.state, '+7 916 000 00 00');
+check('12e RU telefon tamamlanir', ruDone.action, 'complete');
+check('12f RU tesekkur RU', ruDone.action === 'complete' ? ruDone.reply : null, guestText('lead_thanks', 'ru'));
 // AR: Arap-Hint rakamli numara da yakalanir (phone.ts normalize)
-const arStart = startLeadCapture({ topic: TOPIC, guestName: 'محمد علي', room: null, notifyChatId: 1, notifyMsgId: 9, language: 'ar' });
-const arDone = advanceLead(arStart.state, 'رقمي ٠٥٣٢١٢٣٤٥٦٧');
-check('9i AR yerel rakamli numara tamamlanir', arDone.action, 'complete');
-check('9j AR numara ASCII ye cevrildi', arDone.action === 'complete' ? arDone.phone : null, '05321234567');
-check('9k AR tesekkur AR', arDone.action === 'complete' ? arDone.reply : null, leadThanks('ar'));
-// Override parametresi state'i EZER (advanceLead 3. arguman)
-check('9l override yoksa state dili kullanilir',
-  (advanceLead(deStart.state, '   ') as { reply: string }).reply, leadClose('de'));
-check('9m override verilirse o dil kullanilir',
-  (advanceLead(deStart.state, '   ', 'ru') as { reply: string }).reply, leadClose('ru'));
-
-// (10) GERIYE UYUM — IS 17 ONCESI acilmis state'te `language` alani YOK.
-//      O turlarin ilk sorusu TR gitmisti -> 'tr' varsayilir ('en' fallback DEGIL).
-const legacyState = readLeadCapture({
-  [LEAD_METADATA_KEY]: { step: 'phone', topic: TOPIC, notifyChatId: -1, notifyMsgId: 7, name: 'Ahmet' },
-});
-check('10a eski state okunur', legacyState?.step, 'phone');
-check('10b eski state dili tr sayilir', legacyState?.language, 'tr');
-check('10c eski state tekrar metni TR', legacyState ? (advanceLead(legacyState, 'yok') as { reply: string }).reply : null, LEAD_RETRY_PHONE_TR);
-check('10d dil round-trip korunur', readLeadCapture(withLeadCapture({}, deStart.state))?.language, 'de');
-check('10e bozuk dil kodu okunurken normalize edilir',
-  readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'name', topic: TOPIC, language: 'zz' } })?.language, 'en');
-
-// ── IS 17.1: BILDIRIM ZAMANLAMASI ────────────────────────────────────────────
-// KARAR: kart, personelin USTUNE GIDEBILECEGI bilgi olustugu anda duser.
-//   non-guest -> start'ta kart YOK (isim de telefon da yok), YALNIZ complete'te
-//   inhouse   -> start'ta kart VAR (oda+isim belli), complete'te AYNI kart guncellenir
-//   abandon   -> her iki durumda da YENI kart YOK
-
-// (11) decideLeadNotify — 6 dalin TAMAMI (3 faz x 2 misafir turu)
-check('11a start + non-guest -> kart YOK',
-  decideLeadNotify({ phase: 'start', isInhouse: false }).send, false);
-check('11b start + non-guest -> kind null',
-  decideLeadNotify({ phase: 'start', isInhouse: false }).kind, null);
-check('11c start + inhouse -> kart VAR',
-  decideLeadNotify({ phase: 'start', isInhouse: true }).send, true);
-check('11d start + inhouse -> kind inhouse_request',
-  decideLeadNotify({ phase: 'start', isInhouse: true }).kind, 'inhouse_request');
-check('11e complete + non-guest -> kart VAR',
-  decideLeadNotify({ phase: 'complete', isInhouse: false }).send, true);
-check('11f complete + non-guest -> kind final_new (ILK kart)',
-  decideLeadNotify({ phase: 'complete', isInhouse: false }).kind, 'final_new');
-check('11g complete + inhouse -> kart VAR',
-  decideLeadNotify({ phase: 'complete', isInhouse: true }).send, true);
-check('11h complete + inhouse -> kind update (acik kart guncellenir)',
-  decideLeadNotify({ phase: 'complete', isInhouse: true }).kind, 'update');
-check('11i abandon + non-guest -> kart YOK',
-  decideLeadNotify({ phase: 'abandon', isInhouse: false }).send, false);
-check('11j abandon + non-guest -> kind null',
-  decideLeadNotify({ phase: 'abandon', isInhouse: false }).kind, null);
-// IS 17.1-ek: inhouse'ta acik kart SILINMEZ ama "telefon bekleniyor" vaadi
-// KALDIRILIR -> personel gelmeyecek telefonu beklemesin.
-check('11k abandon + inhouse -> kart GUNCELLENIR (durustlestirme)',
-  decideLeadNotify({ phase: 'abandon', isInhouse: true }).send, true);
-check('11l abandon + inhouse -> kind inhouse_closed',
-  decideLeadNotify({ phase: 'abandon', isInhouse: true }).kind, 'inhouse_closed');
-// Invaryant: send=false ise kind DAIMA null (kart yokken sablon secilemez)
-const ALL_DECISIONS = (['start', 'complete', 'abandon'] as const).flatMap((phase) =>
-  [true, false].map((isInhouse) => decideLeadNotify({ phase, isInhouse })),
-);
-check('11m send=false -> kind null invaryanti',
-  ALL_DECISIONS.every((d) => d.send || d.kind === null), true);
-check('11n send=true -> kind DOLU invaryanti',
-  ALL_DECISIONS.every((d) => !d.send || d.kind !== null), true);
-
-// (12) isInhouse state'e dogru yazilir + tasinir
-const inhouseStart = startLeadCapture({
-  topic: TOPIC, guestName: 'AHMET YILMAZ', room: '102', notifyChatId: 1, notifyMsgId: 55, language: 'tr',
-});
-const guestlessStart = startLeadCapture({
-  topic: TOPIC, guestName: null, room: null, notifyChatId: 1, notifyMsgId: null, language: 'tr',
-});
-check('12a inhouse state isInhouse=true', inhouseStart.state.isInhouse, true);
-check('12b non-guest state isInhouse=false', guestlessStart.state.isInhouse, false);
-// Non-guest isim VERSE bile inhouse OLMAZ (isim misafirin yazdigi metin, oda kaydi degil)
-const guestlessNamed = advanceLead(guestlessStart.state, 'Ali Veli');
-check('12c non-guest isim verince de isInhouse=false',
-  guestlessNamed.action === 'ask_phone' ? guestlessNamed.state.isInhouse : null, false);
-check('12d retry turunda isInhouse korunur',
-  (() => { const r = advanceLead(inhouseStart.state, 'yok'); return r.action === 'retry' ? r.state.isInhouse : null; })(), true);
-check('12e isInhouse round-trip (metadata)',
-  readLeadCapture(withLeadCapture({}, guestlessStart.state))?.isInhouse, false);
-
-// (13) GERIYE UYUM — IS 17.1 oncesi state'te isInhouse alani YOK.
-//      O turlarda kart KOSULSUZ dusmustu; isInhouse yalnizca oda bilgisinden turetilir.
-check('13a eski state + oda VAR -> inhouse sayilir',
-  readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'phone', topic: TOPIC, notifyChatId: -1, notifyMsgId: 7, room: '102' } })?.isInhouse, true);
-check('13b eski state + oda YOK -> non-guest sayilir',
-  readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'name', topic: TOPIC, notifyChatId: -1, notifyMsgId: 7 } })?.isInhouse, false);
-check('13c eski state + oda null -> non-guest sayilir',
-  readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'name', topic: TOPIC, notifyChatId: -1, notifyMsgId: 7, room: null } })?.isInhouse, false);
-// Acik alan varsa oda fallback'ini EZER
-check('13d acik isInhouse=false, oda dolu olsa bile kazanir',
-  readLeadCapture({ [LEAD_METADATA_KEY]: { step: 'phone', topic: TOPIC, notifyChatId: -1, notifyMsgId: 7, room: '102', isInhouse: false } })?.isInhouse, false);
-
-// (15) INHOUSE VAZGECME KARTI (IS 17.1-ek) — talep gorunur kalir, vaat kalkar
-const closedCard = buildLeadInhouseClosedCard({ room: '102', guestName: 'AHMET YILMAZ', topic: TOPIC });
-check('15a kapanis karti oda', closedCard.includes('Oda 102'), true);
-check('15b kapanis karti isim', closedCard.includes('AHMET YILMAZ'), true);
-check('15c kapanis karti konu', closedCard.includes(TOPIC), true);
-check('15d kapanis karti talep ifadesi', closedCard.includes('talebinde bulundu'), true);
-check('15e kapanis karti "Telefon alinamadi" der', closedCard.includes('Telefon alınamadı'), true);
-// KRITIK: gelmeyecek telefon vaadi KALKMALI (personel bosuna beklememeli)
-check('15f kapanis kartinda "gelince güncellenecektir" YOK', closedCard.includes('güncellenecektir'), false);
-check('15g kapanis kartinda "Telefon isteniyor" YOK', closedCard.includes('Telefon isteniyor'), false);
-check('15h kapanis karti takip yolu (oda) gosterir', closedCard.includes('üzerinden takip edilebilir'), true);
-check('15i kapanis karti SLA yok ibaresi', closedCard.includes('SLA yok'), true);
-// Ayni girdide start karti ile kapanis karti FARKLI olmali (edit gercekten degistirir)
-check('15j start karti ile kapanis karti farkli',
-  buildLeadInhouseRequestCard({ room: '102', guestName: 'AHMET YILMAZ', topic: TOPIC }) === closedCard, false);
-check('15k oda bilinmiyorsa da patlamaz',
-  buildLeadInhouseClosedCard({ room: null, guestName: 'Ali', topic: TOPIC }).includes('bilinmiyor'), true);
-check('15l HTML escape (enjeksiyon)',
-  buildLeadInhouseClosedCard({ room: '1', guestName: '<b>Ali', topic: TOPIC }).includes('&lt;b&gt;Ali'), true);
-
-// (14) NON-GUEST tamamlanma kartinda oda satiri YOK, isim+telefon VAR
-const ngFinal = buildLeadFinalCard({ name: 'Ali Veli', phone: '05320000000', topic: TOPIC, room: null });
-check('14a non-guest final kart isim', ngFinal.includes('Ali Veli'), true);
-check('14b non-guest final kart telefon', ngFinal.includes('05320000000'), true);
-check('14c non-guest final kartta oda YOK', ngFinal.includes('Oda:'), false);
+const arDone = advanceLead({ ...start({ language: 'ar' }).state, name: 'محمد علي' }, '٠٥٣٢١٢٣٤٥٦٧');
+check('12g AR yerel rakamli numara tamamlanir', arDone.action, 'complete');
+check('12h AR numara ASCII ye cevrildi', arDone.action === 'complete' ? arDone.phone : null, '05321234567');
+check('12i AR tesekkur AR', arDone.action === 'complete' ? arDone.reply : null, guestText('lead_thanks', 'ar'));
 
 const total = pass + fails.length;
 if (fails.length > 0) {

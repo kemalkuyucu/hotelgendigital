@@ -31,8 +31,6 @@ import {
   withLeadCapture,
   clearLeadCapture,
   decideLeadNotify,
-  buildLeadInhouseRequestCard,
-  buildLeadInhouseClosedCard,
   buildLeadFinalCard,
 } from '@/lib/lead/lead-capture';
 // İŞ 17 — misafire giden sabit metinlerin dil seçimi (tek kaynak)
@@ -1300,93 +1298,51 @@ async function handleMessage(args: {
       const adv = advanceLead(leadState, text);
 
       if (adv.action === 'complete') {
-        // İŞ 17.1: iki yol da BURADA birleşir —
-        //   inhouse (kind='update')    : start'ta düşen kart telefonla GÜNCELLENİR
-        //   non-guest (kind='final_new'): kart İLK KEZ şimdi oluşur (isim+telefon+konu)
-        // Ayrım notifyMsgId'nin doluluğundan gelir; edit patlarsa taze kart fallback'i kalır.
-        const notify = decideLeadNotify({ phase: 'complete', isInhouse: leadState.isInhouse });
-        const finalCard = buildLeadFinalCard({
-          name: adv.name,
-          phone: adv.phone,
-          topic: leadState.topic,
-          room: leadState.room,
-        });
-        let edited = false;
-        if (notify.send && leadState.notifyChatId && leadState.notifyMsgId) {
-          try {
-            await tg.editMessageText({
-              chat_id: leadState.notifyChatId,
-              message_id: leadState.notifyMsgId,
-              text: finalCard,
-              parse_mode: 'HTML',
-            });
-            edited = true;
-          } catch (editErr) {
-            console.error(
-              '[lead-capture] editMessageText basarisiz, fallback yeni mesaj:',
-              editErr instanceof Error ? editErr.message : editErr,
-            );
-          }
-        }
-        if (notify.send && !edited && leadState.notifyChatId) {
-          await tg.sendMessage({ chat_id: leadState.notifyChatId, text: finalCard, parse_mode: 'HTML' });
+        // İŞ 18: kart TEK ve İLK KEZ burada oluşur (isim + telefon + konu). Ara-kart
+        // ve editMessageText yolu KALKTI — start'ta hiçbir misafir türünde kart düşmüyor,
+        // dolayısıyla güncellenecek açık mesaj da yok.
+        const notify = decideLeadNotify({ phase: 'complete' });
+        if (notify.send && leadState.notifyChatId) {
+          await tg.sendMessage({
+            chat_id: leadState.notifyChatId,
+            text: buildLeadFinalCard({
+              name: adv.name,
+              phone: adv.phone,
+              topic: leadState.topic,
+              room: leadState.room,
+            }),
+            parse_mode: 'HTML',
+          });
         }
         await clearLead();
         await replyLead(adv.reply);
         console.log(
-          `[lead-capture] TAMAMLANDI kind=${notify.kind} inhouse=${leadState.isInhouse} edit=${edited} conversationId=${conversationId}`,
+          `[lead-capture] TAMAMLANDI kind=${notify.kind} chatId=${leadState.notifyChatId} conversationId=${conversationId}`,
         );
         return;
       }
 
       if (adv.action === 'close') {
-        // İŞ 17.1-ek: non-guest'te kart YOK (hiç oluşmadı, oluşturulmaz).
-        // Inhouse'ta start kartı DURUYOR ama metni "telefon gelince güncellenecek"
-        // diyor → personel asla gelmeyecek bir telefonu bekler. Kartı SİLMEK yerine
-        // DÜRÜST duruma çeviriyoruz: "telefon alınamadı, oda üzerinden takip edilebilir".
-        const notify = decideLeadNotify({ phase: 'abandon', isInhouse: leadState.isInhouse });
-        let closedEdited = false;
-        if (notify.send && leadState.notifyChatId) {
-          const closedCard = buildLeadInhouseClosedCard({
-            room: leadState.room,
-            guestName: leadState.name,
-            topic: leadState.topic,
-          });
-          if (leadState.notifyMsgId) {
-            try {
-              await tg.editMessageText({
-                chat_id: leadState.notifyChatId,
-                message_id: leadState.notifyMsgId,
-                text: closedCard,
-                parse_mode: 'HTML',
-              });
-              closedEdited = true;
-            } catch (editErr) {
-              console.error(
-                '[lead-capture] kapanis editMessageText basarisiz, fallback yeni mesaj:',
-                editErr instanceof Error ? editErr.message : editErr,
-              );
-            }
-          }
-          if (!closedEdited) {
-            await tg.sendMessage({ chat_id: leadState.notifyChatId, text: closedCard, parse_mode: 'HTML' });
-          }
-        }
+        // İŞ 18: misafir vazgeçti → kart YOK (ne yeni kart, ne düzeltilecek açık kart).
+        // Misafire de "ilettim" DENMEZ; lead_close metni vaat taşımaz (SAHTE VAAT YASAĞI).
+        const notify = decideLeadNotify({ phase: 'abandon' });
         await clearLead();
         await replyLead(adv.reply);
         console.log(
-          `[lead-capture] KAPANDI (iletisim alinamadi) kind=${notify.kind ?? 'YOK'} inhouse=${leadState.isInhouse} edit=${closedEdited} conversationId=${conversationId}`,
+          `[lead-capture] KAPANDI (vazgecme) kart=${notify.kind ?? 'YOK'} conversationId=${conversationId}`,
         );
         return;
       }
 
-      // ask_phone | retry → state ilerlet, soruyu tekrar sor
+      // ask_phone | ask_name → state ilerlet, YALNIZ eksik olanı sor
       await supa
         .from('conversations')
         .update({ metadata: withLeadCapture(leadRow?.metadata, adv.state) })
         .eq('id', conversationId);
       await replyLead(adv.reply);
-      console.log(`[lead-capture] ${adv.action} -> step=${adv.state.step} conversationId=${conversationId}`);
+      console.log(
+        `[lead-capture] ${adv.action} -> isim=${adv.state.name ? 'VAR' : 'YOK'} telefon=${adv.state.phone ? 'VAR' : 'YOK'} conversationId=${conversationId}`,
+      );
       return;
     }
   }
@@ -3991,37 +3947,18 @@ async function handleMessage(args: {
             // YAZILMAZ → eskalasyon zinciri ve onay butonları oluşmaz ("talep değil,
             // bildirim"). Aynı bayrakları taşıyan bagaj bildiriminden notifyKind ile ayrılır.
             //
-            // LEAD CAPTURE: kart ANINDA düşer ("iletişim bekleniyor" tonunda ARA-KART) ki
-            // talep hiçbir koşulda kaybolmasın; ardından misafire DETERMİNİSTİK soru sorulur
-            // (ad-soyad / telefon — LLM metni DEĞİL). Cevap gelince ara-kart editMessageText
-            // ile tek temiz karta dönüşür (resume: handleMessage başındaki lead kapısı).
+            // LEAD CAPTURE (İŞ 18): start'ta kart YOK. Misafire DETERMİNİSTİK tek soru
+            // sorulur (isim + soyisim + telefon birlikte — LLM metni DEĞİL); kart YALNIZ
+            // isim ve telefon tamamlanınca düşer (resume: handleMessage başındaki lead
+            // kapısı). Misafir türü ayrımı YOK: inhouse da olsa aynı yoldan geçer.
             if (fwdItem.notifyKind === 'event_contact') {
               const evRoom = persistentVerifiedGuest?.room_number ?? null;
-              const evName = persistentVerifiedGuest
-                ? `${persistentVerifiedGuest.first_name ?? ''} ${persistentVerifiedGuest.last_name ?? ''}`.trim()
-                : guestName;
               const evTopic = fwdItem.requestText || text;
-              // İsim YALNIZ inhouse misafirde bilinir; Telegram profil adı ad-soyad sayılmaz.
-              const evIsInhouse = !!persistentVerifiedGuest;
-              // İŞ 17.1: kart artık KOŞULSUZ düşmüyor. Inhouse'ta (oda+isim belli) talep
-              // anında düşer; non-guest'te kart YALNIZ telefon gelince oluşur — aksi halde
-              // personele "bilinmiyor · bilinmiyor" içeren, üzerine gidilemeyen kart giderdi.
-              const evNotify = decideLeadNotify({ phase: 'start', isInhouse: evIsInhouse });
-              let evNotifyMsgId: number | null = null;
-              if (evNotify.send) {
-                const sentCard = await tg.sendMessage({
-                  chat_id: targetChatId,
-                  text: buildLeadInhouseRequestCard({ room: evRoom, guestName: evName, topic: evTopic }),
-                  parse_mode: 'HTML',
-                });
-                evNotifyMsgId = sentCard?.message_id ?? null;
-              }
+              const evNotify = decideLeadNotify({ phase: 'start' });
               const { state: leadState, question: leadQuestion } = startLeadCapture({
                 topic: evTopic,
-                guestName: persistentVerifiedGuest ? evName : null,
                 room: evRoom,
                 notifyChatId: Number(targetChatId),
-                notifyMsgId: evNotifyMsgId,
                 // İŞ 17: soru misafirin dilinde sorulur; dil state'e YAZILIR ki
                 // devam turları (isim/telefon) — classify hiç çalışmadan — aynı
                 // dilde sürsün.
@@ -4043,7 +3980,7 @@ async function handleMessage(args: {
               // Misafire giden metin: LLM cevabı DEĞİL, sabit soru (SAHTE VAAT YASAGI).
               finalResponseText = leadQuestion;
               console.log(
-                `[lead-capture] START inhouse=${evIsInhouse} kart=${evNotify.kind ?? 'YOK'} step=${leadState.step} lang=${leadState.language} msgId=${evNotifyMsgId ?? 'YOK'} [chatId=${deptChatIdForSla}]`,
+                `[lead-capture] START kart=${evNotify.kind ?? 'YOK'} lang=${leadState.language} oda=${evRoom ?? 'YOK'} [chatId=${deptChatIdForSla}]`,
               );
               continue;
             }

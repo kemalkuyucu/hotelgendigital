@@ -7,17 +7,15 @@
  *
  * KAPSAM:
  *  - normalizeGuestLang: 5 dile indirgeme + bilinmeyen -> 'en'
- *  - guestText: 4 anahtar x 5 dil, yer tutucu ({name}/{room}) doldurma, TR metnin
- *    route.ts'ten BIREBIR tasindiginin dogrulanmasi (davranis-notr kaniti)
+ *  - guestText: TUM anahtarlar x 5 dil (IS 18 lead metinleri dahil), yer tutucu
+ *    ({name}/{room}) doldurma, TR metnin route.ts'ten BIREBIR tasindiginin
+ *    dogrulanmasi (davranis-notr kaniti)
  *  - extractPhone: AR/FA rakamlarinin ASCII'ye cevrilmesi + ASCII girdide bicimin
  *    AYNEN korundugu (regresyon)
  * DOGRULANAMAZ (canli UAT): metnin gercekten Telegram'da o dille gorunmesi.
  */
 import { guestText, normalizeGuestLang, type GuestLang, type GuestTextKey } from '@/lib/i18n/guest-text';
 import { extractPhone, toAsciiDigits } from '@/lib/utils/phone';
-import {
-  leadAskName, leadAskPhone, leadRetryPhone, leadClose, leadThanks, buildAskPhone,
-} from '@/lib/lead/lead-capture';
 
 let pass = 0;
 const fails: string[] = [];
@@ -29,6 +27,8 @@ function check(name: string, got: unknown, exp: unknown): void {
 const LANGS: readonly GuestLang[] = ['tr', 'en', 'de', 'ru', 'ar'];
 const KEYS: readonly GuestTextKey[] = [
   'name_match_failed', 'reverify_updated', 'reverify_no_match', 'already_verified',
+  // IS 18 — lead metinleri de ayni sozlukte (ikinci metin kaynagi YOK)
+  'lead_ask_all', 'lead_ask_phone', 'lead_ask_name', 'lead_close', 'lead_thanks',
 ];
 
 // (1) normalizeGuestLang — desteklenen kume aynen, gerisi 'en'
@@ -112,19 +112,18 @@ check('5m bos girdi', extractPhone(''), null);
 // KOK RISK: Arapca metin bir editorde/kopyalamada GORSEL sirada kaydedilirse
 // (harfler ters, soru isareti basta) kod derlenir, test yesil kalir, ama misafire
 // ANLAMSIZ metin gider — gozle fark edilmesi cok zor.
-// TRIPWIRE: lojik-sirali Arapca'da '؟' (U+061F) cumlenin SON kod noktasidir; metnin
-// BASINDA olmasi ters-siralamanin kesin isaretidir. Ayrica her `ar` metni gercekten
-// Arapca harf (U+0600-06FF) TASIMALI — bos/yanlis-dil kopyasi da burada yakalanir.
-const AR_TEXTS: Array<[string, string]> = [
-  ...KEYS.map((k) => [`guest-text/${k}`, guestText(k, 'ar')] as [string, string]),
-  ['lead/ask_name', leadAskName('ar')],
-  ['lead/ask_phone', leadAskPhone('ar')],
-  ['lead/retry_phone', leadRetryPhone('ar')],
-  ['lead/close', leadClose('ar')],
-  ['lead/thanks', leadThanks('ar')],
-  ['lead/ask_phone_named', buildAskPhone('محمد', 'ar')],
-];
+// TRIPWIRE: lojik-sirali Arapca'da cumle sonu noktalamasi ('.' U+002E veya '؟' U+061F)
+// metnin SON kod noktasidir; BASINDA olmasi ters-siralamanin kesin isaretidir. Kontrol
+// IS 18'de genellestirildi: lead metinleri soru degil RICA cumlesi ('.' ile biter) —
+// yalniz '؟' arayan eski guard bu metinlerde ters-siralamayi KACIRIRDI.
+// Ayrica her `ar` metni gercekten Arapca harf (U+0600-06FF) TASIMALI — bos/yanlis-dil
+// kopyasi da burada yakalanir.
+const AR_TEXTS: Array<[string, string]> = KEYS.map(
+  (k) => [`guest-text/${k}`, guestText(k, 'ar')] as [string, string],
+);
 const QMARK_AR = 0x061f;
+const DOT = 0x002e;
+const isSentenceEnd = (cp: number | undefined): boolean => cp === QMARK_AR || cp === DOT;
 // KARAKTER-KUMESI KONTROLU SAYISAL YAPILIR: regex karakter sinifina non-ASCII literal
 // (veya \u kacisi) yazmak arac/editor katmaninda sessizce bozulabilir — bozulan aralik
 // testi yanlis-yesil birakir. codePoint karsilastirmasi bu riski tamamen kaldirir.
@@ -134,24 +133,17 @@ const hasArabicChar = (s: string): boolean =>
     return c >= 0x0600 && c <= 0x06ff;
   });
 for (const [label, s] of AR_TEXTS) {
-  check(`6a[${label}] TERS DEGIL ('؟' basta olamaz)`, s.trimStart().codePointAt(0) === QMARK_AR, false);
+  check(`6a[${label}] TERS DEGIL (noktalama basta olamaz)`, isSentenceEnd(s.trimStart().codePointAt(0)), false);
   check(`6b[${label}] Arapca harf tasiyor`, hasArabicChar(s), true);
   check(`6c[${label}] bos degil`, s.trim().length > 0, true);
+  check(`6d[${label}] cumle noktalamasi SONDA`, isSentenceEnd([...s.trimEnd()].pop()?.codePointAt(0)), true);
 }
-// Soru metinleri lojik siralamada '؟' ile BITER (ters olsaydi bitmezdi).
-const AR_QUESTIONS: Array<[string, string]> = [
-  ['lead/ask_name', leadAskName('ar')],
-  ['lead/ask_phone', leadAskPhone('ar')],
-  ['lead/retry_phone', leadRetryPhone('ar')],
-  ['lead/ask_phone_named', buildAskPhone('محمد', 'ar')],
-  ['guest-text/reverify_updated', guestText('reverify_updated', 'ar', { name: 'محمد', room: '312' })],
-];
-for (const [label, s] of AR_QUESTIONS) {
-  check(`6d[${label}] soru '؟' ile BITER`, [...s.trimEnd()].pop()?.codePointAt(0) === QMARK_AR, true);
-}
+// Soru cumlesi lojik siralamada '؟' ile BITER (ters olsaydi bitmezdi).
+check('6d2 AR soru metni ? ile BITER',
+  [...guestText('reverify_updated', 'ar', { name: 'محمد', room: '312' }).trimEnd()].pop()?.codePointAt(0) === QMARK_AR, true);
 // Yer tutucu enjeksiyonu sirayi BOZMAMALI (RTL metne ASCII isim/oda girince de).
 check('6e yer tutuculu AR metin hala ters DEGIL',
-  guestText('already_verified', 'ar', { name: 'John', room: '312' }).trimStart().codePointAt(0) === QMARK_AR, false);
+  isSentenceEnd(guestText('already_verified', 'ar', { name: 'John', room: '312' }).trimStart().codePointAt(0)), false);
 // AR rakam normalizasyonu: sinir degerleri (ilk/son hane) — ters aralik burada yakalanir
 check('6f AR ilk hane (U+0660) -> 0', toAsciiDigits('٠'), '0');
 check('6g AR son hane (U+0669) -> 9', toAsciiDigits('٩'), '9');
@@ -163,9 +155,13 @@ check('6l aralik disi (U+066A yuzde) dokunulmaz', toAsciiDigits('٪'), '٪');
 // NEGATIF KONTROL — guard'in YANLIS-YESIL olmadigi kaniti: bilincli ters cevrilmis
 // bir metinde tripwire ATES ETMELI. (Ters cevirme YALNIZ burada, teshis amacli;
 // kaynak metinlere programatik reverse UYGULANMAZ — tanwin/ligature bozar.)
-const reversedSample = [...leadAskPhone('ar')].reverse().join('');
-check('6m tripwire ters metni YAKALAR', reversedSample.trimStart().codePointAt(0) === QMARK_AR, true);
-check('6n dogru metin tripwire i tetiklemez', leadAskPhone('ar').trimStart().codePointAt(0) === QMARK_AR, false);
+const reversedSample = [...guestText('lead_ask_phone', 'ar')].reverse().join('');
+check('6m tripwire ters metni YAKALAR', isSentenceEnd(reversedSample.trimStart().codePointAt(0)), true);
+check('6n dogru metin tripwire i tetiklemez',
+  isSentenceEnd(guestText('lead_ask_phone', 'ar').trimStart().codePointAt(0)), false);
+// Ters cevrilmis SORU metni de yakalanmali ('؟' basa gecer) — iki noktalama da korunuyor
+check('6o ters soru metni de YAKALANIR',
+  isSentenceEnd([...guestText('reverify_updated', 'ar')].reverse().join('').trimStart().codePointAt(0)), true);
 
 const total = pass + fails.length;
 if (fails.length > 0) {
