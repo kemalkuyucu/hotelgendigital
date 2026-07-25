@@ -1808,12 +1808,7 @@ async function handleMessage(args: {
           console.error('[spa-contact] forward failed', e instanceof Error ? e.message : e);
         }
         // Misafire tesekkur (dile gore)
-        const spaThanks =
-          language === 'en'
-            ? 'Thank you, I have passed your contact details to the spa team. They will reach out to you soon.'
-            : language === 'de'
-            ? 'Vielen Dank, ich habe Ihre Kontaktdaten an das Spa-Team weitergeleitet. Man wird sich bald bei Ihnen melden.'
-            : 'Teşekkürler, iletişim bilgilerinizi spa ekibine ilettim. En kısa sürede size dönüş yapacaklar.';
+        const spaThanks = guestText('spa_contact_thanks', language);
         await tg.sendMessage({ chat_id: chatId, text: spaThanks });
         console.log(`[spa-contact] iletisim alindi ve SPA'ya iletildi. conversationId=${conversationId}`);
         return;
@@ -1866,14 +1861,9 @@ async function handleMessage(args: {
     // Onay karti (fiyatsiz ozet + butonlar) — handle-note-callback ile ayni desen
     const noteLang = detectLanguage(msg);
     const itemsBlock = orderObj.lines.map((l) => `• ${l.name} × ${l.qty}`).join('\n');
-    const confirmText =
-      noteLang === 'en'
-        ? `Your order:\n${itemsBlock}\n\nDo you confirm?`
-        : noteLang === 'de'
-          ? `Ihre Bestellung:\n${itemsBlock}\n\nBestaetigen Sie?`
-          : `Siparişiniz:\n${itemsBlock}\n\nOnaylıyor musunuz?`;
-    const yesLabel = noteLang === 'en' ? 'Yes, confirm' : noteLang === 'de' ? 'Ja, bestaetigen' : 'Evet, onayliyorum';
-    const noLabel = noteLang === 'en' ? 'Cancel' : noteLang === 'de' ? 'Abbrechen' : 'Vazgectim';
+    const confirmText = guestText('order_confirm_prompt', noteLang, { liste: itemsBlock });
+    const yesLabel = guestText('btn_confirm_yes', noteLang);
+    const noLabel = guestText('btn_cancel', noteLang);
 
     await supa.from('bot_messages').insert({
       conversation_id: conversationId,
@@ -1902,6 +1892,16 @@ async function handleMessage(args: {
   if (conversation.allergen_pending) {
     console.log(`[allergen-sc] allergen_pending=true — short-circuit başlıyor. text="${text.slice(0, 80)}"`);
 
+    // ── P7b: KIRIL/ARAP "alerjim yok" cevabi ──────────────────────────────────
+    // KOK NEDEN: asagidaki iki kalibin `\b` siniri ASCII'dir (\w = [A-Za-z0-9_]),
+    // bu yuzden `\bнет\b` CANLIDA HIC ESLESMIYORDU (olu kod: /\b(...|нет)\b/i.test('нет')
+    // === false). Ayni tuzak Arapca «لا» icin de gecerli olurdu → ayri kalip.
+    // GUVENLIK (Modul 4): eslesme TUM CEVABA capalanir, gomulu aranmaz. 900ms sorusu
+    // "yoksa yalniz «нет»/«لا» yazin" dedigi icin capa yeterlidir; gomulu arasaydik
+    // "لا أستطيع أكل الفول السوداني" (fistik yiyemiyorum) GERCEK alerji bildirimi
+    // "alerji yok" sayilirdi — M4'te en tehlikeli yon budur (yanlis-negatif).
+    const NO_ALLERGEN_NONLATIN = /^[\s"'«»]*(нет|لا)[\s"'«»,.!?؟،]*$/u;
+
     // YENI KAPI: misafir alerji sorusunu cevaplamadi, alakasiz yeni soru/talep yazdiysa
     // bayragi kapat ve mesaji handleMessage RE-ENTRY ile normal akisa birak.
     // NOT: conversation handleMessage'a ARGUMAN DEGIL (1097'de upsertGuestAndConversation'dan
@@ -1911,7 +1911,8 @@ async function handleMessage(args: {
     {
       const _earlyAns = text.trim().toLowerCase();
       const _earlyNo = /\b(yok|yoq|hayır|hayir|hayr|alerjim yok|alerjisi yok|alerji yok|no|none|nichts|нет)\b/i;
-      if (_earlyAns.length >= 2 && !_earlyNo.test(_earlyAns) && !(await isAllergenAnswer(text.trim()))) {
+      const _earlyIsNo = _earlyNo.test(_earlyAns) || NO_ALLERGEN_NONLATIN.test(_earlyAns);
+      if (_earlyAns.length >= 2 && !_earlyIsNo && !(await isAllergenAnswer(text.trim()))) {
         await supa
           .from('conversations')
           .update({ allergen_pending: false, allergen_asked: true })
@@ -1937,7 +1938,10 @@ async function handleMessage(args: {
 
     const answerRaw = text.trim().toLowerCase();
     const noAllergenPatterns = /\b(yok|yoq|hayır|hayir|hayr|alerjim yok|alerjisi yok|alerji yok|no|none|nichts|нет)\b/i;
-    const hasAllergenText = answerRaw.length > 0 && !noAllergenPatterns.test(answerRaw);
+    const hasAllergenText =
+      answerRaw.length > 0 &&
+      !noAllergenPatterns.test(answerRaw) &&
+      !NO_ALLERGEN_NONLATIN.test(answerRaw);
     // Çok kısa (< 2 karakter) metinler alakasız sayılır
     const isIrrelevant = answerRaw.length < 2;
 
@@ -1948,20 +1952,12 @@ async function handleMessage(args: {
 
     if (isIrrelevant) {
       allergenStatus = 'asked_no_response';
-      scReplyText = language === 'en'
-        ? 'Understood, thank you.'
-        : language === 'de'
-          ? 'Verstanden, vielen Dank.'
-          : 'Anlaşıldı, teşekkürler.';
+      scReplyText = guestText('allergen_ack_short', language);
       console.log(`[allergen-sc] Alakasız cevap → status=asked_no_response`);
     } else if (!hasAllergenText) {
-      // noAllergenPatterns eşleşti → "yok"
+      // noAllergenPatterns VEYA NO_ALLERGEN_NONLATIN eşleşti → "yok"
       allergenStatus = 'none';
-      scReplyText = language === 'en'
-        ? 'Noted, thank you! Please let us know if there is anything else we can help you with.'
-        : language === 'de'
-          ? 'Notiert, vielen Dank! Lassen Sie uns wissen, wenn wir noch etwas für Sie tun können.'
-          : 'Anlaşıldı, teşekkürler! Başka bir isteğiniz varsa lütfen belirtin.';
+      scReplyText = guestText('allergen_ack_none', language);
       console.log(`[allergen-sc] Alerji yok → status=none`);
     } else {
       // Alerjen belirtmiş → reported (oda no henüz bilinmiyor olabilir, sonra sorulacak)
@@ -2034,11 +2030,7 @@ async function handleMessage(args: {
       if (notifyRoomNumber) {
         // ✅ Oda no zaten biliniyor (doğrulanmış misafir) → bildirimi hemen gönder
         console.log(`[allergen-sc] Oda mevcut → bildirim hemen gönderiliyor. room=${notifyRoomNumber}`);
-        scReplyText = language === 'en'
-          ? 'Thank you for letting us know! We have informed the relevant team about your allergy.'
-          : language === 'de'
-            ? 'Vielen Dank! Wir haben das zuständige Team über Ihre Allergie informiert.'
-            : 'Bilgilendirme için teşekkürler! İlgili ekibimizi alerjiniz hakkında haberdar ettik.';
+        scReplyText = guestText('allergen_informed', language);
 
         try {
           await sendAllergenNotifications({
@@ -2066,11 +2058,7 @@ async function handleMessage(args: {
         // ⏳ Oda no bilinmiyor → ŞİMDİ oda no sor, bildirim oda no alındıktan sonra gönderilecek
         // KURAL: bu turda YALNIZCA oda no sorusu çıkar — başka hiçbir akış ÇALIŞMAZ.
         console.log(`[allergen-sc] Oda no yok — allergen_room_verify akışı başlıyor, conversationId=${conversationId}`);
-        scReplyText = language === 'en'
-          ? 'Thank you for letting us know about your allergy! To notify our team, could you please share your room number, first name, and last name? Example: 101 John Smith'
-          : language === 'de'
-            ? 'Vielen Dank für die Information! Um unser Team zu informieren, teilen Sie bitte Zimmernummer, Vorname und Nachname mit. Beispiel: 101 Hans Müller'
-            : 'Bilgilendirme için teşekkürler! Ekibimizi haberdar edebilmemiz için lütfen oda numaranızı, adınızı ve soyadınızı paylaşır mısınız? Örnek: 101 Kemal Kuyucu';
+        scReplyText = guestText('allergen_informed_ask_room', language);
 
         // allergen_pending=false + allergen_asked=true + allergen_verify_pending=TRUE
         // NOT: verification_pending_intent'e DOKUNULMAZ — alerjen kendi alanını kullanır
@@ -2161,12 +2149,7 @@ async function handleMessage(args: {
     if (!avRoom || !avLastName) {
       // Format eksik → tekrar sor (deneme sayılmaz)
       console.log(`[allergen-verify-gate] Eksik format: room=${avRoom} lastName=${avLastName}`);
-      const incompleteMsg =
-        language === 'en'
-          ? 'Please provide your room number and last name together. Example: 101 John Smith'
-          : language === 'de'
-            ? 'Bitte geben Sie Zimmernummer und Nachname an. Beispiel: 101 Hans Müller'
-            : 'Lütfen oda numaranızı ve soyadınızı birlikte yazın. Örnek: 101 Kemal Kuyucu';
+      const incompleteMsg = guestText('allergen_verify_format', language);
 
       await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: incompleteMsg, message_type: 'text' });
       await tg.sendMessage({ chat_id: chatId, text: incompleteMsg });
@@ -2259,12 +2242,7 @@ async function handleMessage(args: {
         .eq('id', conversationId);
 
       // Başarı mesajı
-      const avSuccessMsg =
-        language === 'en'
-          ? `Thank you, ${avFirstName}! Your allergy information has been forwarded to our team. Have a pleasant stay!`
-          : language === 'de'
-            ? `Danke, ${avFirstName}! Ihre Allergieinformation wurde an unser Team weitergeleitet. Guten Aufenthalt!`
-            : `Teşekkürler, ${avFirstName}! Alerjiniz ilgili ekibimize iletildi. İyi konaklamalar!`;
+      const avSuccessMsg = guestText('allergen_verify_success', language, { ad: avFirstName });
 
       await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: avSuccessMsg, message_type: 'text' });
       await tg.sendMessage({ chat_id: chatId, text: avSuccessMsg });
@@ -2286,12 +2264,7 @@ async function handleMessage(args: {
           })
           .eq('id', conversationId);
 
-        const avGiveUpMsg =
-          language === 'en'
-            ? 'We could not match your room number and name. Please contact our front desk for assistance.'
-            : language === 'de'
-              ? 'Zimmernummer und Name konnten nicht zugeordnet werden. Bitte wenden Sie sich an die Rezeption.'
-              : 'Oda numarası ve isim eşleşmedi. Lütfen ön büromuza ulaşabilirsiniz.';
+        const avGiveUpMsg = guestText('allergen_verify_failed_max', language);
 
         await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: avGiveUpMsg, message_type: 'text' });
         await tg.sendMessage({ chat_id: chatId, text: avGiveUpMsg });
@@ -2305,12 +2278,10 @@ async function handleMessage(args: {
         .update({ allergen_verify_attempts: currentAttempt })
         .eq('id', conversationId);
 
-      const avRetryMsg =
-        language === 'en'
-          ? `Room number and name did not match (attempt ${currentAttempt}/${MAX_ALLERGEN_VERIFY_ATTEMPTS}). Please try again. Example: 101 John Smith`
-          : language === 'de'
-            ? `Zimmernummer und Name stimmen nicht überein (Versuch ${currentAttempt}/${MAX_ALLERGEN_VERIFY_ATTEMPTS}). Bitte erneut versuchen. Beispiel: 101 Hans Müller`
-            : `Oda numarası ve isim eşleşmedi (${currentAttempt}/${MAX_ALLERGEN_VERIFY_ATTEMPTS} deneme). Lütfen tekrar deneyin. Örnek: 101 Kemal Kuyucu`;
+      const avRetryMsg = guestText('allergen_verify_retry', language, {
+        n: String(currentAttempt),
+        max: String(MAX_ALLERGEN_VERIFY_ATTEMPTS),
+      });
 
       await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: avRetryMsg, message_type: 'text' });
       await tg.sendMessage({ chat_id: chatId, text: avRetryMsg });
@@ -2713,9 +2684,12 @@ async function handleMessage(args: {
     console.error('[telegram] AI hatası:', aiError);
   }
 
+  // AI cevap uretemedi (istisna / bos yanit): notr "alindi" mesaji. guestLang HENUZ
+  // kurulmadi (asagida, aiResult'a bagli) — ayni olcut burada elle veriliyor:
+  // classify'in dil tespiti, yoksa arayuz dili. guestText normalizeGuestLang uygular.
   const rawResponseText =
     aiResult?.response_to_guest ??
-    'Mesajınız alındı, en kısa sürede ilgili departmandan dönüş yapılacaktır.';
+    guestText('ai_fallback_received', aiResult?.language ?? language);
 
   const aiReplyText = stripMarkdown(rawResponseText);
 
@@ -2815,12 +2789,7 @@ async function handleMessage(args: {
       // AI'in urettigi cevap ("havlu getiriyoruz") bu yolda alakasiz olabilir —
       // teyit kartindan onceki ara mesaji sabitle. Fiyatsiz ozet + onay butonu
       // F&B teyit kapisinda gonderiliyor.
-      finalResponseText =
-        guestLang === 'en'
-          ? 'Preparing your order.'
-          : guestLang === 'de'
-            ? 'Ich bereite Ihre Bestellung vor.'
-            : 'Siparişinizi hazırlıyorum.';
+      finalResponseText = guestText('order_preparing', guestLang);
       console.log('[rs-code-gate] kod yakalandi, fb ye zorlandi', {
         codes: rsParsed.lines.map((l) => l.code),
         finalIntent,
@@ -2858,12 +2827,7 @@ async function handleMessage(args: {
       const codeList = validCodes
         .map((r) => `${String(r.item_code).trim()} - ${r.item_name}`)
         .join('\n');
-      const invalidCodeMsg =
-        guestLang === 'en'
-          ? `The code you entered is not in our menu. Valid codes:\n${codeList}`
-          : guestLang === 'de'
-            ? `Der von Ihnen eingegebene Code ist nicht in unserer Speisekarte. Gueltige Codes:\n${codeList}`
-            : `Yazdığınız kod menümüzde yok. Geçerli kodlar:\n${codeList}`;
+      const invalidCodeMsg = guestText('order_invalid_code', guestLang, { liste: codeList });
       await tg.sendMessage({ chat_id: chatId, text: invalidCodeMsg });
       await supa.from('bot_messages').insert({
         conversation_id: conversationId,
@@ -2914,12 +2878,7 @@ async function handleMessage(args: {
         : [];
 
       if (menuImages.length > 0) {
-        const menuCaption =
-          guestLang === 'en'
-            ? 'Here is our room-service menu 📋 To order, just send the item code and quantity (e.g. 2 RS01).'
-            : guestLang === 'de'
-              ? 'Hier ist unsere Room-Service-Speisekarte 📋 Zum Bestellen senden Sie einfach den Artikelcode und die Menge (z.B. 2 RS01).'
-              : 'Room-service menümüz ekte 📋 Sipariş vermek için ürün kodunu ve adedini yazmanız yeterli (ör. 2 RS01).';
+        const menuCaption = guestText('menu_photo_caption', guestLang);
 
         try {
           await sendPhotos({
@@ -3683,12 +3642,7 @@ async function handleMessage(args: {
           await tg.sendMessage({ chat_id: spaNotifyChatId, text: spaNotifyText });
 
           // SPA iletisim toplama: kart gitti, simdi opsiyonel telefon/mail iste
-          const spaContactAsk =
-            guestLang === 'en'
-              ? 'The spa team will reach out to you. If you like, share your phone number, email, or both and I will pass them on so they can contact you directly.'
-              : guestLang === 'de'
-              ? 'Das Spa-Team wird sich bei Ihnen melden. Wenn Sie moechten, teilen Sie mir Ihre Telefonnummer, E-Mail oder beides mit, dann leite ich diese weiter, damit man Sie direkt erreichen kann.'
-              : 'Spa ekibi sizinle iletişime geçecek. İsterseniz telefon numaranızı, mail adresinizi ya da her ikisini bana iletin; ben kendilerine ulaştırayım, size dönüş yapsınlar.';
+          const spaContactAsk = guestText('spa_contact_ask', guestLang);
           finalResponseText = spaContactAsk;
           try {
             await supa
@@ -3770,19 +3724,11 @@ async function handleMessage(args: {
             const foodCount = foodLines.length;
             const numberedList = foodLines.map((l, i) => `${i + 1}. ${l.name}`).join('\n');
             const noteAskText =
-              guestLang === 'en'
-                ? foodCount > 1
-                  ? `Would you like to add a note to your order?\n\n${numberedList}\n\nPlease specify by number for each item (e.g. "1: no onions, 2: lightly browned")`
-                  : 'Would you like to add a note to your order (e.g. no onions)?'
-                : guestLang === 'de'
-                  ? foodCount > 1
-                    ? `Möchten Sie Ihrer Bestellung eine Notiz hinzufügen?\n\n${numberedList}\n\nBitte geben Sie für jeden Artikel mit Nummer an (z.B. "1: ohne Zwiebeln, 2: leicht getoastet")`
-                    : 'Möchten Sie Ihrer Bestellung eine Notiz hinzufügen (z.B. ohne Zwiebeln)?'
-                  : foodCount > 1
-                    ? `Siparişinize not eklemek ister misiniz?\n\n${numberedList}\n\nHer ürün için numarasıyla yazın (ör. "1: soğansız, 2: az kızarmış")`
-                    : 'Siparişinize eklemek istediğiniz bir not var mı (ör. soğansız olsun)?';
-            const noteYesLabel = guestLang === 'en' ? 'Add a note' : guestLang === 'de' ? 'Notiz hinzufuegen' : 'Not var';
-            const noteNoLabel = guestLang === 'en' ? 'No note' : guestLang === 'de' ? 'Keine Notiz' : 'Notum yok';
+              foodCount > 1
+                ? guestText('order_note_ask_multi', guestLang, { liste: numberedList })
+                : guestText('order_note_ask_single', guestLang);
+            const noteYesLabel = guestText('btn_add_note', guestLang);
+            const noteNoLabel = guestText('btn_no_note', guestLang);
 
             await tg.sendMessage({ chat_id: chatId, text: finalResponseText });
             await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -3815,16 +3761,9 @@ async function handleMessage(args: {
         if (!inMenu) {
           // KADEMELI MENU ONERISI: tum listeyi hemen dokme. Once nazik red + "bakmak ister misiniz?" + buton.
           // Beynin urettigi "yok + liste" cevabini (finalResponseText) sakla, misafir EVET derse callback gonderir.
-          const offerText =
-            guestLang === 'en'
-              ? 'Unfortunately this item is not available right now, we are very sorry. Would you like to see our other available items?'
-              : guestLang === 'de'
-              ? 'Dieser Artikel ist derzeit leider nicht verfuegbar, es tut uns sehr leid. Moechten Sie unsere anderen verfuegbaren Artikel sehen?'
-              : 'Bu ürün şu an mevcut değil, çok üzgünüz. Elimizdeki diğer ürünlere bakmak ister misiniz?';
-          const offerYes =
-            guestLang === 'en' ? 'Yes, show me' : guestLang === 'de' ? 'Ja, zeigen' : 'Evet, bakmak isterim';
-          const offerNo =
-            guestLang === 'en' ? 'No, thanks' : guestLang === 'de' ? 'Nein, danke' : 'Hayır, teşekkürler';
+          const offerText = guestText('menu_item_unavailable', guestLang);
+          const offerYes = guestText('btn_yes_show', guestLang);
+          const offerNo = guestText('btn_no_thanks', guestLang);
 
           await supa
             .from('conversations')
@@ -3872,18 +3811,10 @@ async function handleMessage(args: {
         //    (Yol 1 — tutar sadece personel kartinda).
         const itemsBlock = parsed.lines.map((l) => `• ${l.name} × ${l.qty}`).join('\n');
         const confirmText = hasCodes
-          ? guestLang === 'en'
-            ? `Your order:\n${itemsBlock}\n\nDo you confirm?`
-            : guestLang === 'de'
-              ? `Ihre Bestellung:\n${itemsBlock}\n\nBestaetigen Sie?`
-              : `Siparişiniz:\n${itemsBlock}\n\nOnaylıyor musunuz?`
-          : guestLang === 'en'
-            ? 'I am creating your order. To proceed, could you please confirm?'
-            : guestLang === 'de'
-              ? 'Ich erstelle Ihre Bestellung. Bitte bestaetigen Sie zur Fortsetzung.'
-              : 'Siparişinizi oluşturuyorum. Onaylarsanız ilgili ekibe hemen ileteceğim. Onaylıyor musunuz?';
-        const yesLabel = guestLang === 'en' ? 'Yes, confirm' : guestLang === 'de' ? 'Ja, bestaetigen' : 'Evet, onaylıyorum';
-        const noLabel = guestLang === 'en' ? 'Cancel' : guestLang === 'de' ? 'Abbrechen' : 'Vazgeçtim';
+          ? guestText('order_confirm_prompt', guestLang, { liste: itemsBlock })
+          : guestText('order_confirm_prompt_freeform', guestLang);
+        const yesLabel = guestText('btn_confirm_yes', guestLang);
+        const noLabel = guestText('btn_cancel', guestLang);
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -4102,12 +4033,7 @@ async function handleMessage(args: {
             }
 
             // (4) Misafire özel cevap
-            finalResponseText =
-              guestLang === 'en'
-                ? 'We have noted your allergy and informed the relevant team. Enjoy your meal!'
-                : guestLang === 'de'
-                  ? 'Wir haben Ihre Allergie notiert und das zuständige Team informiert. Guten Appetit!'
-                  : 'Not aldık, ilgili ekibe ilettik. Afiyet olsun.';
+            finalResponseText = guestText('allergen_noted_meal', guestLang);
 
             // (5) Conversation güncelle
             await supa
@@ -4415,12 +4341,7 @@ async function handleMessage(args: {
 
   // (a) Alerji sorusu — F&B cevabından 900ms sonra ayrı mesaj
   if (canAskAllergen) {
-    const allergenQuestion =
-      guestLang === 'en'
-        ? 'Do you have any food allergies or dietary requirements? If yes, please let us know. If not, just reply \'none\'.'
-        : guestLang === 'de'
-          ? 'Haben Sie Lebensmittelallergien oder besondere Ernährungsbedürfnisse? Falls ja, teilen Sie uns diese bitte mit. Falls nein, schreiben Sie einfach \'nein\'.'
-          : 'Herhangi bir gıda alerjiniz var mı? Varsa belirtir misiniz, yoksa \'yok\' yazmanız yeterli.';
+    const allergenQuestion = guestText('allergen_ask_900ms', guestLang);
     await new Promise<void>((resolve) => setTimeout(resolve, 900));
     await supa.from('bot_messages').insert({
       conversation_id: conversationId,

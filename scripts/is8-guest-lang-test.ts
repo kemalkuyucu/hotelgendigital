@@ -163,6 +163,123 @@ check('6n dogru metin tripwire i tetiklemez',
 check('6o ters soru metni de YAKALANIR',
   isSentenceEnd([...guestText('reverify_updated', 'ar')].reverse().join('').trimStart().codePointAt(0)), true);
 
+// (7) P7b — route.ts Tier-1 sabit metinleri ─────────────────────────────────
+// 28 cagri sitesi / 27 anahtar route.ts'teki en/de/tr ucluleri yerine guestText'e
+// baglandi. Burada dogrulanan: 5 dilin DOLU oldugu, ru/ar'in TR'ye DUSMEDIGI
+// (sessiz TR-fallback en sinsi cok-dillilik hatasidir: kod calisir, misafir
+// anlamadigi dili gorur) ve yer tutucularin 5 dilde de SAGLAM kaldigi.
+// DOGRULANAMAZ (canli UAT): metnin Telegram'da o dille gorunmesi, buton etiketi.
+const P7B_KEYS: readonly GuestTextKey[] = [
+  'spa_contact_ask', 'spa_contact_thanks', 'order_preparing', 'order_invalid_code',
+  'menu_photo_caption', 'menu_item_unavailable', 'order_note_ask_multi',
+  'order_note_ask_single', 'order_confirm_prompt', 'order_confirm_prompt_freeform',
+  'btn_confirm_yes', 'btn_cancel', 'btn_add_note', 'btn_no_note', 'btn_yes_show',
+  'btn_no_thanks', 'allergen_ask_900ms', 'allergen_ack_short', 'allergen_ack_none',
+  'allergen_informed', 'allergen_informed_ask_room', 'allergen_verify_format',
+  'allergen_verify_success', 'allergen_verify_failed_max', 'allergen_verify_retry',
+  'allergen_noted_meal', 'ai_fallback_received',
+];
+check('7-0 P7b anahtar sayisi 27', P7B_KEYS.length, 27);
+
+// ── AR TRIPWIRE'LARI (T1-T4) ────────────────────────────────────────────────
+// §6'daki tripwire (cumle noktalamasi BASTA olamaz) yalniz '.'/'؟' ile BITEN
+// metinlerde dis tasir. P7b anahtarlarinin 12'si buton etiketi ya da Latin
+// ornekle biten metin ('... مثال: 101 John Smith') — onlarda tek basina DISSIZ
+// kalirdi, yani guard YANLIS-YESIL doner. Uc tripwire daha eklendi; asagidaki
+// NEGATIF KONTROL her anahtar icin en az birinin ates ettigini KANITLAR.
+const COMMA_AR = 0x060c;
+const cpAt = (ch: string | undefined): number => ch?.codePointAt(0) ?? 0;
+// Arapca yazimda KELIME BASINDA bulunamayan kod noktalari: ta marbuta (ة), yalin
+// hamza (ء), hareke/tenvin. Ters cevrilmis metinde kelime SONLARI basa gecer.
+const cannotStartWord = (c: number): boolean =>
+  c === 0x0629 || c === 0x0621 || (c >= 0x064b && c <= 0x065f) || c === 0x0670;
+// T1: cumle noktalamasi metnin BASINDA olamaz (§6 ile ayni olcut)
+const arT1 = (s: string): boolean => isSentenceEnd(s.trimStart().codePointAt(0));
+// T2: Arap virgulunun SOLU bosluk olamaz, SAGI bosluk ya da metin sonu olmali
+const arT2 = (s: string): boolean => {
+  const a = [...s];
+  for (let i = 0; i < a.length; i++) {
+    if (cpAt(a[i]) !== COMMA_AR) continue;
+    if (a[i - 1] === undefined || /\s/.test(a[i - 1])) return true;
+    if (a[i + 1] !== undefined && !/\s/.test(a[i + 1])) return true;
+  }
+  return false;
+};
+// T3: hicbir kelime yasakli kod noktasiyla baslayamaz
+const arT3 = (s: string): boolean =>
+  s.split(/\s+/).filter(Boolean).some((w) => cannotStartWord(cpAt(w)));
+// T4: yer tutucu BIREBIR korunmali ('{liste}' ters cevrilince '}etsil{' olur)
+const arT4 = (s: string, ps: readonly string[]): boolean => ps.some((p) => !s.includes(p));
+const arTripped = (s: string, ps: readonly string[]): boolean =>
+  arT1(s) || arT2(s) || arT3(s) || arT4(s, ps);
+
+const P7B_PARAMS: Partial<Record<GuestTextKey, readonly string[]>> = {
+  order_confirm_prompt: ['{liste}'],
+  order_invalid_code: ['{liste}'],
+  order_note_ask_multi: ['{liste}'],
+  allergen_verify_success: ['{ad}'],
+  allergen_verify_retry: ['{n}', '{max}'],
+};
+
+for (const k of P7B_KEYS) {
+  const ps = P7B_PARAMS[k] ?? [];
+  for (const l of LANGS) {
+    check(`7a[${k}/${l}] metin dolu`, guestText(k, l).trim().length > 0, true);
+    // Yer tutucu HER dilde durmali — bir dilde dusmusse o dilde {liste}/{ad} bos gider
+    for (const p of ps) check(`7b[${k}/${l}] ${p} yer tutucusu duruyor`, guestText(k, l).includes(p), true);
+  }
+  // TR-FALLBACK YOK kaniti: ru/ar gercekten cevrilmis (kopyala-yapistir TR degil)
+  check(`7c[${k}] ru != tr`, guestText(k, 'ru') !== guestText(k, 'tr'), true);
+  check(`7d[${k}] ar != tr`, guestText(k, 'ar') !== guestText(k, 'tr'), true);
+  check(`7e[${k}] 5 dil 5 ayri metin`, new Set(LANGS.map((l) => guestText(k, l))).size, 5);
+  check(`7f[${k}] bilinmeyen dil -> en`, guestText(k, 'fr'), guestText(k, 'en'));
+  check(`7g[${k}] ar Arapca harf tasiyor`, hasArabicChar(guestText(k, 'ar')), true);
+  // POZITIF: dogru (lojik sirali) metin hicbir tripwire'i tetiklemez
+  check(`7h[${k}] ar tripwire SESSIZ`, arTripped(guestText(k, 'ar'), ps), false);
+  // NEGATIF KONTROL: ters cevrilmis metin en az bir tripwire'i tetiklemeli.
+  // Bu satir olmadan guard'in o anahtarda DIS tasidigi bilinemez (yanlis-yesil).
+  check(`7i[${k}] TERS ar metni YAKALANIR`, arTripped([...guestText(k, 'ar')].reverse().join(''), ps), true);
+}
+
+// (7j) YER TUTUCU DOLDURMA — 5 dilde de deger yerine oturur, artik '{' KALMAZ
+for (const l of LANGS) {
+  check(`7j[${l}] order_confirm_prompt {liste} doldu`,
+    guestText('order_confirm_prompt', l, { liste: '• Cay x2' }).includes('• Cay x2'), true);
+  check(`7k[${l}] order_confirm_prompt artik yer tutucu YOK`,
+    guestText('order_confirm_prompt', l, { liste: 'X' }).includes('{'), false);
+  check(`7l[${l}] allergen_verify_retry {n}/{max} doldu`,
+    guestText('allergen_verify_retry', l, { n: '2', max: '3' }).includes('2/3'), true);
+  check(`7m[${l}] allergen_verify_success {ad} doldu`,
+    guestText('allergen_verify_success', l, { ad: 'Kemal' }).includes('Kemal'), true);
+}
+// Satir sonlari GERCEK satir sonu olmali (kodda `\n${itemsBlock}\n\n` vardi)
+check('7n order_confirm_prompt TR satir yapisi',
+  guestText('order_confirm_prompt', 'tr', { liste: 'A' }), 'Siparişiniz:\nA\n\nOnaylıyor musunuz?');
+check('7o order_note_ask_multi TR satir yapisi (cift bosluk satiri)',
+  guestText('order_note_ask_multi', 'tr', { liste: '1. Kofte' }).includes('\n\n1. Kofte\n\n'), true);
+
+// (7p) TR metinler route.ts'ten BIREBIR — davranis-notr kaniti (§4 ile ayni amac).
+// Yer tutuculu ve karar verilmis anahtarlar kilitlendi; bir sonraki duzenleme
+// TR misafir metnini SESSIZCE degistiremez.
+check('7p1 order_invalid_code TR',
+  guestText('order_invalid_code', 'tr', { liste: 'RS01 - Cay' }), 'Yazdığınız kod menümüzde yok. Geçerli kodlar:\nRS01 - Cay');
+check('7p2 order_confirm_prompt_freeform TR',
+  guestText('order_confirm_prompt_freeform', 'tr'), 'Siparişinizi oluşturuyorum. Onaylarsanız ilgili ekibe hemen ileteceğim. Onaylıyor musunuz?');
+check('7p3 allergen_verify_retry TR (TR bicimi EN/DE den farkli: "(n/max deneme)")',
+  guestText('allergen_verify_retry', 'tr', { n: '1', max: '3' }), 'Oda numarası ve isim eşleşmedi (1/3 deneme). Lütfen tekrar deneyin. Örnek: 101 Kemal Kuyucu');
+check('7p4 allergen_verify_success TR',
+  guestText('allergen_verify_success', 'tr', { ad: 'Ayşe' }), 'Teşekkürler, Ayşe! Alerjiniz ilgili ekibimize iletildi. İyi konaklamalar!');
+check('7p5 ai_fallback_received TR',
+  guestText('ai_fallback_received', 'tr'), 'Mesajınız alındı, en kısa sürede ilgili departmandan dönüş yapılacaktır.');
+// KARAR (P7b): not akisi (eski route.ts 1875/1876) ile siparis akisi ayni butonu
+// farkli yaziyordu — not akisi ASCII ('onayliyorum'/'Vazgectim'), siparis akisi tam
+// Turkce. Tek anahtara indirgenirken TAM TURKCE bicim secildi; asagidaki iki satir
+// ASCII varyantinin geri sizmasini engeller.
+check('7p6 btn_confirm_yes TR tam Turkce (ASCII varyant DUSTU)',
+  guestText('btn_confirm_yes', 'tr'), 'Evet, onaylıyorum');
+check('7p7 btn_cancel TR tam Turkce (ASCII varyant DUSTU)',
+  guestText('btn_cancel', 'tr'), 'Vazgeçtim');
+
 const total = pass + fails.length;
 if (fails.length > 0) {
   console.error(`\n${fails.length} FAIL:`);
