@@ -16,6 +16,13 @@
  */
 import { guestText, normalizeGuestLang, type GuestLang, type GuestTextKey } from '@/lib/i18n/guest-text';
 import { extractPhone, toAsciiDigits } from '@/lib/utils/phone';
+// §9 alerjen "yok" kapisi CANLI fonksiyondan gelir (kopya kalip YASAK). route.ts
+// import edilebilir: modul seviyesinde yan etki/ag cagrisi yok, yalniz tanim var.
+import {
+  isNoAllergenAnswer,
+  NO_ALLERGEN_LATIN,
+  NO_ALLERGEN_NONLATIN,
+} from '@/app/api/webhooks/telegram/[hotelSlug]/route';
 
 let pass = 0;
 const fails: string[] = [];
@@ -279,6 +286,90 @@ check('7p6 btn_confirm_yes TR tam Turkce (ASCII varyant DUSTU)',
   guestText('btn_confirm_yes', 'tr'), 'Evet, onaylıyorum');
 check('7p7 btn_cancel TR tam Turkce (ASCII varyant DUSTU)',
   guestText('btn_cancel', 'tr'), 'Vazgeçtim');
+
+// (8) AR YON KAPISI — kelime duzeyinde mantiksal-sira kaniti ─────────────────
+// §7'nin tripwire'lari YAPISALdir (noktalama/virgul/kelime-basi). Bu bolum ONA
+// DAYANMAZ: beklenen kelimeyi KOD NOKTASINDAN kurar ve `ar` metninde ARAR. Kaynak
+// kod-noktasi oldugu icin editor/kopyalama katmani metni gorsel siraya cevirse
+// bile bu satirlar DEGISMEZ — yani gordugumuz yesil, gercekten dogru siranin
+// kanitidir (goz karari degil). DIS: ayni kelimenin TERS hali BULUNMAMALI.
+const cp = (...a: number[]): string => String.fromCodePoint(...a);
+
+const AR_WORD_MUST: Array<[GuestTextKey, string, string]> = [
+  ['order_confirm_prompt', cp(0x0637, 0x0644, 0x0628, 0x0643), 'talebuk (siparis)'],
+  ['order_preparing', cp(0x0637, 0x0644, 0x0628, 0x0643), 'talebuk (siparis)'],
+  ['menu_photo_caption', cp(0x0642, 0x0627, 0x0626, 0x0645, 0x0629), 'kaimat (liste/menu)'],
+  ['spa_contact_ask', cp(0x0641, 0x0631, 0x064a, 0x0642), 'fariq (ekip)'],
+  ['spa_contact_thanks', cp(0x0641, 0x0631, 0x064a, 0x0642), 'fariq (ekip)'],
+  ['allergen_ask_900ms', cp(0x062d, 0x0633, 0x0627, 0x0633, 0x064a, 0x0629), 'hasasiya (alerji)'],
+  ['allergen_informed', cp(0x062d, 0x0633, 0x0627, 0x0633, 0x064a, 0x0629), 'hasasiya (alerji)'],
+  ['allergen_verify_failed_max', cp(0x063a, 0x0631, 0x0641, 0x0629), 'gurfa (oda)'],
+  ['btn_confirm_yes', cp(0x0646, 0x0639, 0x0645), 'naam (evet)'],
+  ['btn_no_thanks', cp(0x0634, 0x0643, 0x0631), 'sukr (tesekkur)'],
+  ['ai_fallback_received', cp(0x0631, 0x0633, 0x0627, 0x0644, 0x062a, 0x0643), 'risalatuk (mesajiniz)'],
+];
+for (const [k, word, label] of AR_WORD_MUST) {
+  check(`8a[${k}] ar metni "${label}" kelimesini TASIYOR`, guestText(k, 'ar').includes(word), true);
+}
+
+// DIS: ayni kelimenin ters yazimi metinde BULUNMAMALI. Bu satirlar kirmiziya
+// donerse metin gorsel-sirada kaydedilmis demektir (misafire anlamsiz metin gider).
+const AR_WORD_MUST_NOT: Array<[GuestTextKey, string, string]> = [
+  ['order_confirm_prompt', cp(0x0643, 0x0628, 0x0644, 0x0637), 'TERS talebuk'],
+  ['allergen_informed', cp(0x0629, 0x064a, 0x0633, 0x0627, 0x0633, 0x062d), 'TERS hasasiya'],
+];
+for (const [k, word, label] of AR_WORD_MUST_NOT) {
+  check(`8b[${k}] ar metni "${label}" TASIMIYOR`, guestText(k, 'ar').includes(word), false);
+}
+
+// (9) ALERJEN "yok" KAPISI — FONKSIYONEL (route.ts'ten GERCEK fonksiyon) ──────
+// isNoAllergenAnswer canli kapinin ta kendisi (allergen_pending erken kapisi +
+// status='none' dali ayni fonksiyonu cagirir); kopya kalip YOK. Girdiler kod
+// noktasindan kurulur — testin kendi Arapca literali bozulsa bile olcut saglam.
+const AR_NO = cp(0x0644, 0x0627);                                     // لا  = LAM+ALEF
+const AR_NO_REVERSED = cp(0x0627, 0x0644);                            // ال  = ters yazim
+const RU_NO = cp(0x043d, 0x0435, 0x0442);                             // нет
+const AR_ALLERGY = cp(0x062d, 0x0633, 0x0627, 0x0633, 0x064a, 0x0629); // حساسية
+
+// 9a — kalibin ICINDEKI Arapca "yok" LAM+ALEF sirasinda mi? Ters yazilmis olsaydi
+// kalip derlenir, test yesil kalir ama CANLI misafirin «لا» cevabi ESLESMEZDI.
+check('9a kalip LAM+ALEF (لا) tasiyor', NO_ALLERGEN_NONLATIN.source.includes(AR_NO), true);
+check('9b kalip TERS yazimi (ال) TASIMIYOR', NO_ALLERGEN_NONLATIN.source.includes(AR_NO_REVERSED), false);
+check('9c ters yazim girdi olarak ESLESMEZ', NO_ALLERGEN_NONLATIN.test(AR_NO_REVERSED), false);
+
+// 9d/9e — misafir tek kelime yazdi → "alerjim yok" SAYILIR
+check('9d «لا» tek basina -> none', isNoAllergenAnswer(AR_NO), true);
+check('9e «нет» tek basina -> none', isNoAllergenAnswer(RU_NO), true);
+check('9f «لا» noktalamali/bosluklu -> none', isNoAllergenAnswer(`  ${AR_NO}.  `), true);
+check('9g «нет» buyuk harf -> none', isNoAllergenAnswer(RU_NO.toUpperCase()), true);
+
+// 9h — GERCEK alerji bildirimi ASLA "yok" sayilmamali (M4: yanlis-negatif yasak)
+check('9h "عندي حساسية" (alerjim var) -> none DEGIL',
+  isNoAllergenAnswer(cp(0x0639, 0x0646, 0x062f, 0x064a) + ' ' + AR_ALLERGY), false);
+// 9i — CAPA KANITI: cumle «لا» ile BASLIYOR ama alerji bildirimi ("fistik yiyemiyorum").
+// Kalip gomulu arasaydi bu satir kirmizi olurdu ve misafirin alerjisi YUTULURDU.
+const AR_CANNOT_EAT_PEANUTS = [
+  cp(0x0644, 0x0627),                                                   // لا
+  cp(0x0623, 0x0633, 0x062a, 0x0637, 0x064a, 0x0639),                   // أستطيع
+  cp(0x0623, 0x0643, 0x0644),                                           // أكل
+  cp(0x0627, 0x0644, 0x0641, 0x0648, 0x0644),                           // الفول
+  cp(0x0627, 0x0644, 0x0633, 0x0648, 0x062f, 0x0627, 0x0646, 0x064a),   // السوداني
+].join(' ');
+check('9i «لا أستطيع أكل الفول السوداني» -> none DEGIL (capa calisiyor)',
+  isNoAllergenAnswer(AR_CANNOT_EAT_PEANUTS), false);
+check('9j Rusca gomulu ret+alerji -> none DEGIL',
+  isNoAllergenAnswer(`${RU_NO}, ${cp(0x0430, 0x043b, 0x043b, 0x0435, 0x0440, 0x0433, 0x0438, 0x044f)}`), false);
+
+// 9k — REGRESYON KILIDI: LATIN kalibi `\b` ASCII oldugu icin Kiril'i YAKALAMAZ.
+// Bu satir "olu kod" gercegini kayda gecirir; 9l ise telafinin CALISTIGINI kanitlar.
+check('9k LATIN kalibi «нет» yakalamaz (\\b ASCII-only)', NO_ALLERGEN_LATIN.test(RU_NO), false);
+check('9l ama kapi yine de none doner (telafi)', isNoAllergenAnswer(RU_NO), true);
+// Latin/TR yollari BOZULMADI
+check('9m "yok" -> none', isNoAllergenAnswer('yok'), true);
+check('9n "none" -> none', isNoAllergenAnswer('None'), true);
+check('9o "nichts" -> none', isNoAllergenAnswer('nichts'), true);
+check('9p "fistik alerjim var" -> none DEGIL', isNoAllergenAnswer('fistik alerjim var'), false);
+check('9q "yoktur" -> none DEGIL (kelime siniri korunuyor)', isNoAllergenAnswer('yoktur'), false);
 
 const total = pass + fails.length;
 if (fails.length > 0) {

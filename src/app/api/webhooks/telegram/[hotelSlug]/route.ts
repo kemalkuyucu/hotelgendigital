@@ -642,6 +642,32 @@ function detectLanguage(msg: TelegramMessage): string {
   return 'tr';
 }
 
+// ── Alerjen "alerjim yok" cevabi — TEK KAYNAK (Modul 3/4) ────────────────────
+//
+// Iki yerde kullanilir: allergen_pending erken kapisi (alakasiz-soru RE-ENTRY) ve
+// ana dal (status='none'). Ayni karar iki ayri literalde yasarsa biri degisince
+// digeri kayar → tek fonksiyon. is8 bu fonksiyonu IMPORT eder (kopya YASAK).
+//
+// P7b — KOK NEDEN, `\b` ASCII'dir: JS'te \w = [A-Za-z0-9_], Kiril/Arap harf \w
+// DEGIL. Bu yuzden LATIN kalibinin icindeki `нет` CANLIDA HIC ESLESMIYORDU
+// (/\b(...|нет)\b/i.test('нет') === false; olu kod). Rus misafirin "нет" cevabi
+// alerji METNI sayilip mutfaga sahte alerji bildirimi uretiyordu. Latin-disi
+// karsiliklar bu yuzden AYRI, `\b` kullanmayan bir kalipta.
+//
+// GUVENLIK (Modul 4) — capa BILINCLI: latin-disi kalip TUM CEVABA capalanir,
+// gomulu aranmaz. 900ms sorusu "yoksa yalniz «нет»/«لا» yazin" dedigi icin capa
+// yeterlidir; gomulu arasaydik "لا أستطيع أكل الفول السوداني" (fistik yiyemiyorum)
+// GERCEK alerji bildirimi "alerji yok" sayilirdi — M4'te en tehlikeli yon budur.
+// `لا` = U+0644 U+0627 (LAM+ALEF, mantiksal sira); ters yazim ESLESMEZ.
+export const NO_ALLERGEN_LATIN =
+  /\b(yok|yoq|hayır|hayir|hayr|alerjim yok|alerjisi yok|alerji yok|no|none|nichts|нет)\b/i;
+export const NO_ALLERGEN_NONLATIN = /^[\s"'«»]*(нет|لا)[\s"'«»,.!?؟،]*$/u;
+
+export function isNoAllergenAnswer(text: string): boolean {
+  const answer = text.trim().toLowerCase();
+  return NO_ALLERGEN_LATIN.test(answer) || NO_ALLERGEN_NONLATIN.test(answer);
+}
+
 // ── Bilgi sorusu tespiti (Module 17.c bypass) ────────────────────────────────
 //
 // Misafir oda no vermeden GENEL BİLGİ sorusu soruyorsa (toplantı salonu,
@@ -1892,16 +1918,6 @@ async function handleMessage(args: {
   if (conversation.allergen_pending) {
     console.log(`[allergen-sc] allergen_pending=true — short-circuit başlıyor. text="${text.slice(0, 80)}"`);
 
-    // ── P7b: KIRIL/ARAP "alerjim yok" cevabi ──────────────────────────────────
-    // KOK NEDEN: asagidaki iki kalibin `\b` siniri ASCII'dir (\w = [A-Za-z0-9_]),
-    // bu yuzden `\bнет\b` CANLIDA HIC ESLESMIYORDU (olu kod: /\b(...|нет)\b/i.test('нет')
-    // === false). Ayni tuzak Arapca «لا» icin de gecerli olurdu → ayri kalip.
-    // GUVENLIK (Modul 4): eslesme TUM CEVABA capalanir, gomulu aranmaz. 900ms sorusu
-    // "yoksa yalniz «нет»/«لا» yazin" dedigi icin capa yeterlidir; gomulu arasaydik
-    // "لا أستطيع أكل الفول السوداني" (fistik yiyemiyorum) GERCEK alerji bildirimi
-    // "alerji yok" sayilirdi — M4'te en tehlikeli yon budur (yanlis-negatif).
-    const NO_ALLERGEN_NONLATIN = /^[\s"'«»]*(нет|لا)[\s"'«»,.!?؟،]*$/u;
-
     // YENI KAPI: misafir alerji sorusunu cevaplamadi, alakasiz yeni soru/talep yazdiysa
     // bayragi kapat ve mesaji handleMessage RE-ENTRY ile normal akisa birak.
     // NOT: conversation handleMessage'a ARGUMAN DEGIL (1097'de upsertGuestAndConversation'dan
@@ -1910,9 +1926,7 @@ async function handleMessage(args: {
     // ikinci giriste bu short-circuit ATLANIR → sonsuz dongu kirilir (_freshConv gereksiz).
     {
       const _earlyAns = text.trim().toLowerCase();
-      const _earlyNo = /\b(yok|yoq|hayır|hayir|hayr|alerjim yok|alerjisi yok|alerji yok|no|none|nichts|нет)\b/i;
-      const _earlyIsNo = _earlyNo.test(_earlyAns) || NO_ALLERGEN_NONLATIN.test(_earlyAns);
-      if (_earlyAns.length >= 2 && !_earlyIsNo && !(await isAllergenAnswer(text.trim()))) {
+      if (_earlyAns.length >= 2 && !isNoAllergenAnswer(text) && !(await isAllergenAnswer(text.trim()))) {
         await supa
           .from('conversations')
           .update({ allergen_pending: false, allergen_asked: true })
@@ -1937,11 +1951,7 @@ async function handleMessage(args: {
     });
 
     const answerRaw = text.trim().toLowerCase();
-    const noAllergenPatterns = /\b(yok|yoq|hayır|hayir|hayr|alerjim yok|alerjisi yok|alerji yok|no|none|nichts|нет)\b/i;
-    const hasAllergenText =
-      answerRaw.length > 0 &&
-      !noAllergenPatterns.test(answerRaw) &&
-      !NO_ALLERGEN_NONLATIN.test(answerRaw);
+    const hasAllergenText = answerRaw.length > 0 && !isNoAllergenAnswer(text);
     // Çok kısa (< 2 karakter) metinler alakasız sayılır
     const isIrrelevant = answerRaw.length < 2;
 
@@ -1955,7 +1965,7 @@ async function handleMessage(args: {
       scReplyText = guestText('allergen_ack_short', language);
       console.log(`[allergen-sc] Alakasız cevap → status=asked_no_response`);
     } else if (!hasAllergenText) {
-      // noAllergenPatterns VEYA NO_ALLERGEN_NONLATIN eşleşti → "yok"
+      // isNoAllergenAnswer eşleşti → "yok"
       allergenStatus = 'none';
       scReplyText = guestText('allergen_ack_none', language);
       console.log(`[allergen-sc] Alerji yok → status=none`);
