@@ -21,7 +21,10 @@ import {
   shouldFireFalsePromiseGuard,
   hasEventKeyword,
   hasForwardPromiseTr,
+  preferEventOverPrice,
 } from '@/lib/ai/event-contact-gate';
+import { startLeadCapture } from '@/lib/lead/lead-capture';
+import { guestText } from '@/lib/i18n/guest-text';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { EVENT_CONTACT_NOTIFY, PROMISE_BACKSTOP_NOTIFY, messageTypeTraits } from '@/lib/ai/message-types';
 
@@ -158,6 +161,43 @@ check('10f DE vaat + LLM etiketi -> guard',
   shouldFireFalsePromiseGuard({ anyForward: false, llmClaimsForward: true, replyText: 'Ich habe es an unser Team weitergeleitet.' }), true);
 check('10g bos cevap + etiket yok -> guard YOK',
   shouldFireFalsePromiseGuard({ anyForward: false, llmClaimsForward: null, replyText: '   ' }), false);
+
+// ── (11) FIYAT KAPISI NEGATIF GUARD (preferEventOverPrice) ────────────────────
+// CANLI KIRILMA (2026-07-28): "dugun organizasyonu icin fiyat almak istiyoruz" ->
+// detectPriceIntent EVET -> route.ts fiyat kapisi `return` -> classify HIC calismadi
+// -> event lead ACILMADI, misafire oda fiyati icin tarih/kisi soruldu.
+// Guard mesaji fiyat kapisindan gecirir; forward karari DEGISMEDI (asagida kanit).
+check('11a etkinlik + fiyat sinyali -> guard ACIK',
+  preferEventOverPrice('düğün organizasyonu için fiyat almak istiyoruz'), true);
+check('11b etkinlik + iletisim sinyali -> guard ACIK',
+  preferEventOverPrice('düğün organizasyonu için kimle görüşebilirim'), true);
+check('11c duz oda fiyati -> guard KAPALI',
+  preferEventOverPrice('2 kişi 3 gece oda fiyatı'), false);
+check('11d etkinlik BILGI sorusu (sinyal yok) -> guard KAPALI',
+  preferEventOverPrice('düğün yapıyor musunuz'), false);
+check('11e salon kapasite sorusu -> guard KAPALI',
+  preferEventOverPrice('balo salonu kaç kişilik'), false);
+
+// Regresyon: DUZ ODA REZERVASYONU fiyat kapisinda KALMALI (etkinlik keyword'u yok).
+check('11f rezervasyon yaptirmak -> guard KAPALI', preferEventOverPrice('rezervasyon yaptırmak istiyorum'), false);
+check('11g musait oda var mi -> guard KAPALI', preferEventOverPrice('müsait oda var mı'), false);
+check('11h temmuzda fiyat -> guard KAPALI', preferEventOverPrice('temmuzda oda fiyatı nedir'), false);
+check('11i aile odasi ne kadar -> guard KAPALI', preferEventOverPrice('aile odası ne kadar'), false);
+// Spa yolu KENDI guard'inda kalir (iki guard birbirinin isini yapmaz)
+check('11j spa randevusu -> event guard KAPALI', preferEventOverPrice('spa randevusu almak istiyorum'), false);
+// Toplanti salonu REZERVASYONU oda rezervasyonu DEGILDIR -> event yoluna gider
+check('11k toplanti salonu rezerve -> guard ACIK', preferEventOverPrice('toplantı salonu rezerve etmek istiyorum'), true);
+
+// (12) UCTAN UCA: guard atlatinca lead GERCEKTEN aciliyor mu?
+//      Zincir: fiyat kapisi ATLANIR -> event kapisi FORWARD -> lead ilk soruyu sorar.
+const canliVaka = 'düğün organizasyonu için fiyat almak istiyoruz';
+check('12a halka-1 fiyat kapisi atlanir', preferEventOverPrice(canliVaka), true);
+check('12b halka-2 event kapisi FORWARD', trBranch(canliVaka), 'FORWARD');
+const leadOpen = startLeadCapture({ topic: canliVaka, notifyChatId: 1, language: 'tr' });
+check('12c halka-3 lead acilir (isim+soyisim+telefon TEK soru)',
+  leadOpen.question, guestText('lead_ask_all', 'tr'));
+check('12d lead state konuyu tasir', leadOpen.state.topic, canliVaka);
+check('12e non-guest lead odasiz acilir', leadOpen.state.room, null);
 
 const total = pass + fails.length;
 if (fails.length > 0) {

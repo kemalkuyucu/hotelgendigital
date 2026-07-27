@@ -69,6 +69,28 @@ export function hasContactSignal(normalizedMsg: string): boolean {
   return CONTACT_SIGNALS.some((k) => normalizedMsg.includes(k));
 }
 
+/**
+ * FIYAT KAPISI NEGATIF GUARD (route.ts) — `isSpaContext` ikizi (b7b407b ayni deseni
+ * spa icin kurmustu).
+ *
+ * KOK NEDEN (canli, 2026-07-28): canli fiyat kapisi classify'dan ONCE calisip
+ * `return` ediyor. "dugun organizasyonu icin fiyat almak istiyoruz" mesaji
+ * detectPriceIntent'e EVET dedirtip oraya takiliyor, bu yuzden
+ * `decideEventContactForward` ve lead akisi HIC calismiyordu; misafire etkinlik
+ * yerine oda fiyati icin tarih/kisi sayisi soruluyordu.
+ *
+ * Bu predicate KARAR VERMEZ — yalnizca mesajin event kapisina ULASMASINI saglar
+ * (`decideEventContactForward` DEGISMEDI). Ikinci bir dedektor de degildir:
+ * ayni dosyadaki hasEventKeyword / hasEventRequestSignal / hasContactSignal beslenir.
+ *
+ * AND sarti BILINCLI — keyword TEK BASINA yetmez: "dugun yapiyor musunuz",
+ * "balo salonu kac kisilik" duz BILGI sorulari fiyat/KB akisinda KALIR.
+ */
+export function preferEventOverPrice(rawText: string): boolean {
+  const n = normalizeTr(String(rawText ?? ''));
+  return hasEventKeyword(n) && (hasEventRequestSignal(n) || hasContactSignal(n));
+}
+
 export interface EventContactDecision {
   forward: boolean;
   /** Karari KIM verdi — log/teshis icin. */

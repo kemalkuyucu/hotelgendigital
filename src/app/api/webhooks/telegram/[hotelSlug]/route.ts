@@ -10,6 +10,7 @@ import { classifyAndRespond } from '@/lib/ai/classify-and-respond';
 import type { ConversationContextMessage } from '@/lib/ai/classify-and-respond';
 import { detectPriceIntent } from '@/lib/ai/detect-price-intent';
 import { isSpaContext } from '@/lib/ai/spa-context';
+import { preferEventOverPrice } from '@/lib/ai/event-contact-gate';
 import { handleRoomPriceQuery, handleRoomDetailQuery } from '@/lib/ai/room-price-tool';
 import { detectRoomDetailIntent } from '@/lib/ai/detect-room-detail-intent';
 import { sendPhotos } from '@/lib/channels/send-photos';
@@ -2404,7 +2405,10 @@ async function handleMessage(args: {
   const priceHistory = (context || [])
     .map((m) => `${m.direction === 'outbound' ? 'Bot' : 'Misafir'}: ${m.text}`)
     .join('\n');
-  if (args.ibeType && args.ibeDomain && !isSpaContext(text)) {
+  // ETKINLIK NEGATIF GUARD (isSpaContext ikizi): "dugun/organizasyon + talep sinyali"
+  // mesaji fiyat kapisina DUSMEZ — burada `return` edilirse classify hic calismaz ve
+  // event lead'i (decideEventContactForward -> startLeadCapture) acilmazdi.
+  if (args.ibeType && args.ibeDomain && !isSpaContext(text) && !preferEventOverPrice(text)) {
     // v5: Bekleyen oda-detay follow-up varsa (onceki turda tarih sorduk),
     // bu turdaki mesaj fiyat kapisina DEGIL, asagidaki detail_pending bloguna
     // gitmeli. Yoksa bare tarih "fiyat" sanilip en-ucuz-4 listesi doner ve
