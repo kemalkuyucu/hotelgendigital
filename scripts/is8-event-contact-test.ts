@@ -23,6 +23,7 @@ import {
   hasForwardPromiseTr,
   preferEventOverPrice,
 } from '@/lib/ai/event-contact-gate';
+import { shouldSkipForward } from '@/app/api/webhooks/telegram/[hotelSlug]/route';
 import { startLeadCapture } from '@/lib/lead/lead-capture';
 import { guestText } from '@/lib/i18n/guest-text';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
@@ -212,6 +213,25 @@ check('13b oda onekli salt kimlik -> guard KAPALI',
   preferEventOverPrice('oda 312 kemal kuyucu'), false);
 check('13c canli kirilma cumlesi -> guard ACIK (re-verify atlanir)',
   preferEventOverPrice('40 kişilik düğün organizasyonu için fiyat almak istiyoruz'), true);
+
+// ── (14) FORWARD SUPPRESSOR (route.ts shouldSkipForward — GERCEK fonksiyon) ───
+// KAPI: route.ts'te `if (skipForward)` forward blogunu KOMPLE atlar ve lead acilisi
+// (startLeadCapture) o blogun ICINDEDIR. Etkinlik mesajinda LLM "KB'den cevapladim"
+// derse (answered_from_knowledge=true) lead HIC acilmazdi: misafir salon bilgisini
+// alir, personele hicbir sey gitmez (SESSIZ YUTMA). Istisna YALNIZ etkinlik mesajinda.
+const EV_MSG = '40 kişilik düğün organizasyonu için fiyat almak istiyoruz';
+check('14a etkinlik + KB cevabi -> forward BASTIRILMAZ',
+  shouldSkipForward({ aiShouldForward: true, answeredFromKnowledge: true, guestMessage: EV_MSG }), false);
+check('14b duz etkinlik BILGI sorusu + KB cevabi -> bastirilir (eski davranis)',
+  shouldSkipForward({ aiShouldForward: true, answeredFromKnowledge: true, guestMessage: 'düğün yapıyor musunuz' }), true);
+check('14c oda fiyati + KB cevabi -> bastirilir (eski davranis)',
+  shouldSkipForward({ aiShouldForward: true, answeredFromKnowledge: true, guestMessage: 'temmuzda oda fiyatı nedir' }), true);
+check('14d operasyonel talep + KB cevabi -> bastirilir (eski davranis)',
+  shouldSkipForward({ aiShouldForward: true, answeredFromKnowledge: true, guestMessage: 'klima çalışmıyor' }), true);
+check('14e siniflandirici forward etmiyorsa etkinlik bile ZORLAMAZ',
+  shouldSkipForward({ aiShouldForward: false, answeredFromKnowledge: false, guestMessage: EV_MSG }), true);
+check('14f KB cevabi yok + forward var -> bastirma YOK',
+  shouldSkipForward({ aiShouldForward: true, answeredFromKnowledge: false, guestMessage: 'havlu istiyorum' }), false);
 
 const total = pass + fails.length;
 if (fails.length > 0) {

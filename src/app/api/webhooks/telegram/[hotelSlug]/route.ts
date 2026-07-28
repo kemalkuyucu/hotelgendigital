@@ -669,6 +669,28 @@ export function isNoAllergenAnswer(text: string): boolean {
   return NO_ALLERGEN_LATIN.test(answer) || NO_ALLERGEN_NONLATIN.test(answer);
 }
 
+// ── FORWARD SUPPRESSOR — TEK KAYNAK ──────────────────────────────────────────
+//
+// Ayni formul IKI yerde yasiyordu (genel hesap + persistent-verified dali); biri
+// degisince digeri sessizce kayardi. Tek fonksiyona alindi ki is8 GERCEK modulu
+// import edip dogrulasin (kopya fonksiyon YASAK). Mantik AYNEN korundu, tek EK
+// asagidaki etkinlik istisnasidir.
+//
+// ETKINLIK ISTISNASI: `answered_from_knowledge` LLM'in karari. Etkinlik mesajinda
+// (keyword + talep sinyali) forward'i BASTIRAMAZ — cunku event forward karari zaten
+// DETERMINISTIK verildi (KALICI KARAR #3). Bastirsaydi `if (skipForward)` forward
+// blogunu komple atlar, misafir salon bilgisini alir ve lead HIC acilmazdi: personel
+// haberdar olmaz, uzerine gidilecek bir kayit kalmaz (SESSIZ YUTMA).
+// `aiShouldForward` KORUNUR: siniflandirici forward-edilebilir intent uretmediyse
+// forward ZORLANMAZ.
+export function shouldSkipForward(p: {
+  aiShouldForward: boolean;
+  answeredFromKnowledge: boolean;
+  guestMessage: string;
+}): boolean {
+  return !p.aiShouldForward || (p.answeredFromKnowledge && !preferEventOverPrice(p.guestMessage));
+}
+
 // ── Bilgi sorusu tespiti (Module 17.c bypass) ────────────────────────────────
 //
 // Misafir oda no vermeden GENEL BİLGİ sorusu soruyorsa (toplantı salonu,
@@ -2754,7 +2776,11 @@ async function handleMessage(args: {
   // isInfoOnlyQuery forward hesabindan CIKARILDI: TR keyword listesi yabanci dildeki gercek
   // talebi yutuyordu. Bilgi sorusunu forward'dan koruyan iki dil-bagimsiz sart yeterli:
   // aiShouldForward (routeIntentToDepartment tablosu) + answered_from_knowledge (LLM karari).
-  let skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
+  let skipForward = shouldSkipForward({
+    aiShouldForward,
+    answeredFromKnowledge: aiResult?.answered_from_knowledge ?? false,
+    guestMessage: text,
+  });
   // Modül 3: Bu turda oda no (doğrulama) sorusu sorulduysa true — alerji sorusu ASLA aynı turda çıkmasın
   let verificationAskedThisRound = false;
 
@@ -3363,7 +3389,11 @@ async function handleMessage(args: {
     // suppressor'ını KALDIR; forward yalnız gerçekten forward-edilebilir intent varsa
     // olur (non-forwardable/social/KB hâlâ korunur).
     // isInfoOnlyQuery burada da CIKARILDI — TR keyword listesi yabanci dildeki talebi yutuyordu.
-    skipForward = !aiShouldForward || (aiResult?.answered_from_knowledge ?? false);
+    skipForward = shouldSkipForward({
+      aiShouldForward,
+      answeredFromKnowledge: aiResult?.answered_from_knowledge ?? false,
+      guestMessage: text,
+    });
     console.log(`[persistent-verify] Forward akışına gidiliyor. intent=${finalIntent} skipForward=${skipForward}`);
   } else if (needsReVerification) {
     // Doğrulanmış misafirin konağı bitti → özel mesaj gönder
