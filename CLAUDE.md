@@ -6,6 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
+- **SON PROD (13. oturum): `1cc5efb`** — P7b Tier-2 + IS 10 kalici dil. Zincir:
+  `262e659` (Tier-2 + IS 10) -> `d22cc5e` (hk `detected` slot fix + is8 kapsam) ->
+  `1cc5efb` (order:noop gerekcesi). Yedek tag: `pre-tier2-20260728`.
 
 ## 1. CALISMA PRENSIPLERI
 - **Reconnaissance-first:** Edit'ten once ilgili dosyalari OKU. Varsayimla kod yazma.
@@ -64,7 +67,7 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
-- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (187) +
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (13. oturum sonu **1651/1651**, 10 dosya; 988 -> 1651: IS 10 resolver + sozluk-tamami §11 + ar yon §12 + `{liste}` §13) +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip) +
   [D] sabit-marka taramasi (src/**, dosya-bazli allowlist). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
@@ -160,6 +163,52 @@ yeni check-in ile yuklenince anahtar degisir → eski satir **arsivlenir**, YENI
 |---|---|
 | src/lib/menu/parse-order.ts | parseOrder regex kod+adet, extractOrderNote (DIKKAT: src/lib/ai/ ALTINDA DEGIL) |
 | src/lib/sla/handle-order-callback.ts | parsePendingOrder -> kart -> room_service_orders INSERT |
+
+### Misafir dili (IS 10 — KALICI DIL) · sevk `1cc5efb`
+
+**KOK SORUN:** callback turunda (misafir butona basti) ortada MESAJ METNI YOKTUR →
+dil tespit edilemez. Bu yuzden `handle-order-callback` / `handle-note-callback`
+`lang='tr'` HARDCODE tasiyordu (en/de dallari OLU KOD) ve RU/AR misafir tum
+siparis/not/housekeeping akisinda Turkce cevap aliyordu. Telegram arayuz dili
+(`language_code`) olcut DEGILDIR: arayuzu Turkce olan misafir Rusca yazar (IS 17).
+
+**COZUM:** dil, GUVENILIR bilindigi anda konusmaya YAZILIR; callback'ler ORADAN okur.
+
+| Dosya | Sorumluluk |
+|---|---|
+| src/lib/i18n/guest-text.ts | **TEK KAYNAK.** `guestText(key,lang,params)` 5-dil sozluk (tr/en/de/ru/ar) + `resolvePreferredLang` / `readPreferredLang` / `withPreferredLang` / `ALL_GUEST_TEXT_KEYS` / `PREFERRED_LANG_METADATA_KEY`. SAF: IO yok |
+| route.ts ~2766 | **YAZMA** — `withPreferredLang` MERGE, yalniz DEGISINCE, `[lang-persist]` log |
+| route.ts ~1322 | `persistedLang` — classify ONCESI dallarin dili |
+| handle-order/note/housekeeping-callback.ts | **OKUMA** — `conv.metadata` -> resolver |
+
+- **Depo: `conversations.metadata.preferred_language` (jsonb) — MIGRATION YOK.** Kolon
+  eklemek migration ister; lead akisi (lead-capture.ts) ayni metadata'yi zaten
+  kullaniyor. Yazma MERGE'dir: `lead_capture` EZILMEZ (kor UPDATE YASAK).
+- **`resolvePreferredLang` sirasi BAGLAYICI: `detected` > `stored` > `interfaceLang`.**
+  `detected` = O TURUN classify tespiti (taze) — route.ts `advanceHousekeeping`'e
+  `guestLang` gecer, bu ARAYUZ dili DEGILDIR, bu yuzden `detected` slotuna verilir.
+  Yanlis slot = bayat kalici dil taze tespiti EZER (bir kez yasandi, `d22cc5e`).
+  Ilk DOLU aday kazanir ve `normalizeGuestLang`den gecer: destek disi kod ('fr')
+  -> 'en', ALTTAKI adaya DUSMEZ (yoksa Fransiz'a gecmisten kalma Rusca giderdi).
+- **`readPreferredLang` kayit yoksa `null` doner** ('en' DEGIL): "kayit yok" ile
+  "kayitli dil en" ayni sey degildir, fallback'i cagiran isletir.
+- **Callback fallback'i `'tr'`** (guest-text varsayilani 'en' DEGIL): bu sevkten
+  ONCE acilmis konusmalarda kalici dil yoktur ve o botlar Turkce konusuyordu.
+- **classify ONCESI dallar `persistedLang` kullanir:** B4 alerjen cevabi, not
+  yakalama, 17.7-B isim eslesmesi, spa iletisim, AI fallback. (classify SONRASI
+  olcut `guestLang`dir — daha tazedir.)
+- **ISTISNA — `order:noop` (route.ts:399) BILINCLI `'tr'`:** callback_data convId
+  TASIMAZ (64-byte siniri) ve o dalda conversation YUKLU DEGIL; dil ancak ek bir
+  `telegram_chat_id` sorgusuyla okunurdu. Yol nadir (pasif butona ikinci basim),
+  gerekce cagri yerinde yazili. Metin yine guest-text.ts'te.
+- **RTL/Arapca — GOZ KARARI YASAK.** ar metinleri relay/diff'te TERS gorunur;
+  dogrulama `is8-guest-lang-test.ts` §12'de: beklenen KOK **kod noktasindan** kurulur,
+  metinde ARANIR ve TERS yazimi BULUNMAMALIDIR. 38/38 Tier-2 anahtari kapsanir,
+  `12z` sayaci kapsam disi anahtar eklenirse kirmiziya doner. §6'nin noktalama
+  tripwire'i yalniz '؟' ile BITEN cumleleri yakalar — duz cumle reversal'ini
+  ancak §12 yakalar. Cekim eki degisebilir: KOK aranir ("ملاحظتك" icinde "ملاحظ").
+- **Ceviri unutma kapisi:** §11 `ALL_GUEST_TEXT_KEYS`i (sozlukten TURER, elde liste
+  YOK) gezer; her anahtar 5 dilde DOLU ve `ru != tr`, `ar != tr` olmak zorunda.
 
 ### Ortak
 | Dosya | Sorumluluk |
@@ -283,6 +332,14 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - **KIMLIK/LINK TASIMA:** Bir Telegram damgasini/oturumu otomatik tasiyan her
   islemde varsayilan **TASIMA YOK**; yalniz TEK-ANLAMLI ayni-kisi kanitinda
   tasi. Yanlis tasima = misafirin baskasinin odasini gormesi.
+- **DEPLOY AYRI VE ACIK ONAYLIDIR:** talimatta **acikca `vercel --prod` YAZMIYORSA
+  DEPLOY ETME.** Is bitince commit + rapor'da DUR; onayi bekle. "Kapat", "sevk et",
+  "bitir" gibi ifadeler deploy izni SAYILMAZ. Commit ve push da ayni disiplinle
+  yalniz istendiginde yapilir.
+- **MISAFIRE DONUK SABIT METIN TEK KAYNAKTA:** yeni bir misafir metni (mesaj, buton
+  etiketi, kart etiketi, callback toast'i) `src/lib/i18n/guest-text.ts`'e 5 dille
+  eklenir; dosya icine inline literal YAZILMAZ. Ikinci kopya = biri degisince
+  digerinin sessizce kaymasi. Dil `resolvePreferredLang` ile cozulur.
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
 ## 4. TUZAKLAR (defalarca saat kaybettirdi)
@@ -338,11 +395,32 @@ Her is sonunda:
 Asla "tamamlandi, calisiyor" yazma. Neyin dogrulanmadigini yaz.
 
 ## 7. BILINEN TEKNIK BORC (talimat gelmeden DOKUNMA — sadece bilincinde ol)
-- **Misafire donuk ASCII metin ihlali:** `advanceHousekeeping` misafire
-  "Kac adet ... istersiniz?" ve ASCII esya etiketleri ("yuz havlusu", "carsaf")
-  gonderiyor; forward sonrasi onay mesajlari da ASCII ("en kisa surede").
-  Kural "misafire donuk metinler TAM Turkce" — bu yol kurali ihlal ediyor.
-  Yeni metin YAZARKEN ihlali YAYMA (etiketsiz/tam Turkce yaz).
+
+**13. oturumda KAPANDI** (yeniden acmayin): P7b RU/AR misafir metinleri · Tier-2
+callback/toast dili · IS 10 kalici dil · `handle-order/note-callback` iki
+`lang='tr'` HARDCODE'u · B4 alerjen-cevap dili · hk `language` yanlis-slot (madde-5).
+
+**SIRADAKI ACIK IS:** verification-core kok nedeni (asagida).
+
+- **verification parse yanlis-pozitifi (SIRADAKI IS):** `ROOM_REGEX`
+  (`verify-guest.ts:79`) prefix'siz oldugu icin serbest metindeki HER 2-4 haneli
+  sayiyi oda no sayar; "40 kisilik dugun..." -> oda "40". Ustune `requestStopWords`
+  `\b` kalibi cekim eklerini KACIRIR ("istiyoruz" != "istiyorum") -> mesaj
+  `isPureIdentityClaim` sayilip re-verify'a duser. Su an event mesajlari
+  `preferEventOverPrice` guard'iyla o kapidan MUAF; asil parse DUZELTILMEDI —
+  baska mesaj siniflarinda ayni tuzak DURUYOR. Duzeltmek verification cekirdegine
+  dokunmaktir, ayri korpus ister.
+- **ru/ar ceviri anlam review'u YOK:** 5-dil sozlukteki Rusca/Arapca metinler is8
+  ile yalniz YON, DOLULUK ve "tr'den farkli" acisindan dogrulanir; ANLAM/uslup
+  icin native goz gecmedi. Misafire giden metinler, oncelik orta.
+- **`order:noop` dil-baglama:** tek kalan bilincli `'tr'` (bkz. IS 10 istisnasi).
+  callback_data'ya convId sigdirmak ya da chat_id lookup'i acmak gerekir; nadir
+  yol oldugu icin ertelendi.
+- **Misafire donuk ASCII metin ihlali (KISMEN kapandi):** `advanceHousekeeping`in
+  adet sorusu artik guest-text.ts'ten TAM Turkce geliyor ("Kaç adet ... istersiniz?"),
+  onay/iptal kart etiketleri de oyle. KALAN: `labelForHousekeepingCode` esya
+  etiketleri hala ASCII ve TR ("yuz havlusu", "carsaf") — 5 dilde de ayni etiket
+  yer tutucuya basiliyor. Etiket sozlugu ayri is; yeni metin YAZARKEN ihlali YAYMA.
 - **route.ts damga-okuma kopyasi:** hkItems ve hkComplaint kapilari `prevV`
   okumasini ayri ayri (yaklasik 12 satir) tekrarliyor. Kritik bir deger iki
   yerde yasiyor — biri degisirse digeri kayar.
