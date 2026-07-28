@@ -35,7 +35,14 @@ import {
   buildLeadFinalCard,
 } from '@/lib/lead/lead-capture';
 // İŞ 17 — misafire giden sabit metinlerin dil seçimi (tek kaynak)
-import { guestText, normalizeGuestLang, type GuestLang } from '@/lib/i18n/guest-text';
+import {
+  guestText,
+  normalizeGuestLang,
+  readPreferredLang,
+  withPreferredLang,
+  resolvePreferredLang,
+  type GuestLang,
+} from '@/lib/i18n/guest-text';
 // İŞ 17 — telefon tespiti TEK KAYNAK (SPA kapısındaki ikinci regex kopyası kaldırıldı)
 import { extractPhone } from '@/lib/utils/phone';
 import { downloadTelegramAudio } from '@/lib/voice/download-telegram-audio';
@@ -389,7 +396,7 @@ export async function POST(
         await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ callback_query_id: cq.id, text: 'Bu siparis zaten islendi' }),
+          body: JSON.stringify({ callback_query_id: cq.id, text: guestText('order_already_processed', 'tr') }),
         });
         return NextResponse.json({ ok: true });
       }
@@ -790,6 +797,9 @@ interface ConversationState {
   // Iki asamali not akisi (025_note_pending)
   note_pending: boolean;
   note_pending_order: string | null;
+  // IS 10 — serbest state (jsonb): lead_capture VE preferred_language burada yasar.
+  // Kolon eklemek migration ister; metadata zaten mevcut ve lead akisi kullaniyor.
+  metadata: unknown;
 }
 
 interface VerificationFlowResult {
@@ -1304,6 +1314,15 @@ async function handleMessage(args: {
 
   const { guestName, conversationId, conversation } = await upsertGuestAndConversation({ supa, msg });
   const language = detectLanguage(msg);
+  // İŞ 10 — KALICI DİL: classify ÖNCESİ çalışan dallar (alerjen cevabı, not yakalama,
+  // 17.7-B isim eşleşmesi, spa iletişim) mesaj metninden dil tespit EDEMEZ; bugüne
+  // kadar Telegram ARAYÜZ diline düşüyorlardı — arayüzü Türkçe olan Rus misafir
+  // Türkçe cevap alıyordu. Artık önce konuşmaya yazılmış kalıcı dil okunur, o yoksa
+  // arayüz dili. (classify SONRASI ölçüt guestLang'dir; o daha tazedir.)
+  const persistedLang: GuestLang = resolvePreferredLang({
+    stored: readPreferredLang(conversation.metadata),
+    interfaceLang: language,
+  });
 
   // ── LEAD CAPTURE RESUME (etkinlik/organizasyon iletişim toplama) ────────────
   // Konuşma bir lead turunda mı? State conversations.metadata.lead_capture içinde
@@ -1732,7 +1751,7 @@ async function handleMessage(args: {
             chat_id: chatId,
             // İŞ 17: TR-hardcoded idi. Bu kapı classify'dan ÖNCE olduğu için ölçüt
             // arayüz dilidir (elde tek sinyal o) — TR arayüzde metin AYNEN aynı kalır.
-            text: guestText('name_match_failed', language),
+            text: guestText('name_match_failed', persistedLang),
           });
           return;
         }
@@ -1857,7 +1876,7 @@ async function handleMessage(args: {
           console.error('[spa-contact] forward failed', e instanceof Error ? e.message : e);
         }
         // Misafire tesekkur (dile gore)
-        const spaThanks = guestText('spa_contact_thanks', language);
+        const spaThanks = guestText('spa_contact_thanks', persistedLang);
         await tg.sendMessage({ chat_id: chatId, text: spaThanks });
         console.log(`[spa-contact] iletisim alindi ve SPA'ya iletildi. conversationId=${conversationId}`);
         return;
@@ -1908,7 +1927,8 @@ async function handleMessage(args: {
       .eq('id', conversationId);
 
     // Onay karti (fiyatsiz ozet + butonlar) — handle-note-callback ile ayni desen
-    const noteLang = detectLanguage(msg);
+    // İŞ 10: not cevabı classify'dan ÖNCE işleniyor → arayüz dili yerine kalıcı dil.
+    const noteLang = persistedLang;
     const itemsBlock = orderObj.lines.map((l) => `• ${l.name} × ${l.qty}`).join('\n');
     const confirmText = guestText('order_confirm_prompt', noteLang, { liste: itemsBlock });
     const yesLabel = guestText('btn_confirm_yes', noteLang);
@@ -1985,12 +2005,12 @@ async function handleMessage(args: {
 
     if (isIrrelevant) {
       allergenStatus = 'asked_no_response';
-      scReplyText = guestText('allergen_ack_short', language);
+      scReplyText = guestText('allergen_ack_short', persistedLang);
       console.log(`[allergen-sc] Alakasız cevap → status=asked_no_response`);
     } else if (!hasAllergenText) {
       // isNoAllergenAnswer eşleşti → "yok"
       allergenStatus = 'none';
-      scReplyText = guestText('allergen_ack_none', language);
+      scReplyText = guestText('allergen_ack_none', persistedLang);
       console.log(`[allergen-sc] Alerji yok → status=none`);
     } else {
       // Alerjen belirtmiş → reported (oda no henüz bilinmiyor olabilir, sonra sorulacak)
@@ -2063,7 +2083,7 @@ async function handleMessage(args: {
       if (notifyRoomNumber) {
         // ✅ Oda no zaten biliniyor (doğrulanmış misafir) → bildirimi hemen gönder
         console.log(`[allergen-sc] Oda mevcut → bildirim hemen gönderiliyor. room=${notifyRoomNumber}`);
-        scReplyText = guestText('allergen_informed', language);
+        scReplyText = guestText('allergen_informed', persistedLang);
 
         try {
           await sendAllergenNotifications({
@@ -2091,7 +2111,7 @@ async function handleMessage(args: {
         // ⏳ Oda no bilinmiyor → ŞİMDİ oda no sor, bildirim oda no alındıktan sonra gönderilecek
         // KURAL: bu turda YALNIZCA oda no sorusu çıkar — başka hiçbir akış ÇALIŞMAZ.
         console.log(`[allergen-sc] Oda no yok — allergen_room_verify akışı başlıyor, conversationId=${conversationId}`);
-        scReplyText = guestText('allergen_informed_ask_room', language);
+        scReplyText = guestText('allergen_informed_ask_room', persistedLang);
 
         // allergen_pending=false + allergen_asked=true + allergen_verify_pending=TRUE
         // NOT: verification_pending_intent'e DOKUNULMAZ — alerjen kendi alanını kullanır
@@ -2182,7 +2202,7 @@ async function handleMessage(args: {
     if (!avRoom || !avLastName) {
       // Format eksik → tekrar sor (deneme sayılmaz)
       console.log(`[allergen-verify-gate] Eksik format: room=${avRoom} lastName=${avLastName}`);
-      const incompleteMsg = guestText('allergen_verify_format', language);
+      const incompleteMsg = guestText('allergen_verify_format', persistedLang);
 
       await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: incompleteMsg, message_type: 'text' });
       await tg.sendMessage({ chat_id: chatId, text: incompleteMsg });
@@ -2275,7 +2295,7 @@ async function handleMessage(args: {
         .eq('id', conversationId);
 
       // Başarı mesajı
-      const avSuccessMsg = guestText('allergen_verify_success', language, { ad: avFirstName });
+      const avSuccessMsg = guestText('allergen_verify_success', persistedLang, { ad: avFirstName });
 
       await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: avSuccessMsg, message_type: 'text' });
       await tg.sendMessage({ chat_id: chatId, text: avSuccessMsg });
@@ -2297,7 +2317,7 @@ async function handleMessage(args: {
           })
           .eq('id', conversationId);
 
-        const avGiveUpMsg = guestText('allergen_verify_failed_max', language);
+        const avGiveUpMsg = guestText('allergen_verify_failed_max', persistedLang);
 
         await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: avGiveUpMsg, message_type: 'text' });
         await tg.sendMessage({ chat_id: chatId, text: avGiveUpMsg });
@@ -2311,7 +2331,7 @@ async function handleMessage(args: {
         .update({ allergen_verify_attempts: currentAttempt })
         .eq('id', conversationId);
 
-      const avRetryMsg = guestText('allergen_verify_retry', language, {
+      const avRetryMsg = guestText('allergen_verify_retry', persistedLang, {
         n: String(currentAttempt),
         max: String(MAX_ALLERGEN_VERIFY_ATTEMPTS),
       });
@@ -2725,7 +2745,7 @@ async function handleMessage(args: {
   // classify'in dil tespiti, yoksa arayuz dili. guestText normalizeGuestLang uygular.
   const rawResponseText =
     aiResult?.response_to_guest ??
-    guestText('ai_fallback_received', aiResult?.language ?? language);
+    guestText('ai_fallback_received', aiResult?.language ?? persistedLang);
 
   const aiReplyText = stripMarkdown(rawResponseText);
 
@@ -2736,6 +2756,27 @@ async function handleMessage(args: {
   // sözlükleri bu 5 dili taşır, klemp edilmeyen kod TR'ye düşerdi.
   const guestLang: GuestLang = normalizeGuestLang(aiResult?.language ?? language);
   console.log(`[lang] ui=${language} ai=${aiResult?.language ?? 'YOK'} -> guestLang=${guestLang}`);
+
+  // ── İŞ 10: KALICI DİLİ YAZ ──────────────────────────────────────────────────
+  // Bu nokta dilin GÜVENİLİR bilindiği tek yer (classify mesaj METNİNDEN tespit
+  // etti). Callback turlarında ortada metin olmadığı için dil oradan okunacak.
+  // Yalnız DEĞİŞTİĞİNDE yazılır (her turda gereksiz UPDATE yok) ve metadata MERGE
+  // edilir — lead_capture gibi diğer anahtarlar korunur (körü körüne UPDATE YASAK).
+  if (readPreferredLang(conversation.metadata) !== guestLang) {
+    const nextMeta = withPreferredLang(conversation.metadata, guestLang);
+    const { error: langErr } = await supa
+      .from('conversations')
+      .update({ metadata: nextMeta })
+      .eq('id', conversationId);
+    if (langErr) {
+      // Yazamadıysak akış DEVAM eder: bu tur guestLang zaten doğru, yalnız sonraki
+      // callback eski dile düşer. Sessiz geçmemek için loglanır.
+      console.error('[lang-persist] preferred_language yazilamadi:', langErr.message);
+    } else {
+      conversation.metadata = nextMeta;
+      console.log(`[lang-persist] preferred_language=${guestLang} kaydedildi`);
+    }
+  }
 
   // Modül 10.6: Ham AI intent'i (routing kararı için)
   const aiRawIntentRaw = aiResult?.department ?? null; // department zaten routeIntentToDepartment çıktısı
@@ -4469,7 +4510,7 @@ async function upsertGuestAndConversation(args: {
   // Conversation upsert — doğrulama state sütunlarını da çek
   const { data: existingConv, error: convSelErr } = await supa
     .from('conversations')
-    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text, allergen_asked, allergen_pending, allergen_verify_pending, allergen_verify_pending_at, allergen_verify_attempts, detail_pending, detail_pending_text, note_pending, note_pending_order')
+    .select('id, verified_inhouse_guest_id, verified_at, verification_pending_intent, verification_attempts, pending_request_text, allergen_asked, allergen_pending, allergen_verify_pending, allergen_verify_pending_at, allergen_verify_attempts, detail_pending, detail_pending_text, note_pending, note_pending_order, metadata')
     .eq('telegram_chat_id', chatId)
     .order('created_at', { ascending: true })
     .limit(1)
@@ -4497,6 +4538,7 @@ async function upsertGuestAndConversation(args: {
       allergen_verify_pending: (existingConv.allergen_verify_pending as boolean) ?? false,         // Modül 3 izolasyon
       allergen_verify_pending_at: (existingConv.allergen_verify_pending_at as string | null) ?? null, // Modül 3 izolasyon
       allergen_verify_attempts: (existingConv.allergen_verify_attempts as number) ?? 0,             // Modül 3 izolasyon
+      metadata: existingConv.metadata ?? null,                                                     // İŞ 10 kalıcı dil + lead state
     };
     await supa
       .from('conversations')
@@ -4531,6 +4573,7 @@ async function upsertGuestAndConversation(args: {
       allergen_verify_pending: false,      // Modül 3 izolasyon
       allergen_verify_pending_at: null,    // Modül 3 izolasyon
       allergen_verify_attempts: 0,         // Modül 3 izolasyon
+      metadata: null,                      // İŞ 10 — yeni konuşmada kalıcı dil henüz YOK
     };
   }
 

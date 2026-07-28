@@ -130,7 +130,10 @@ async function main() {
     guestCount: 3,
     expect: (tg, store, errs) => {
       if (store.conv.hk_pending !== true) errs.push('state KAPANDI');
-      if (!texts(tg).some((t) => t.includes('Kac adet'))) errs.push(`ADET sorusu yok: ${JSON.stringify(texts(tg))}`);
+      // P7b Tier-2: metin guest-text.ts'e tasinirken ASCII "Kac adet" TAM TURKCE
+      // bicime cevrildi ("Kaç adet") — misafire donuk metin kurali. Olcut olarak
+      // diyakritikten BAGIMSIZ "adet" araniyor ki bicim degisikligi testi kirmasin.
+      if (!texts(tg).some((t) => t.includes('adet'))) errs.push(`ADET sorusu yok: ${JSON.stringify(texts(tg))}`);
       const cds = buttons(tg).map((b) => b.callback_data);
       if (!cds.every((d) => d.startsWith('hk:q:'))) errs.push(`ADET butonu degil: ${JSON.stringify(cds)}`);
       // pax=3 -> 1..4 buton (pax+1, esik asimi dahil): AUTO-1 OLMADIGININ kaniti
@@ -147,7 +150,7 @@ async function main() {
     expect: (tg, store, errs) => {
       if (store.conv.hk_pending !== false) errs.push('state kapanmadi');
       if (!texts(tg).some((t) => t.includes('dilediğiniz an'))) errs.push(`erteleme mesaji yok: ${JSON.stringify(texts(tg))}`);
-      if (texts(tg).some((t) => t.includes('Hangi havlu') || t.includes('Kac adet'))) errs.push('erteleme dalinda soru soruldu');
+      if (texts(tg).some((t) => t.includes('Hangi havlu') || t.includes('adet'))) errs.push('erteleme dalinda soru soruldu');
       if (buttons(tg).length > 0) errs.push('erteleme dalinda buton gonderildi');
     },
   }));

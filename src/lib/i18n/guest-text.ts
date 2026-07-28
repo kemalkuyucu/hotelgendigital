@@ -71,8 +71,55 @@ export type GuestTextKey =
   | 'allergen_verify_failed_max'  // max deneme asildi -> on buro
   | 'allergen_verify_retry'       // {n}/{max} — eslesmedi, tekrar sor
   | 'allergen_noted_meal'         // forward yolunda alerji notu alindi
+  // ── P7b Tier-2 (IS 10) — CALLBACK metinleri ─────────────────────────────────
+  // Butona basildiginda misafire donen her sey: mesaj, toast (answerCallbackQuery),
+  // kart etiketi (editMessageReplyMarkup) ve buton label'i. Dil callback'te mesaj
+  // metninden TESPIT EDILEMEZ (ortada metin yok) -> conversations.metadata'daki
+  // preferred_language okunur (bkz. resolvePreferredLang).
+  // Ortak (birden fazla handler ayni metni kullanir — ikinci kopya YASAK)
+  | 'cb_conv_missing'          // konusma kaydi bulunamadi
+  | 'cb_generic_error'         // beklenmedik hata, tekrar denensin
+  | 'cb_unknown_action'        // tanimsiz callback action
+  | 'cb_stale_button'          // bayat/ezilmis damga -> buton RED (show_alert)
+  | 'cb_lbl_processed'         // kart etiketi: islendi
+  | 'cb_already_processed'     // toast: bu adim zaten islendi
+  // Room-service siparis callback'i
+  | 'order_sent_guest'         // onay sonrasi misafire: siparis ekibe iletildi
+  | 'order_cancelled_guest'    // vazgecme sonrasi misafire
+  | 'order_already_processed'  // toast: bu siparis zaten islendi (order:noop dahil)
+  | 'order_lbl_cancelled'      // kart etiketi: iptal edildi
+  | 'order_toast_cancelled'    // toast: iptal edildi
+  | 'order_forward_failed'     // toast: forward basarisiz (rollback yapildi)
+  | 'order_lbl_approved'       // kart etiketi: onaylandi
+  | 'order_toast_sent'         // toast: siparis iletildi
+  // Not akisi callback'i
+  | 'note_already_done'        // toast: not adimi zaten tamamlandi
+  | 'note_ask_write'           // misafire: notunuzu yazin (mesaj)
+  | 'note_lbl_waiting'         // kart etiketi: not bekleniyor
+  | 'note_toast_write'         // toast: notunuzu yazin
+  | 'note_order_missing'       // toast: siparis state'i kayip
+  | 'note_lbl_cancel'          // kart etiketi: iptal
+  | 'note_lbl_continue'        // kart etiketi: notsuz devam
+  | 'note_toast_awaiting'      // toast: onay bekleniyor
+  // Housekeeping callback'i
+  | 'hk_ask_towel_type'        // hangi havlu tipi
+  | 'hk_lbl_bath_towel'
+  | 'hk_lbl_face_towel'
+  | 'hk_lbl_foot_towel'
+  | 'hk_ask_qty'               // adet sorusu (esya adi YOK)
+  | 'hk_ask_qty_labeled'       // {esya} — adet sorusu (esya adi VAR; TR metni birebir korundu)
+  | 'hk_fwd_ok'                // forward basarili
+  | 'hk_fwd_duplicate'         // DEDUP: ayni talep zaten iletilmis
+  | 'hk_fwd_error'             // forward hatasi
+  | 'hk_lbl_yes_now'           // sikayet onayi: evet, simdi
+  | 'hk_lbl_later'             // sikayet onayi: simdi degil
+  | 'hk_toast_selected'        // toast: secim alindi
+  | 'hk_toast_invalid'         // toast: gecersiz secim
+  | 'hk_complaint_confirm_ask' // IS 8 sikayet dali: ozur + "simdi mi" sorusu
+  | 'hk_complaint_later'       // "simdi degil" secildi: forward YOK, vaat de YOK
+  | 'hk_lbl_selected'          // kart etiketi: secildi
   // Genel
-  | 'ai_fallback_received';       // AI cevap uretemedi: notr "alindi" mesaji
+  | 'ai_fallback_received';      // AI cevap uretemedi: notr "alindi" mesaji
 
 // Yer tutucular: {name} misafir adi, {room} oda numarasi.
 // TR metinler mevcut route.ts karsiliklarindan BIREBIR tasindi (hitap dahil) —
@@ -338,6 +385,280 @@ const TEXTS: Record<GuestTextKey, Record<GuestLang, string>> = {
     ru: 'Мы отметили вашу аллергию и сообщили соответствующей команде. Приятного аппетита!',
     ar: 'لقد سجّلنا الحساسية لديك وأبلغنا الفريق المعني. بالهناء والعافية!',
   },
+  // ── P7b Tier-2 (IS 10) callback metinleri ───────────────────────────────────
+  // TR metinler mevcut handler'lardan tasindi; ASCII yaklastirmasi tasiyanlar
+  // ("Kayit bulunamadi", "Onaylandi", "Iptal edildi") TAM TURKCE bicime cevrildi
+  // (CLAUDE.md: misafire donuk metinler TAM Turkce karakterli). Anlam DEGISMEDI.
+  cb_conv_missing: {
+    tr: 'Kayıt bulunamadı.',
+    en: 'Record not found.',
+    de: 'Eintrag nicht gefunden.',
+    ru: 'Запись не найдена.',
+    ar: 'لم يتم العثور على السجل.',
+  },
+  cb_generic_error: {
+    tr: 'Bir sorun oluştu, lütfen tekrar deneyin.',
+    en: 'Something went wrong, please try again.',
+    de: 'Es ist ein Fehler aufgetreten, bitte versuchen Sie es erneut.',
+    ru: 'Произошла ошибка, пожалуйста, попробуйте ещё раз.',
+    ar: 'حدث خطأ، يرجى المحاولة مرة أخرى.',
+  },
+  cb_unknown_action: {
+    tr: 'Bilinmeyen işlem.',
+    en: 'Unknown action.',
+    de: 'Unbekannte Aktion.',
+    ru: 'Неизвестное действие.',
+    ar: 'إجراء غير معروف.',
+  },
+  cb_stale_button: {
+    tr: 'Bu buton güncel değil. Lütfen mesajın en altındaki güncel butonu kullanın.',
+    en: 'This button is out of date. Please use the current button at the bottom of the chat.',
+    de: 'Diese Schaltflaeche ist nicht mehr aktuell. Bitte verwenden Sie die unterste, aktuelle Schaltflaeche.',
+    ru: 'Эта кнопка устарела. Пожалуйста, используйте актуальную кнопку в самом низу переписки.',
+    ar: 'هذا الزر لم يعد صالحًا. يرجى استخدام الزر الحالي في أسفل المحادثة.',
+  },
+  cb_lbl_processed: {
+    tr: 'İşlendi',
+    en: 'Processed',
+    de: 'Bearbeitet',
+    ru: 'Обработано',
+    ar: 'تمت المعالجة',
+  },
+  cb_already_processed: {
+    tr: 'Bu adım zaten işlendi.',
+    en: 'This step has already been processed.',
+    de: 'Dieser Schritt wurde bereits bearbeitet.',
+    ru: 'Этот шаг уже обработан.',
+    ar: 'تمت معالجة هذه الخطوة بالفعل.',
+  },
+  order_sent_guest: {
+    tr: 'Siparişiniz ilgili ekibe iletildi. En kısa sürede ilgileniyoruz.',
+    en: 'Your order has been sent to our team. They will assist you shortly.',
+    de: 'Ihre Bestellung wurde an unser Team gesendet. Wir kuemmern uns gleich darum.',
+    ru: 'Ваш заказ передан нашей команде. Мы займёмся им в ближайшее время.',
+    ar: 'تم إرسال طلبك إلى الفريق المعني. سنهتم به في أقرب وقت.',
+  },
+  order_cancelled_guest: {
+    tr: 'Tabii, bilgi için buradayım.',
+    en: 'No problem, I am here if you need anything.',
+    de: 'Kein Problem, ich bin fuer Sie da.',
+    ru: 'Хорошо, я здесь, если вам что-то понадобится.',
+    ar: 'بالتأكيد، أنا هنا إن احتجت أي معلومة.',
+  },
+  order_already_processed: {
+    tr: 'Bu sipariş zaten işlendi.',
+    en: 'This order has already been processed.',
+    de: 'Diese Bestellung wurde bereits bearbeitet.',
+    ru: 'Этот заказ уже обработан.',
+    ar: 'تمت معالجة هذا الطلب بالفعل.',
+  },
+  order_lbl_cancelled: {
+    tr: 'İptal edildi',
+    en: 'Cancelled',
+    de: 'Storniert',
+    ru: 'Отменено',
+    ar: 'تم الإلغاء',
+  },
+  order_toast_cancelled: {
+    tr: 'İptal edildi.',
+    en: 'Cancelled.',
+    de: 'Storniert.',
+    ru: 'Отменено.',
+    ar: 'تم الإلغاء.',
+  },
+  order_forward_failed: {
+    tr: 'İletim başarısız, lütfen tekrar deneyin.',
+    en: 'Sending failed, please try again.',
+    de: 'Uebermittlung fehlgeschlagen, bitte versuchen Sie es erneut.',
+    ru: 'Не удалось отправить, пожалуйста, попробуйте ещё раз.',
+    ar: 'فشل الإرسال، يرجى المحاولة مرة أخرى.',
+  },
+  order_lbl_approved: {
+    tr: '✅ Onaylandı',
+    en: '✅ Confirmed',
+    de: '✅ Bestaetigt',
+    ru: '✅ Подтверждено',
+    ar: '✅ تم التأكيد',
+  },
+  order_toast_sent: {
+    tr: 'Sipariş iletildi.',
+    en: 'Order sent.',
+    de: 'Bestellung gesendet.',
+    ru: 'Заказ отправлен.',
+    ar: 'تم إرسال الطلب.',
+  },
+  note_already_done: {
+    tr: 'Bu adım zaten tamamlandı.',
+    en: 'This step is already complete.',
+    de: 'Dieser Schritt ist bereits abgeschlossen.',
+    ru: 'Этот шаг уже завершён.',
+    ar: 'اكتملت هذه الخطوة بالفعل.',
+  },
+  note_ask_write: {
+    tr: 'Lütfen notunuzu yazın.',
+    en: 'Please type your note.',
+    de: 'Bitte schreiben Sie Ihre Notiz.',
+    ru: 'Пожалуйста, напишите ваше примечание.',
+    ar: 'يرجى كتابة ملاحظتك.',
+  },
+  note_lbl_waiting: {
+    tr: 'Not bekleniyor',
+    en: 'Waiting for note',
+    de: 'Warte auf Notiz',
+    ru: 'Ожидание примечания',
+    ar: 'في انتظار الملاحظة',
+  },
+  note_toast_write: {
+    tr: 'Notunuzu yazın.',
+    en: 'Type your note.',
+    de: 'Schreiben Sie Ihre Notiz.',
+    ru: 'Напишите ваше примечание.',
+    ar: 'اكتب ملاحظتك.',
+  },
+  note_order_missing: {
+    tr: 'Sipariş bulunamadı, lütfen tekrar deneyin.',
+    en: 'Order not found, please try again.',
+    de: 'Bestellung nicht gefunden, bitte versuchen Sie es erneut.',
+    ru: 'Заказ не найден, пожалуйста, попробуйте ещё раз.',
+    ar: 'لم يتم العثور على الطلب، يرجى المحاولة مرة أخرى.',
+  },
+  note_lbl_cancel: {
+    tr: 'İptal',
+    en: 'Cancelled',
+    de: 'Storniert',
+    ru: 'Отменено',
+    ar: 'إلغاء',
+  },
+  note_lbl_continue: {
+    tr: 'Notsuz devam',
+    en: 'Continue without note',
+    de: 'Ohne Notiz fortfahren',
+    ru: 'Продолжить без примечания',
+    ar: 'المتابعة بدون ملاحظة',
+  },
+  note_toast_awaiting: {
+    tr: 'Onay bekleniyor.',
+    en: 'Awaiting confirmation.',
+    de: 'Warte auf Bestaetigung.',
+    ru: 'Ожидается подтверждение.',
+    ar: 'في انتظار التأكيد.',
+  },
+  hk_ask_towel_type: {
+    tr: 'Hangi havlu istersiniz?',
+    en: 'Which towel would you like?',
+    de: 'Welches Handtuch möchten Sie?',
+    ru: 'Какое полотенце вы хотите?',
+    ar: 'أي منشفة تريد؟',
+  },
+  hk_lbl_bath_towel: {
+    tr: 'Banyo havlusu',
+    en: 'Bath towel',
+    de: 'Badetuch',
+    ru: 'Банное полотенце',
+    ar: 'منشفة استحمام',
+  },
+  hk_lbl_face_towel: {
+    tr: 'Yüz havlusu',
+    en: 'Face towel',
+    de: 'Gesichtstuch',
+    ru: 'Полотенце для лица',
+    ar: 'منشفة وجه',
+  },
+  hk_lbl_foot_towel: {
+    tr: 'Ayak havlusu',
+    en: 'Foot towel',
+    de: 'Fußtuch',
+    ru: 'Полотенце для ног',
+    ar: 'منشفة أقدام',
+  },
+  hk_ask_qty: {
+    tr: 'Kaç adet istersiniz?',
+    en: 'How many would you like?',
+    de: 'Wie viele möchten Sie?',
+    ru: 'Сколько штук вы хотите?',
+    ar: 'كم عددًا تريد؟',
+  },
+  // {esya} = housekeeping esya etiketi (labelForHousekeepingCode, TR). TR metin
+  // mevcut satirdan BIREBIR; diger dillerde de yer tutucu korunur ki adet sorusu
+  // HANGI esya icin soruldugunu kaybetmesin (etiket sozlugu ayri is).
+  hk_ask_qty_labeled: {
+    tr: 'Kaç adet {esya} istersiniz?',
+    en: 'How many would you like? ({esya})',
+    de: 'Wie viele möchten Sie? ({esya})',
+    ru: 'Сколько штук вы хотите? ({esya})',
+    ar: 'كم عددًا تريد؟ ({esya})',
+  },
+  hk_fwd_ok: {
+    tr: 'Talebiniz ilgili ekibe iletildi. En kısa sürede ilgileniyoruz.',
+    en: 'Your request has been sent to our team. They will assist you shortly.',
+    de: 'Ihre Anfrage wurde an unser Team gesendet. Wir kuemmern uns gleich darum.',
+    ru: 'Ваш запрос передан нашей команде. Мы займёмся им в ближайшее время.',
+    ar: 'تم إرسال طلبك إلى الفريق المعني. سنهتم به في أقرب وقت.',
+  },
+  hk_fwd_duplicate: {
+    tr: 'Talebiniz zaten ilgili ekibe iletildi, en kısa sürede ilgileniyoruz.',
+    en: 'Your request has already been sent to our team; they will assist you shortly.',
+    de: 'Ihre Anfrage wurde bereits an unser Team gesendet, wir kuemmern uns darum.',
+    ru: 'Ваш запрос уже передан нашей команде, мы скоро им займёмся.',
+    ar: 'سبق أن تم إرسال طلبك إلى الفريق المعني، وسنهتم به قريبًا.',
+  },
+  hk_fwd_error: {
+    tr: 'Bir sorun oluştu, lütfen tekrar deneyin.',
+    en: 'Something went wrong, please try again.',
+    de: 'Es ist ein Fehler aufgetreten, bitte versuchen Sie es erneut.',
+    ru: 'Произошла ошибка, пожалуйста, попробуйте ещё раз.',
+    ar: 'حدث خطأ، يرجى المحاولة مرة أخرى.',
+  },
+  hk_lbl_yes_now: {
+    tr: 'Evet, şimdi',
+    en: 'Yes, now',
+    de: 'Ja, jetzt',
+    ru: 'Да, сейчас',
+    ar: 'نعم، الآن',
+  },
+  hk_lbl_later: {
+    tr: 'Şimdi değil, sonra',
+    en: 'Not now, later',
+    de: 'Nicht jetzt, spaeter',
+    ru: 'Не сейчас, позже',
+    ar: 'ليس الآن، لاحقًا',
+  },
+  hk_toast_selected: {
+    tr: 'Seçildi.',
+    en: 'Selected.',
+    de: 'Ausgewaehlt.',
+    ru: 'Выбрано.',
+    ar: 'تم الاختيار.',
+  },
+  hk_toast_invalid: {
+    tr: 'Geçersiz seçim.',
+    en: 'Invalid selection.',
+    de: 'Ungueltige Auswahl.',
+    ru: 'Неверный выбор.',
+    ar: 'اختيار غير صالح.',
+  },
+  hk_complaint_confirm_ask: {
+    tr: 'Yaşadığınız aksaklık için özür dileriz. Kat hizmetlerine hemen iletebilirim — şu an getirmemizi/yenilememizi ister misiniz?',
+    en: 'We are sorry for the inconvenience. I can notify housekeeping right away — would you like us to bring/replace it now?',
+    de: 'Wir entschuldigen uns fuer die Unannehmlichkeiten. Ich kann den Housekeeping-Service sofort informieren — moechten Sie, dass wir es jetzt bringen/wechseln?',
+    ru: 'Приносим извинения за неудобство. Я могу сразу сообщить службе уборки — хотите, чтобы мы принесли/заменили это сейчас?',
+    ar: 'نعتذر عن هذا الإزعاج. يمكنني إبلاغ قسم التدبير المنزلي فورًا — هل تريد أن نحضره/نستبدله الآن؟',
+  },
+  // "Simdi degil" secildi: forward YOK -> iletme/dönüş VAADI de YOK (SAHTE VAAT YASAGI).
+  hk_complaint_later: {
+    tr: 'Tabii, dilediğiniz an yazmanız yeterli; hemen ilgileniriz.',
+    en: 'Of course, just message us whenever you like and we will take care of it right away.',
+    de: 'Natuerlich, schreiben Sie uns einfach, wann immer Sie moechten — wir kuemmern uns sofort darum.',
+    ru: 'Конечно, просто напишите нам в любой момент, и мы сразу этим займёмся.',
+    ar: 'بالتأكيد، يكفي أن تراسلنا في أي وقت وسنهتم بالأمر فورًا.',
+  },
+  hk_lbl_selected: {
+    tr: '✅ Seçildi',
+    en: '✅ Selected',
+    de: '✅ Ausgewaehlt',
+    ru: '✅ Выбрано',
+    ar: '✅ تم الاختيار',
+  },
   ai_fallback_received: {
     tr: 'Mesajınız alındı, en kısa sürede ilgili departmandan dönüş yapılacaktır.',
     en: 'Your message has been received. The relevant department will get back to you as soon as possible.',
@@ -352,6 +673,66 @@ const TEXTS: Record<GuestTextKey, Record<GuestLang, string>> = {
  * `params` yer tutuculari doldurur ({name}, {room}); verilmeyen yer tutucu BOS string olur
  * (mevcut route.ts davranisi: `${firstName ?? ''}`).
  */
+// ── KALICI DIL (IS 10) — conversations.metadata.preferred_language ───────────
+//
+// NEDEN: callback turunda (misafir butona bastI) ortada MESAJ METNI YOKTUR, dil
+// tespit edilemez; bu yuzden order/note callback'leri bugune kadar lang='tr'
+// HARDCODE tasiyordu. Telegram arayuz dili (`language_code`) dogru olcut DEGIL —
+// arayuzu Turkce olan misafir Rusca yazabilir (IS 17 dersi).
+//
+// COZUM: dil GUVENILIR tespit edildigi anda (classify sonrasi) konusmaya YAZILIR,
+// callback'ler ORADAN okur. Kolon yerine metadata jsonb: yeni migration gerekmez
+// ve lead akisi (lead-capture.ts) ayni deseni zaten kullaniyor.
+
+export const PREFERRED_LANG_METADATA_KEY = 'preferred_language';
+
+/**
+ * metadata.preferred_language -> GuestLang. Alan yok / bos / DESTEKLENMEYEN kod ise
+ * `null` doner — `normalizeGuestLang`in 'en' varsayilani BURADA UYGULANMAZ, cunku
+ * "kayit yok" ile "kayitli dil en" ayni sey degildir: fallback zincirini (arayuz
+ * dili) cagiran taraf isletir.
+ */
+export function readPreferredLang(metadata: unknown): GuestLang | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const raw = (metadata as Record<string, unknown>)[PREFERRED_LANG_METADATA_KEY];
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const c = raw.trim().toLowerCase().slice(0, 2);
+  return SUPPORTED.includes(c) ? (c as GuestLang) : null;
+}
+
+/** metadata'nin DIGER anahtarlarini korur (kor UPDATE yok) — `withLeadCapture` ikizi. */
+export function withPreferredLang(metadata: unknown, lang: GuestLang): Record<string, unknown> {
+  const base = metadata && typeof metadata === 'object' ? { ...(metadata as Record<string, unknown>) } : {};
+  base[PREFERRED_LANG_METADATA_KEY] = lang;
+  return base;
+}
+
+/**
+ * 5-dil fallback zinciri. SAF: IO yok.
+ *
+ * SIRA — `detected` > `stored` > `interfaceLang`:
+ *   detected      bu TURUN kaniti (classify mesaj metninden tespit etti). Misafir
+ *                 dil degistirdiginde kalici kaydin ONUNE gecmeli.
+ *   stored        metadata'daki kalici dil. Callback turunda `detected` HIC yoktur;
+ *                 tek guvenilir kaynak budur.
+ *   interfaceLang son care (Telegram `language_code`) — yalnizca ilk turda, konusma
+ *                 hakkinda hicbir sey bilinmezken.
+ *
+ * Ilk DOLU aday kazanir ve `normalizeGuestLang`den gecer: desteklenmeyen bir kod
+ * ('fr') tespit edildiyse sonuc 'en' olur, zincir ALTTAKI adaya DUSMEZ — yoksa
+ * Fransizca yazan misafire, gecmisten kalmis Rusca metin giderdi.
+ */
+export function resolvePreferredLang(p: {
+  stored?: string | null;
+  detected?: string | null;
+  interfaceLang?: string | null;
+}): GuestLang {
+  const first = [p.detected, p.stored, p.interfaceLang].find(
+    (v) => typeof v === 'string' && v.trim().length > 0,
+  );
+  return normalizeGuestLang(first ?? null);
+}
+
 export function guestText(
   key: GuestTextKey,
   lang: string | null | undefined,

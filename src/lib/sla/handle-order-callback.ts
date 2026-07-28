@@ -3,6 +3,7 @@ import { sendForwardWithSlaButtons } from './send-forward-with-buttons';
 import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 import { extractOrderNote } from '@/lib/menu/parse-order';
 import { readPendingText, orderStampAccepts, formatOrderSummary } from '@/lib/menu/pending-order';
+import { guestText, readPreferredLang, resolvePreferredLang } from '@/lib/i18n/guest-text';
 
 const TG = (token: string, m: string) => `https://api.telegram.org/bot${token}/${m}`;
 
@@ -40,15 +41,9 @@ async function editCard(token: string, chatId: number | string, msgId: number, l
 // hk_pending_text damga deseninin ikizi. parsePendingOrder KALKTI: readPendingText
 // hem structured'i cozer hem orderText'i (zarf ici raw) ham JSON blob'a dusmeden verir.
 
-const msgConfirmed = (lang: string) =>
-  lang === 'en' ? 'Your order has been sent to our team. They will assist you shortly.'
-  : lang === 'de' ? 'Ihre Bestellung wurde an unser Team gesendet. Wir kuemmern uns gleich darum.'
-  : 'Siparisiniz ilgili ekibe iletildi. En kisa surede ilgileniyoruz.';
-
-const msgCancelled = (lang: string) =>
-  lang === 'en' ? 'No problem, I am here if you need anything.'
-  : lang === 'de' ? 'Kein Problem, ich bin fuer Sie da.'
-  : 'Tabii, bilgi icin buradayim.';
+// Misafire donuk metinler guest-text.ts'te (TEK KAYNAK, 5 dil). Buradaki eski
+// en/de/tr ucluleri KALKTI: dil callback'te lang='tr' HARDCODE oldugu icin en/de
+// dallari CANLIDA HIC calismiyordu (olu kod) — Rus/Arap misafir Turkce cevap aliyordu.
 
 export async function handleOrderCallback(params: OrderCallbackParams): Promise<void> {
   const parts = params.callbackData.split(':');
@@ -59,20 +54,27 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
   // conversation + guest bilgisi cek
   const { data: conv, error: convErr } = await params.supa
     .from('conversations')
-    .select('id, order_pending, order_pending_text, telegram_chat_id')
+    .select('id, order_pending, order_pending_text, telegram_chat_id, metadata')
     .eq('id', conversationId)
     .maybeSingle();
   if (convErr) console.error('[order-callback] conv lookup hatasi:', convErr.message);
 
-  if (!conv) { await answer(params.botToken, params.callbackQueryId, 'Kayit bulunamadi.'); return; }
+  if (!conv) {
+    // Konusma okunamadi -> kalici dil de okunamaz; eski davranisla ayni: TR.
+    await answer(params.botToken, params.callbackQueryId, guestText('cb_conv_missing', 'tr'));
+    return;
+  }
 
-  // dil: order_pending_text icerigine gore degil, basit fallback (callback'te detectLanguage yok)
-  const lang = 'tr';
+  // IS 10 — KALICI DIL: callback'te mesaj metni YOK, dil tespit EDILEMEZ. Konusmaya
+  // yazilmis preferred_language okunur (route.ts classify sonrasi yazar). Kayit yoksa
+  // resolver guest-text varsayilanina duser. Eski `const lang = 'tr'` HARDCODE KALKTI.
+  // Fallback 'tr': kalici dil henuz yazilmamis ESKI konusmalarda eski davranis TR idi.
+  const lang = resolvePreferredLang({ stored: readPreferredLang(conv.metadata), interfaceLang: 'tr' });
 
   // idempotency — bayrak zaten kapaliysa islenmistir
   if (!conv.order_pending) {
-    await answer(params.botToken, params.callbackQueryId, 'Bu siparis zaten islendi.');
-    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, 'Islendi');
+    await answer(params.botToken, params.callbackQueryId, guestText('order_already_processed', lang));
+    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('cb_lbl_processed', lang));
     return;
   }
 
@@ -89,7 +91,7 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     await answer(
       params.botToken,
       params.callbackQueryId,
-      'Bu buton güncel değil. Lütfen mesajın en altındaki güncel butonu kullanın.',
+      guestText('cb_stale_button', lang),
       true,
     );
     console.log('[order-cb] RED bayat damga', { stamp: stampRaw, stateV, conversationId });
@@ -107,10 +109,10 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
       .eq('id', conversationId);
     await fetch(TG(params.botToken, 'sendMessage'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: guestChatId, text: msgCancelled(lang) }),
+      body: JSON.stringify({ chat_id: guestChatId, text: guestText('order_cancelled_guest', lang) }),
     }).catch(() => {});
-    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, 'Iptal edildi');
-    await answer(params.botToken, params.callbackQueryId, 'Iptal edildi.');
+    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('order_lbl_cancelled', lang));
+    await answer(params.botToken, params.callbackQueryId, guestText('order_toast_cancelled', lang));
     return;
   }
 
@@ -131,7 +133,7 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     const fbSlaMinutes = (fbDept?.sla_minutes as number | null) ?? 15;
     if (!fbChatId) {
       console.error('[order-confirm] departments.fb telegram_chat_id yok — siparis iletilemedi');
-      await answer(params.botToken, params.callbackQueryId, 'Bir sorun olustu, tekrar deneyin.');
+      await answer(params.botToken, params.callbackQueryId, guestText('cb_generic_error', lang));
       return;
     }
 
@@ -196,7 +198,7 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
 
     if (slaErr || !slaEvent) {
       console.error('[order-confirm] sla_events INSERT FAILED', slaErr);
-      await answer(params.botToken, params.callbackQueryId, 'Bir sorun olustu, tekrar deneyin.');
+      await answer(params.botToken, params.callbackQueryId, guestText('cb_generic_error', lang));
       return;
     }
 
@@ -260,18 +262,18 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
       // ROLLBACK — forward basarisiz, orphan sla_event birak
       console.error('[order-confirm] forward FAILED, rollback', { ok, messageId });
       await params.supa.from('sla_events').delete().eq('id', slaEvent.id as string);
-      await answer(params.botToken, params.callbackQueryId, 'Iletim basarisiz, tekrar deneyin.');
+      await answer(params.botToken, params.callbackQueryId, guestText('order_forward_failed', lang));
       return;
     }
 
     await fetch(TG(params.botToken, 'sendMessage'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: guestChatId, text: msgConfirmed(lang) }),
+      body: JSON.stringify({ chat_id: guestChatId, text: guestText('order_sent_guest', lang) }),
     }).catch(() => {});
-    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, '✅ Onaylandi');
-    await answer(params.botToken, params.callbackQueryId, 'Siparis iletildi.');
+    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('order_lbl_approved', lang));
+    await answer(params.botToken, params.callbackQueryId, guestText('order_toast_sent', lang));
     return;
   }
 
-  await answer(params.botToken, params.callbackQueryId, 'Bilinmeyen islem.');
+  await answer(params.botToken, params.callbackQueryId, guestText('cb_unknown_action', lang));
 }

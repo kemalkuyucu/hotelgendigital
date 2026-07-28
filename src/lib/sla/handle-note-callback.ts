@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { bumpPendingOrder } from '@/lib/menu/pending-order';
+import { guestText, readPreferredLang, resolvePreferredLang } from '@/lib/i18n/guest-text';
 
 const TG = (token: string, m: string) => `https://api.telegram.org/bot${token}/${m}`;
 
@@ -59,35 +60,39 @@ export async function handleNoteCallback(params: NoteCallbackParams): Promise<vo
 
   const { data: conv } = await params.supa
     .from('conversations')
-    .select('id, note_pending, note_pending_order, telegram_chat_id')
+    .select('id, note_pending, note_pending_order, telegram_chat_id, metadata')
     .eq('id', conversationId)
     .maybeSingle();
 
-  if (!conv) { await answer(params.botToken, params.callbackQueryId, 'Kayit bulunamadi.'); return; }
+  if (!conv) {
+    await answer(params.botToken, params.callbackQueryId, guestText('cb_conv_missing', 'tr'));
+    return;
+  }
+
+  // IS 10 — KALICI DIL (bkz. handle-order-callback.ts): callback'te mesaj metni YOK.
+  // Eski `const lang = 'tr'` HARDCODE kalkti; en/de dallari zaten olu koddu.
+  // Fallback 'tr': kalici dil henuz yazilmamis ESKI konusmalarda eski davranis TR idi.
+  const lang = resolvePreferredLang({ stored: readPreferredLang(conv.metadata), interfaceLang: 'tr' });
 
   // Idempotency: not asamasi zaten kapandiysa
   if (!conv.note_pending) {
-    await answer(params.botToken, params.callbackQueryId, 'Bu adim zaten tamamlandi.');
-    await clearButtons(params.botToken, params.callbackChatId, params.callbackMessageId, 'Islendi');
+    await answer(params.botToken, params.callbackQueryId, guestText('note_already_done', lang));
+    await clearButtons(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('cb_lbl_processed', lang));
     return;
   }
 
   const guestChatId = conv.telegram_chat_id as string;
-  const lang: string = 'tr'; // callback'te detectLanguage yok (handle-order-callback ile ayni yaklasim)
 
   if (action === 'add') {
     // "Not var" — bayragi ACIK birak, misafirden notu yazmasini iste.
     // Route.ts NOT YAKALAMA blogu bir sonraki mesaji not olarak alir.
-    const askText =
-      lang === 'en' ? 'Please type your note.'
-      : lang === 'de' ? 'Bitte schreiben Sie Ihre Notiz.'
-      : 'Lütfen notunuzu yazın.';
-    await clearButtons(params.botToken, params.callbackChatId, params.callbackMessageId, 'Not bekleniyor');
+    const askText = guestText('note_ask_write', lang);
+    await clearButtons(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('note_lbl_waiting', lang));
     await fetch(TG(params.botToken, 'sendMessage'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: guestChatId, text: askText }),
     }).catch(() => {});
-    await answer(params.botToken, params.callbackQueryId, 'Notunuzu yazin.');
+    await answer(params.botToken, params.callbackQueryId, guestText('note_toast_write', lang));
     return;
   }
 
@@ -103,8 +108,8 @@ export async function handleNoteCallback(params: NoteCallbackParams): Promise<vo
       .eq('id', conversationId);
 
     if (!order) {
-      await answer(params.botToken, params.callbackQueryId, 'Siparis bulunamadi, tekrar deneyin.');
-      await clearButtons(params.botToken, params.callbackChatId, params.callbackMessageId, 'Iptal');
+      await answer(params.botToken, params.callbackQueryId, guestText('note_order_missing', lang));
+      await clearButtons(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('note_lbl_cancel', lang));
       return;
     }
 
@@ -118,9 +123,12 @@ export async function handleNoteCallback(params: NoteCallbackParams): Promise<vo
     });
 
     const itemsBlock = order.lines.map((l) => `• ${l.name} × ${l.qty}`).join('\n');
-    const confirmText = `Siparişiniz:\n${itemsBlock}\n\nOnaylıyor musunuz?`;
+    // Onay karti + butonlari route.ts'teki kod-yakalama yolunun AYNI anahtarlarini
+    // kullanir (order_confirm_prompt / btn_confirm_yes / btn_cancel) — iki yerde iki
+    // ayri metin YASAK; misafir hangi yoldan gelirse gelsin ayni karti gorur.
+    const confirmText = guestText('order_confirm_prompt', lang, { liste: itemsBlock });
 
-    await clearButtons(params.botToken, params.callbackChatId, params.callbackMessageId, 'Notsuz devam');
+    await clearButtons(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('note_lbl_continue', lang));
     await fetch(TG(params.botToken, 'sendMessage'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -128,15 +136,15 @@ export async function handleNoteCallback(params: NoteCallbackParams): Promise<vo
         text: confirmText,
         reply_markup: {
           inline_keyboard: [
-            [{ text: 'Evet, onayliyorum', callback_data: `order:confirm:${conversationId}:${orderStamp}` }],
-            [{ text: 'Vazgectim', callback_data: `order:cancel:${conversationId}:${orderStamp}` }],
+            [{ text: guestText('btn_confirm_yes', lang), callback_data: `order:confirm:${conversationId}:${orderStamp}` }],
+            [{ text: guestText('btn_cancel', lang), callback_data: `order:cancel:${conversationId}:${orderStamp}` }],
           ],
         },
       }),
     }).catch(() => {});
-    await answer(params.botToken, params.callbackQueryId, 'Onay bekleniyor.');
+    await answer(params.botToken, params.callbackQueryId, guestText('note_toast_awaiting', lang));
     return;
   }
 
-  await answer(params.botToken, params.callbackQueryId, 'Bilinmeyen islem.');
+  await answer(params.botToken, params.callbackQueryId, guestText('cb_unknown_action', lang));
 }

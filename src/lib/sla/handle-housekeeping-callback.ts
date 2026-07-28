@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { labelForHousekeepingCode } from '@/lib/ai/department-brains';
 import { forwardHousekeepingItems } from './housekeeping-forward';
+import { guestText, readPreferredLang, resolvePreferredLang } from '@/lib/i18n/guest-text';
 
 // Housekeeping COKLU esya buton callback'i. State conversations.hk_pending (bool) +
 // hk_pending_text (JSON): { items: [{ c, q, a }], i, p?, pl?, v? }
@@ -103,7 +104,21 @@ export async function advanceHousekeeping(p: {
   language?: string;
 }): Promise<void> {
   const { supa, botToken, convId, guestChatId, state } = p;
-  const lang = p.language ?? 'tr';
+  // IS 10 — KALICI DIL: metadata.preferred_language TEK KAYNAK; route.ts'ten gelen
+  // `language` (o turda tespit edilen dil) yalnizca FALLBACK. Callback'ten gelindiginde
+  // parametre HIC yoktur — eski kod bu yolda sessizce 'tr'ye dusuyordu.
+  const { data: langRow } = await supa
+    .from('conversations')
+    .select('metadata')
+    .eq('id', convId)
+    .maybeSingle();
+  // Fallback 'tr' BILINCLI: dil hakkinda HICBIR bilgi yoksa (metadata henuz
+  // yazilmamis eski konusma) eski davranis TR idi — guest-text'in 'en' varsayilanina
+  // dusurmek o konusmalarda regresyon olurdu.
+  const lang = resolvePreferredLang({
+    stored: readPreferredLang(langRow?.metadata),
+    interfaceLang: p.language ?? 'tr',
+  });
   const multi = state.items.length > 1;
   const prefixFor = (idx: number) => (multi ? `(${idx + 1}/${state.items.length}) ` : '');
 
@@ -129,14 +144,7 @@ export async function advanceHousekeeping(p: {
     state.i = typeIdx;
     state.v = (state.v ?? 0) + 1; // damga: ONCE artir + yaz, SONRA kart gonder
     await supa.from('conversations').update({ hk_pending_text: JSON.stringify(state) }).eq('id', convId);
-    const askText =
-      prefixFor(typeIdx) +
-      (lang === 'en'
-        ? 'Which towel would you like?'
-        : lang === 'de'
-          ? 'Welches Handtuch möchten Sie?'
-          : 'Hangi havlu istersiniz?');
-    const lbl = (en: string, de: string, tr: string) => (lang === 'en' ? en : lang === 'de' ? de : tr);
+    const askText = prefixFor(typeIdx) + guestText('hk_ask_towel_type', lang);
     await fetch(TG(botToken, 'sendMessage'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -145,9 +153,9 @@ export async function advanceHousekeeping(p: {
         text: askText,
         reply_markup: {
           inline_keyboard: [
-            [{ text: lbl('Bath towel', 'Badetuch', 'Banyo havlusu'), callback_data: `hk:s:1:${convId}:${state.v}` }],
-            [{ text: lbl('Face towel', 'Gesichtstuch', 'Yuz havlusu'), callback_data: `hk:s:2:${convId}:${state.v}` }],
-            [{ text: lbl('Foot towel', 'Fußtuch', 'Ayak havlusu'), callback_data: `hk:s:3:${convId}:${state.v}` }],
+            [{ text: guestText('hk_lbl_bath_towel', lang), callback_data: `hk:s:1:${convId}:${state.v}` }],
+            [{ text: guestText('hk_lbl_face_towel', lang), callback_data: `hk:s:2:${convId}:${state.v}` }],
+            [{ text: guestText('hk_lbl_foot_towel', lang), callback_data: `hk:s:3:${convId}:${state.v}` }],
           ],
         },
       }),
@@ -166,13 +174,12 @@ export async function advanceHousekeeping(p: {
     state.v = (state.v ?? 0) + 1; // damga: ONCE artir + yaz, SONRA kart gonder
     await supa.from('conversations').update({ hk_pending_text: JSON.stringify(state) }).eq('id', convId);
     const label = labelForHousekeepingCode(state.items[qtyIdx].c) ?? '';
+    // Etiket VARSA soruda kalir (hangi esya icin soruldugu kaybolmasin), yoksa sade
+    // adet sorusu. TR metin mevcut satirla BIREBIR ayni anlam; ASCII "Kac adet" TAM
+    // Turkce bicime cevrildi (misafire donuk metin kurali).
     const askText =
       prefixFor(qtyIdx) +
-      (lang === 'en'
-        ? 'How many would you like?'
-        : lang === 'de'
-          ? 'Wie viele möchten Sie?'
-          : `Kac adet ${label} istersiniz?`);
+      (label ? guestText('hk_ask_qty_labeled', lang, { esya: label }) : guestText('hk_ask_qty', lang));
     const nums = Array.from({ length: btnMax }, (_, i) => i + 1);
     const rows: unknown[][] = [];
     for (let i = 0; i < nums.length; i += 3)
@@ -204,10 +211,10 @@ export async function advanceHousekeeping(p: {
     note: state.cm === true ? 'sikayet/yenileme' : undefined,
   });
   const msg = res.duplicate
-    ? 'Talebiniz zaten ilgili ekibe iletildi, en kisa surede ilgileniyoruz.'
+    ? guestText('hk_fwd_duplicate', lang)
     : res.ok
-      ? 'Talebiniz ilgili ekibe iletildi. En kisa surede ilgileniyoruz.'
-      : 'Bir sorun olustu, lutfen tekrar deneyin.';
+      ? guestText('hk_fwd_ok', lang)
+      : guestText('hk_fwd_error', lang);
   await sendGuest(botToken, String(guestChatId), msg);
   console.log('[hk-cb] forward sonucu', { convId, ok: res.ok, duplicate: res.duplicate });
 }
@@ -221,12 +228,22 @@ export async function askHousekeepingComplaintConfirm(p: {
   convId: string;
   guestChatId: string | number;
   state: HkState;
+  /** Opsiyonel fallback — metadata'da kalici dil yoksa kullanilir (advanceHousekeeping deseni). */
+  language?: string;
 }): Promise<void> {
   const { supa, botToken, convId, guestChatId, state } = p;
+  const { data: langRow } = await supa
+    .from('conversations')
+    .select('metadata')
+    .eq('id', convId)
+    .maybeSingle();
+  const lang = resolvePreferredLang({
+    stored: readPreferredLang(langRow?.metadata),
+    interfaceLang: p.language ?? 'tr',   // bkz. advanceHousekeeping: eski davranis TR
+  });
   state.v = (state.v ?? 0) + 1;
   await supa.from('conversations').update({ hk_pending_text: JSON.stringify(state) }).eq('id', convId);
-  const askText =
-    'Yaşadığınız aksaklık için özür dileriz. Kat hizmetlerine hemen iletebilirim — şu an getirmemizi/yenilememizi ister misiniz?';
+  const askText = guestText('hk_complaint_confirm_ask', lang);
   await fetch(TG(botToken, 'sendMessage'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -235,8 +252,8 @@ export async function askHousekeepingComplaintConfirm(p: {
       text: askText,
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Evet, şimdi', callback_data: `hk:c:1:${convId}:${state.v}` }],
-          [{ text: 'Şimdi değil, sonra', callback_data: `hk:c:0:${convId}:${state.v}` }],
+          [{ text: guestText('hk_lbl_yes_now', lang), callback_data: `hk:c:1:${convId}:${state.v}` }],
+          [{ text: guestText('hk_lbl_later', lang), callback_data: `hk:c:0:${convId}:${state.v}` }],
         ],
       },
     }),
@@ -252,19 +269,21 @@ export async function handleHousekeepingCallback(params: HkCallbackParams): Prom
   console.log('[hk-cb] START', { action, data: params.callbackData });
 
   if ((action !== 's' && action !== 'q' && action !== 'c') || Number.isNaN(value) || !convId) {
-    await answer(params.botToken, params.callbackQueryId, 'Gecersiz secim.');
+    // convId cozulemedi -> kalici dil okunamaz; eski davranisla ayni: TR.
+    await answer(params.botToken, params.callbackQueryId, guestText('hk_toast_invalid', 'tr'));
     return;
   }
 
-  // conv + state oku
+  // conv + state oku (IS 10: metadata da cekilir — callback'te dil BASKA yerden bilinemez)
   const { data: conv, error: convErr } = await params.supa
     .from('conversations')
-    .select('id, telegram_chat_id, hk_pending, hk_pending_text')
+    .select('id, telegram_chat_id, hk_pending, hk_pending_text, metadata')
     .eq('id', convId)
     .maybeSingle();
   if (convErr) console.error('[hk-cb] conv lookup hatasi:', convErr.message);
+  const lang = resolvePreferredLang({ stored: readPreferredLang(conv?.metadata), interfaceLang: 'tr' });
   if (!conv || conv.hk_pending !== true || !conv.hk_pending_text) {
-    await answer(params.botToken, params.callbackQueryId, 'Bu adim zaten islendi.');
+    await answer(params.botToken, params.callbackQueryId, guestText('cb_already_processed', lang));
     return;
   }
   const guestChatId = conv.telegram_chat_id as string;
@@ -273,11 +292,11 @@ export async function handleHousekeepingCallback(params: HkCallbackParams): Prom
   try {
     state = JSON.parse(conv.hk_pending_text as string) as HkState;
   } catch {
-    await answer(params.botToken, params.callbackQueryId, 'Bu adim zaten islendi.');
+    await answer(params.botToken, params.callbackQueryId, guestText('cb_already_processed', lang));
     return;
   }
   if (!state?.items?.length || typeof state.i !== 'number' || !state.items[state.i]) {
-    await answer(params.botToken, params.callbackQueryId, 'Bu adim zaten islendi.');
+    await answer(params.botToken, params.callbackQueryId, guestText('cb_already_processed', lang));
     return;
   }
 
@@ -291,7 +310,7 @@ export async function handleHousekeepingCallback(params: HkCallbackParams): Prom
     await answer(
       params.botToken,
       params.callbackQueryId,
-      'Bu buton güncel değil. Lütfen mesajın en altındaki güncel butonu kullanın.',
+      guestText('cb_stale_button', lang),
       true,
     );
     console.log('[hk-cb] RED bayat damga', { stamp: stampRaw, stateV: state.v, convId });
@@ -312,8 +331,8 @@ export async function handleHousekeepingCallback(params: HkCallbackParams): Prom
   // value=0 (Simdi degil, sonra): state kapanir, forward YOK.
   if (action === 'c') {
     if (value === 1) {
-      await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, '✅ Secildi');
-      await answer(params.botToken, params.callbackQueryId, 'Secildi.');
+      await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('hk_lbl_selected', lang));
+      await answer(params.botToken, params.callbackQueryId, guestText('hk_toast_selected', lang));
       console.log('[hk-cb] sikayet onaylandi -> cozum zinciri basliyor', {
         convId, code: state.items[0]?.c, ambiguous: state.items[0]?.a,
       });
@@ -330,13 +349,9 @@ export async function handleHousekeepingCallback(params: HkCallbackParams): Prom
       .from('conversations')
       .update({ hk_pending: false, hk_pending_text: null })
       .eq('id', convId);
-    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, '✅ Secildi');
-    await answer(params.botToken, params.callbackQueryId, 'Secildi.');
-    await sendGuest(
-      params.botToken,
-      guestChatId,
-      'Tabii, dilediğiniz an yazmanız yeterli; hemen ilgileniriz.',
-    );
+    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('hk_lbl_selected', lang));
+    await answer(params.botToken, params.callbackQueryId, guestText('hk_toast_selected', lang));
+    await sendGuest(params.botToken, guestChatId, guestText('hk_complaint_later', lang));
     console.log('[hk-cb] sikayet ertelendi (forward YOK)', { convId });
     return;
   }
@@ -354,8 +369,8 @@ export async function handleHousekeepingCallback(params: HkCallbackParams): Prom
     .eq('id', convId);
 
   // basilan butonu isaretle + answer
-  await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, '✅ Secildi');
-  await answer(params.botToken, params.callbackQueryId, 'Secildi.');
+  await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('hk_lbl_selected', lang));
+  await answer(params.botToken, params.callbackQueryId, guestText('hk_toast_selected', lang));
 
   // sonraki adim / forward
   await advanceHousekeeping({

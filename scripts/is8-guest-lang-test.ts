@@ -14,7 +14,15 @@
  *    AYNEN korundugu (regresyon)
  * DOGRULANAMAZ (canli UAT): metnin gercekten Telegram'da o dille gorunmesi.
  */
-import { guestText, normalizeGuestLang, type GuestLang, type GuestTextKey } from '@/lib/i18n/guest-text';
+import {
+  guestText,
+  normalizeGuestLang,
+  resolvePreferredLang,
+  readPreferredLang,
+  withPreferredLang,
+  type GuestLang,
+  type GuestTextKey,
+} from '@/lib/i18n/guest-text';
 import { extractPhone, toAsciiDigits } from '@/lib/utils/phone';
 // §9 alerjen "yok" kapisi CANLI fonksiyondan gelir (kopya kalip YASAK). route.ts
 // import edilebilir: modul seviyesinde yan etki/ag cagrisi yok, yalniz tanim var.
@@ -370,6 +378,91 @@ check('9n "none" -> none', isNoAllergenAnswer('None'), true);
 check('9o "nichts" -> none', isNoAllergenAnswer('nichts'), true);
 check('9p "fistik alerjim var" -> none DEGIL', isNoAllergenAnswer('fistik alerjim var'), false);
 check('9q "yoktur" -> none DEGIL (kelime siniri korunuyor)', isNoAllergenAnswer('yoktur'), false);
+
+// ── (10) IS 10 — KALICI DIL: resolvePreferredLang + metadata yardimcilari ─────
+// Callback turunda dil BASKA hicbir yerden bilinemez; bu zincir yanlissa order/note
+// butonlarina basan Rus/Arap misafir yine Turkce cevap alir (Tier-2'nin sebebi).
+check('10a detected stored\'in ONUNE gecer', resolvePreferredLang({ stored: 'ru', detected: 'de' }), 'de');
+check('10b detected yoksa stored kazanir', resolvePreferredLang({ stored: 'ru', interfaceLang: 'tr' }), 'ru');
+check('10c ikisi de yoksa arayuz dili', resolvePreferredLang({ interfaceLang: 'de' }), 'de');
+check('10d hicbiri yoksa en', resolvePreferredLang({}), 'en');
+check('10e bos string ATLANIR', resolvePreferredLang({ stored: '', interfaceLang: 'ru' }), 'ru');
+check('10f null/undefined ATLANIR', resolvePreferredLang({ stored: null, detected: undefined, interfaceLang: 'ar' }), 'ar');
+// Desteklenmeyen kod ALTA DUSMEZ -> 'en'. Duserse Fransizca yazana Rusca metin giderdi.
+check('10g destek disi detected -> en (stored\'a DUSMEZ)', resolvePreferredLang({ stored: 'ru', detected: 'fr' }), 'en');
+check('10h bicim normalize (en-US)', resolvePreferredLang({ detected: 'en-US' }), 'en');
+check('10i bosluklu " AR "', resolvePreferredLang({ stored: ' AR ' }), 'ar');
+
+check('10j metadata yoksa null', readPreferredLang(null), null);
+check('10k metadata objesi degilse null', readPreferredLang('ru'), null);
+check('10l alan yoksa null', readPreferredLang({ lead_capture: { topic: 'x' } }), null);
+check('10m gecerli kod okunur', readPreferredLang({ preferred_language: 'ru' }), 'ru');
+check('10n DESTEK DISI kod null (en DEGIL — "kayit yok" ile ayni degil)',
+  readPreferredLang({ preferred_language: 'fr' }), null);
+check('10o bos deger null', readPreferredLang({ preferred_language: '  ' }), null);
+// MERGE kanit: diger anahtarlar KORUNUR (lead akisi ayni metadata'da yasiyor)
+const mergedMeta = withPreferredLang({ lead_capture: { topic: 'dugun' } }, 'ru');
+check('10p yazma sonrasi dil okunur', readPreferredLang(mergedMeta), 'ru');
+check('10q yazma lead_capture\'i EZMEZ',
+  JSON.stringify((mergedMeta as { lead_capture?: unknown }).lead_capture), JSON.stringify({ topic: 'dugun' }));
+check('10r bos metadata uzerine yazilabilir', readPreferredLang(withPreferredLang(null, 'ar')), 'ar');
+
+// ── (11) P7b Tier-2 — callback metinleri 5 dilde DOLU ve BIRBIRINDEN FARKLI ───
+// Ayni kontrol (2)'de Tier-1 icin yapiliyor; Tier-2 anahtarlari ayni cubugu gecmeli.
+const TIER2_KEYS: readonly GuestTextKey[] = [
+  'cb_conv_missing', 'cb_generic_error', 'cb_unknown_action', 'cb_stale_button',
+  'cb_lbl_processed', 'cb_already_processed',
+  'order_sent_guest', 'order_cancelled_guest', 'order_already_processed',
+  'order_lbl_cancelled', 'order_toast_cancelled', 'order_forward_failed',
+  'order_lbl_approved', 'order_toast_sent',
+  'note_already_done', 'note_ask_write', 'note_lbl_waiting', 'note_toast_write',
+  'note_order_missing', 'note_lbl_cancel', 'note_lbl_continue', 'note_toast_awaiting',
+  'hk_ask_towel_type', 'hk_lbl_bath_towel', 'hk_lbl_face_towel', 'hk_lbl_foot_towel',
+  'hk_ask_qty', 'hk_ask_qty_labeled', 'hk_fwd_ok', 'hk_fwd_duplicate', 'hk_fwd_error',
+  'hk_lbl_yes_now', 'hk_lbl_later', 'hk_toast_selected', 'hk_toast_invalid',
+  'hk_complaint_confirm_ask', 'hk_complaint_later', 'hk_lbl_selected',
+];
+for (const k of TIER2_KEYS) {
+  for (const l of LANGS) {
+    check(`11a[${k}/${l}] dolu`, guestText(k, l).trim().length > 0, true);
+  }
+  // TR ile RU/AR ayni string ise ceviri UNUTULMUS demektir (kopyala-yapistir tuzagi)
+  check(`11b[${k}] ru != tr`, guestText(k, 'ru') === guestText(k, 'tr'), false);
+  check(`11c[${k}] ar != tr`, guestText(k, 'ar') === guestText(k, 'tr'), false);
+}
+// Yer tutucu korunuyor mu (adet sorusu esya adini TASIMALI)
+check('11d hk_ask_qty_labeled {esya} doldurulur',
+  guestText('hk_ask_qty_labeled', 'ru', { esya: 'yastik' }).includes('yastik'), true);
+check('11e hk_ask_qty yer tutucu TASIMAZ', guestText('hk_ask_qty', 'ar').includes('{'), false);
+
+// ── (12) Tier-2 AR metinleri: kelime duzeyinde mantiksal-sira kaniti ──────────
+// (8) ile AYNI olcut, yeni anahtarlar icin. Beklenen kelime KOD NOKTASINDAN kurulur.
+const AR_TALAB = cp(0x0637, 0x0644, 0x0628);                            // طلب  (talep/siparis)
+const AR_MULAHAZA = cp(0x0645, 0x0644, 0x0627, 0x062d, 0x0638, 0x0629); // ملاحظة (not)
+const AR_MINSHAFA = cp(0x0645, 0x0646, 0x0634, 0x0641, 0x0629);         // منشفة (havlu)
+const AR_TIER2_MUST: Array<[GuestTextKey, string, string]> = [
+  ['order_sent_guest', AR_TALAB, 'talab (siparis)'],
+  ['order_toast_sent', AR_TALAB, 'talab (siparis)'],
+  // "ملاحظتك" (senin notun) — ta marbuta YOK, bu yuzden KOK aranir (test tuzagi)
+  ['note_ask_write', cp(0x0645, 0x0644, 0x0627, 0x062d, 0x0638), 'mulahaz KOKU (not)'],
+  ['note_lbl_continue', AR_MULAHAZA, 'mulahaza (not)'],
+  ['hk_ask_towel_type', AR_MINSHAFA, 'minshafa (havlu)'],
+  ['hk_lbl_bath_towel', AR_MINSHAFA, 'minshafa (havlu)'],
+];
+for (const [k, word, label] of AR_TIER2_MUST) {
+  check(`12a[${k}] ar metni "${label}" TASIYOR`, guestText(k, 'ar').includes(word), true);
+}
+// DIS: ters yazim BULUNMAMALI (gorsel-sirada kaydedilmis metnin kesin isareti)
+check('12b order_sent_guest TERS talab TASIMIYOR',
+  guestText('order_sent_guest', 'ar').includes(cp(0x0628, 0x0644, 0x0637)), false);
+check('12c hk_ask_towel_type TERS minshafa TASIMIYOR',
+  guestText('hk_ask_towel_type', 'ar').includes(cp(0x0629, 0x0641, 0x0634, 0x0646, 0x0645)), false);
+// AR metni '؟' (U+061F) ile BASLAMAMALI — bastaysa metin ters kaydedilmistir (§6 olcutu)
+const AR_Q = 0x061f;
+for (const k of TIER2_KEYS) {
+  check(`12d[${k}] ar metni '؟' ile BASLAMIYOR`,
+    guestText(k, 'ar').trimStart().codePointAt(0) === AR_Q, false);
+}
 
 const total = pass + fails.length;
 if (fails.length > 0) {
