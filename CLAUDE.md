@@ -217,14 +217,33 @@ siparis/not/housekeeping akisinda Turkce cevap aliyordu. Telegram arayuz dili
 | src/lib/ai/translate-to-turkish.ts | personel karti TR ceviri |
 | src/lib/ai/hotel-context.ts | buildHotelContext / formatContextForPrompt -> prompt bilgi tabani blogu (DIKKAT: src/lib/knowledge/ ALTINDA DEGIL) |
 
-### src/lib/ai/ tam dosya listesi (ADIM 2'de dogrulandi — 16 dosya)
+### src/lib/ai/ tam dosya listesi (13. oturumda canli dizinle karsilastirildi — 20 dosya)
 `social-intent-override.ts`, `safety-classifier.ts`, `verification-intents.ts`,
 `message-types.ts`, `system-prompts.ts`, `anthropic-client.ts`, `parse-stay-query.ts`,
 `detect-room-detail-intent.ts`, `detect-price-intent.ts`, `barboon-live.ts`,
 `room-price-tool.ts`, `translate-to-turkish.ts`, `enforce-reply-language.ts`,
-`hotel-context.ts`, `classify-and-respond.ts`, `department-brains.ts`
+`hotel-context.ts`, `classify-and-respond.ts`, `department-brains.ts`,
+`event-contact-gate.ts`, `spa-context.ts`, `fallback-texts.ts`, `script-guard.ts`
 
-### src/lib/sla/ tam dosya listesi (ADIM 2'de dogrulandi — 10 dosya)
+Onceki "16 dosya" kaydi EKSIKTI; asagidaki 4'u tasimiyordu (hepsi SAF/yardimci):
+| Dosya | Sorumluluk |
+|---|---|
+| event-contact-gate.ts | IS 13/17 etkinlik-iletisim karari: `decideEventContactForward`, `shouldFireFalsePromiseGuard` + **fiyat/re-verify kapilarinin negatif guard'i `preferEventOverPrice`** |
+| spa-context.ts | `isSpaContext` — spa mesajini canli fiyat kapisindan muaf tutan deterministik guard (`preferEventOverPrice`in ikizi) |
+| fallback-texts.ts | `NO_INFO_FALLBACK_TR` — "bilgi yok" cevabinin TEK sabiti (beyinler yalan vaat uretmesin) |
+| script-guard.ts | Alfabe kapisi — cevabin yabanci alfabeye kaymasini yakalar (`enforce-reply-language` ile birlikte) |
+
+### src/lib/i18n/ tam dosya listesi (13. oturumda eklendi — 1 dosya)
+| Dosya | Sorumluluk |
+|---|---|
+| guest-text.ts | **Misafire donuk SABIT metinlerin TEK KAYNAGI.** 5-dil sozluk (tr/en/de/ru/ar) + `guestText(key,lang,params)`; IS 10 kalici dil: `resolvePreferredLang` (detected>stored>interfaceLang), `readPreferredLang` (kayit yoksa null), `withPreferredLang` (metadata MERGE), `ALL_GUEST_TEXT_KEYS` (is8 kapsam kilidi), `PREFERRED_LANG_METADATA_KEY`. SAF: IO/ag/LLM YOK |
+
+### src/lib/lead/ tam dosya listesi (13. oturumda eklendi — 1 dosya)
+| Dosya | Sorumluluk |
+|---|---|
+| lead-capture.ts | IS 18 etkinlik lead akisi (SAF): `startLeadCapture` / `advanceLead` / `isLeadAbandon` / `decideLeadNotify` / `buildLeadFinalCard` + `conversations.metadata.lead_capture` state okuma-yazma (`readLeadCapture` / `withLeadCapture` / `clearLeadCapture`) |
+
+### src/lib/sla/ tam dosya listesi (13. oturumda canli dizinle TEYIT EDILDI — 10 dosya, eksik yok)
 `handle-reception-reply.ts`, `check-runner.ts`, `handle-callback.ts`,
 `handle-menu-offer-callback.ts`, `send-forward-with-buttons.ts`, `handle-order-callback.ts`,
 `handle-note-callback.ts`, `handle-housekeeping-callback.ts`, `housekeeping-forward.ts`,
