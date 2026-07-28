@@ -733,6 +733,13 @@ export function resolvePreferredLang(p: {
   return normalizeGuestLang(first ?? null);
 }
 
+/**
+ * Sozlukteki TUM anahtarlar. is8 bunu gezer: liste ELDE tutulsaydi yeni bir anahtar
+ * eklenip teste yazilmadiginda ceviri kontrolu SESSIZCE atlanirdi. Buradan turedigi
+ * icin union'a eklenen her anahtar otomatik olarak testin kapsamina girer.
+ */
+export const ALL_GUEST_TEXT_KEYS = Object.keys(TEXTS) as GuestTextKey[];
+
 export function guestText(
   key: GuestTextKey,
   lang: string | null | undefined,

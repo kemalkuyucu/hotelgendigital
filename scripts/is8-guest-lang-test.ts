@@ -20,6 +20,7 @@ import {
   resolvePreferredLang,
   readPreferredLang,
   withPreferredLang,
+  ALL_GUEST_TEXT_KEYS,
   type GuestLang,
   type GuestTextKey,
 } from '@/lib/i18n/guest-text';
@@ -407,8 +408,19 @@ check('10q yazma lead_capture\'i EZMEZ',
   JSON.stringify((mergedMeta as { lead_capture?: unknown }).lead_capture), JSON.stringify({ topic: 'dugun' }));
 check('10r bos metadata uzerine yazilabilir', readPreferredLang(withPreferredLang(null, 'ar')), 'ar');
 
-// ── (11) P7b Tier-2 — callback metinleri 5 dilde DOLU ve BIRBIRINDEN FARKLI ───
-// Ayni kontrol (2)'de Tier-1 icin yapiliyor; Tier-2 anahtarlari ayni cubugu gecmeli.
+// ── (11) SOZLUGUN TAMAMI — 5 dilde DOLU ve BIRBIRINDEN FARKLI ────────────────
+// Anahtar listesi ELDE tutulmaz: ALL_GUEST_TEXT_KEYS sozlukten turer, boylece
+// union'a eklenen ama teste yazilmayan bir anahtar SESSIZCE kapsam disi kalamaz.
+for (const k of ALL_GUEST_TEXT_KEYS) {
+  for (const l of LANGS) {
+    check(`11z[${k}/${l}] dolu`, guestText(k, l).trim().length > 0, true);
+  }
+  // TR ile RU/AR ayni string ise ceviri UNUTULMUS demektir (kopyala-yapistir tuzagi)
+  check(`11y[${k}] ru != tr`, guestText(k, 'ru') === guestText(k, 'tr'), false);
+  check(`11x[${k}] ar != tr`, guestText(k, 'ar') === guestText(k, 'tr'), false);
+}
+
+// Tier-2 anahtar listesi ASAGIDAKI AR yon kapisinin kapsamini tanimlar (§12).
 const TIER2_KEYS: readonly GuestTextKey[] = [
   'cb_conv_missing', 'cb_generic_error', 'cb_unknown_action', 'cb_stale_button',
   'cb_lbl_processed', 'cb_already_processed',
@@ -422,46 +434,120 @@ const TIER2_KEYS: readonly GuestTextKey[] = [
   'hk_lbl_yes_now', 'hk_lbl_later', 'hk_toast_selected', 'hk_toast_invalid',
   'hk_complaint_confirm_ask', 'hk_complaint_later', 'hk_lbl_selected',
 ];
-for (const k of TIER2_KEYS) {
-  for (const l of LANGS) {
-    check(`11a[${k}/${l}] dolu`, guestText(k, l).trim().length > 0, true);
-  }
-  // TR ile RU/AR ayni string ise ceviri UNUTULMUS demektir (kopyala-yapistir tuzagi)
-  check(`11b[${k}] ru != tr`, guestText(k, 'ru') === guestText(k, 'tr'), false);
-  check(`11c[${k}] ar != tr`, guestText(k, 'ar') === guestText(k, 'tr'), false);
-}
 // Yer tutucu korunuyor mu (adet sorusu esya adini TASIMALI)
 check('11d hk_ask_qty_labeled {esya} doldurulur',
   guestText('hk_ask_qty_labeled', 'ru', { esya: 'yastik' }).includes('yastik'), true);
 check('11e hk_ask_qty yer tutucu TASIMAZ', guestText('hk_ask_qty', 'ar').includes('{'), false);
 
-// ── (12) Tier-2 AR metinleri: kelime duzeyinde mantiksal-sira kaniti ──────────
-// (8) ile AYNI olcut, yeni anahtarlar icin. Beklenen kelime KOD NOKTASINDAN kurulur.
-const AR_TALAB = cp(0x0637, 0x0644, 0x0628);                            // طلب  (talep/siparis)
-const AR_MULAHAZA = cp(0x0645, 0x0644, 0x0627, 0x062d, 0x0638, 0x0629); // ملاحظة (not)
-const AR_MINSHAFA = cp(0x0645, 0x0646, 0x0634, 0x0641, 0x0629);         // منشفة (havlu)
-const AR_TIER2_MUST: Array<[GuestTextKey, string, string]> = [
-  ['order_sent_guest', AR_TALAB, 'talab (siparis)'],
-  ['order_toast_sent', AR_TALAB, 'talab (siparis)'],
-  // "ملاحظتك" (senin notun) — ta marbuta YOK, bu yuzden KOK aranir (test tuzagi)
-  ['note_ask_write', cp(0x0645, 0x0644, 0x0627, 0x062d, 0x0638), 'mulahaz KOKU (not)'],
-  ['note_lbl_continue', AR_MULAHAZA, 'mulahaza (not)'],
-  ['hk_ask_towel_type', AR_MINSHAFA, 'minshafa (havlu)'],
-  ['hk_lbl_bath_towel', AR_MINSHAFA, 'minshafa (havlu)'],
+// ── (12) Tier-2 AR YON KAPISI — HER anahtar icin kelime duzeyinde sira kaniti ─
+//
+// §6'nin tripwire'lari YAPISALdir ve pratikte yalniz '؟' ile BITEN cumleleri
+// yakalar; DUZ bir cumlenin ters kaydedilmesini yakalayamaz. §8'in olcutu ise
+// dogrudan kelimeye bakar ve beklenen kelime KOD NOKTASINDAN kurulur — bu yuzden
+// editorun/relay'in metni gorsel siraya cevirmesi bu satirlari YESIL BIRAKAMAZ.
+// Burasi ayni olcutu Tier-2'nin TUM anahtarlarina uygular (kapsam bosluk birakmaz).
+//
+// Aranan kelimeler KOKtur (cekim eki degisse de tutar): "ملاحظتك" icinde "ملاحظ",
+// "الطلب" icinde "طلب" gecer. Bu, note_ask_write'ta bir kez kirmizi vererek kendini
+// gosterdi — ta marbuta'li tam bicim aranirsa cekimli kullanim KACAR.
+const AR_ROOTS: Record<string, [number[], string]> = {
+  talab:    [[0x0637, 0x0644, 0x0628], 'talab (talep/siparis)'],
+  khata:    [[0x062e, 0x0637, 0x0623], 'khata (hata)'],
+  sijil:    [[0x0633, 0x062c, 0x0644], 'sijil (kayit)'],
+  maruf:    [[0x0645, 0x0639, 0x0631, 0x0648, 0x0641], 'maruf (bilinen)'],
+  zir:      [[0x0632, 0x0631], 'zir (buton)'],
+  muaalaj:  [[0x0645, 0x0639, 0x0627, 0x0644, 0x062c], 'mualaja KOKU (islem)'],
+  khutwa:   [[0x062e, 0x0637, 0x0648, 0x0629], 'khutwa (adim)'],
+  malumat:  [[0x0645, 0x0639, 0x0644, 0x0648, 0x0645], 'malum KOKU (bilgi)'],
+  ilgha:    [[0x0625, 0x0644, 0x063a, 0x0627, 0x0621], 'ilgha (iptal)'],
+  irsal:    [[0x0625, 0x0631, 0x0633, 0x0627, 0x0644], 'irsal (gonderim)'],
+  takid:    [[0x062a, 0x0623, 0x0643, 0x064a, 0x062f], 'takid (onay)'],
+  kitaba:   [[0x0643, 0x062a, 0x0627, 0x0628], 'kitab KOKU (yazma)'],
+  mulahaz:  [[0x0645, 0x0644, 0x0627, 0x062d, 0x0638], 'mulahaz KOKU (not)'],
+  intizar:  [[0x0627, 0x0646, 0x062a, 0x0638, 0x0627, 0x0631], 'intizar (bekleme)'],
+  mutabaa:  [[0x0645, 0x062a, 0x0627, 0x0628, 0x0639, 0x0629], 'mutabaa (devam)'],
+  minshafa: [[0x0645, 0x0646, 0x0634, 0x0641, 0x0629], 'minshafa (havlu)'],
+  istihmam: [[0x0627, 0x0633, 0x062a, 0x062d, 0x0645, 0x0627, 0x0645], 'istihmam (banyo)'],
+  wajh:     [[0x0648, 0x062c, 0x0647], 'wajh (yuz)'],
+  aqdam:    [[0x0623, 0x0642, 0x062f, 0x0627, 0x0645], 'aqdam (ayaklar)'],
+  turid:    [[0x062a, 0x0631, 0x064a, 0x062f], 'turid (istiyorsun)'],
+  fariq:    [[0x0641, 0x0631, 0x064a, 0x0642], 'fariq (ekip)'],
+  naam:     [[0x0646, 0x0639, 0x0645], 'naam (evet)'],
+  laysa:    [[0x0644, 0x064a, 0x0633], 'laysa (degil)'],
+  ikhtiyar: [[0x0627, 0x062e, 0x062a, 0x064a, 0x0627, 0x0631], 'ikhtiyar (secim)'],
+  salih:    [[0x0635, 0x0627, 0x0644, 0x062d], 'salih (gecerli)'],
+  natazir:  [[0x0646, 0x0639, 0x062a, 0x0630, 0x0631], 'natazir (ozur dileriz)'],
+  turasil:  [[0x062a, 0x0631, 0x0627, 0x0633, 0x0644], 'turasil KOKU (yazmak)'],
+};
+// TIER2_KEYS'in TAMAMI kapsanir — eksik anahtar 12z'de kirmiziya doner.
+const AR_TIER2_MUST: Array<[GuestTextKey, keyof typeof AR_ROOTS]> = [
+  ['cb_conv_missing', 'sijil'],
+  ['cb_generic_error', 'khata'],
+  ['cb_unknown_action', 'maruf'],
+  ['cb_stale_button', 'zir'],
+  ['cb_lbl_processed', 'muaalaj'],
+  ['cb_already_processed', 'khutwa'],
+  ['order_sent_guest', 'talab'],
+  ['order_cancelled_guest', 'malumat'],
+  ['order_already_processed', 'talab'],
+  ['order_lbl_cancelled', 'ilgha'],
+  ['order_toast_cancelled', 'ilgha'],
+  ['order_forward_failed', 'irsal'],
+  ['order_lbl_approved', 'takid'],
+  ['order_toast_sent', 'irsal'],
+  ['note_already_done', 'khutwa'],
+  ['note_ask_write', 'kitaba'],
+  ['note_lbl_waiting', 'intizar'],
+  ['note_toast_write', 'mulahaz'],
+  ['note_order_missing', 'talab'],
+  ['note_lbl_cancel', 'ilgha'],
+  ['note_lbl_continue', 'mutabaa'],
+  ['note_toast_awaiting', 'takid'],
+  ['hk_ask_towel_type', 'minshafa'],
+  ['hk_lbl_bath_towel', 'istihmam'],
+  ['hk_lbl_face_towel', 'wajh'],
+  ['hk_lbl_foot_towel', 'aqdam'],
+  ['hk_ask_qty', 'turid'],
+  ['hk_ask_qty_labeled', 'turid'],
+  ['hk_fwd_ok', 'fariq'],
+  ['hk_fwd_duplicate', 'fariq'],
+  ['hk_fwd_error', 'khata'],
+  ['hk_lbl_yes_now', 'naam'],
+  ['hk_lbl_later', 'laysa'],
+  ['hk_toast_selected', 'ikhtiyar'],
+  ['hk_toast_invalid', 'salih'],
+  ['hk_complaint_confirm_ask', 'natazir'],
+  ['hk_complaint_later', 'turasil'],
+  ['hk_lbl_selected', 'ikhtiyar'],
 ];
-for (const [k, word, label] of AR_TIER2_MUST) {
+for (const [k, rootKey] of AR_TIER2_MUST) {
+  const [pts, label] = AR_ROOTS[rootKey];
+  const word = cp(...pts);
+  const reversed = cp(...[...pts].reverse());
+  // IC: mantiksal sirali kelime metinde VAR
   check(`12a[${k}] ar metni "${label}" TASIYOR`, guestText(k, 'ar').includes(word), true);
+  // DIS: ayni kelimenin TERS yazimi metinde YOK (gorsel-sira kaydinin kesin isareti)
+  check(`12b[${k}] ar metni TERS "${label}" TASIMIYOR`, guestText(k, 'ar').includes(reversed), false);
 }
-// DIS: ters yazim BULUNMAMALI (gorsel-sirada kaydedilmis metnin kesin isareti)
-check('12b order_sent_guest TERS talab TASIMIYOR',
-  guestText('order_sent_guest', 'ar').includes(cp(0x0628, 0x0644, 0x0637)), false);
-check('12c hk_ask_towel_type TERS minshafa TASIMIYOR',
-  guestText('hk_ask_towel_type', 'ar').includes(cp(0x0629, 0x0641, 0x0634, 0x0646, 0x0645)), false);
+// KAPSAM KILIDI: Tier-2 anahtarlarinin HEPSI yon kapisindan gecmis olmali.
+check('12z ar yon kapisi TUM Tier-2 anahtarlarini kapsiyor',
+  new Set(AR_TIER2_MUST.map(([k]) => k)).size, TIER2_KEYS.length);
+
 // AR metni '؟' (U+061F) ile BASLAMAMALI — bastaysa metin ters kaydedilmistir (§6 olcutu)
 const AR_Q = 0x061f;
 for (const k of TIER2_KEYS) {
   check(`12d[${k}] ar metni '؟' ile BASLAMIYOR`,
     guestText(k, 'ar').trimStart().codePointAt(0) === AR_Q, false);
+}
+
+// ── (13) note -> onay karti: yer tutucu ADI birebir eslesiyor mu? ────────────
+// handle-note-callback `{ liste: itemsBlock }` gonderiyor; anahtar farkli bir ad
+// bekliyorsa (or. {items}) guestText onu BOS string ile doldurur ve misafire
+// URUNSUZ bir onay karti gider — sessiz veri kaybi.
+for (const l of LANGS) {
+  const filled = guestText('order_confirm_prompt', l, { liste: 'X1 × 2' });
+  check(`13a[${l}] {liste} dolduruldu`, filled.includes('X1 × 2'), true);
+  check(`13b[${l}] doldurulmamis yer tutucu KALMADI`, filled.includes('{'), false);
 }
 
 const total = pass + fails.length;

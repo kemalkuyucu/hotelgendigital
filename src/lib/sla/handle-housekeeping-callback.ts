@@ -112,12 +112,17 @@ export async function advanceHousekeeping(p: {
     .select('metadata')
     .eq('id', convId)
     .maybeSingle();
-  // Fallback 'tr' BILINCLI: dil hakkinda HICBIR bilgi yoksa (metadata henuz
-  // yazilmamis eski konusma) eski davranis TR idi — guest-text'in 'en' varsayilanina
-  // dusurmek o konusmalarda regresyon olurdu.
+  // p.language route.ts'ten gelir ve ARAYUZ dili DEGIL, o turda classify'in mesaj
+  // METNINDEN tespit ettigi guestLang'dir (route.ts: advanceHousekeeping cagrisi) —
+  // bu yuzden `detected` slotuna verilir: TAZE tespit, metadata'daki kalici (bir
+  // onceki turdan kalma) degeri EZMELIDIR. Callback'ten gelindiginde parametre YOKTUR,
+  // o zaman stored devreye girer.
+  // Fallback 'tr' BILINCLI: hicbir bilgi yoksa (kalici dil henuz yazilmamis ESKI
+  // konusma) eski davranis TR idi; 'en'e dusurmek orada regresyon olurdu.
   const lang = resolvePreferredLang({
+    detected: p.language,
     stored: readPreferredLang(langRow?.metadata),
-    interfaceLang: p.language ?? 'tr',
+    interfaceLang: 'tr',
   });
   const multi = state.items.length > 1;
   const prefixFor = (idx: number) => (multi ? `(${idx + 1}/${state.items.length}) ` : '');
@@ -238,8 +243,9 @@ export async function askHousekeepingComplaintConfirm(p: {
     .eq('id', convId)
     .maybeSingle();
   const lang = resolvePreferredLang({
+    detected: p.language,                // route.ts'ten gelen guestLang = O TURUN tespiti
     stored: readPreferredLang(langRow?.metadata),
-    interfaceLang: p.language ?? 'tr',   // bkz. advanceHousekeeping: eski davranis TR
+    interfaceLang: 'tr',                 // bkz. advanceHousekeeping: eski davranis TR
   });
   state.v = (state.v ?? 0) + 1;
   await supa.from('conversations').update({ hk_pending_text: JSON.stringify(state) }).eq('id', convId);
