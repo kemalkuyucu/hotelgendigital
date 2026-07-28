@@ -396,6 +396,11 @@ export async function POST(
         await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          // DIL 'tr' SABIT — BILINCLI (IS 10 istisnasi): `order:noop` callback_data'si
+          // convId TASIMAZ (64-byte siniri), bu dalda conversation da YUKLU DEGIL ->
+          // kalici dil ancak telegram_chat_id ile EK bir sorgu acilarak okunabilirdi.
+          // Yol nadir (zaten pasiflestirilmis butona ikinci basim) ve tek satirlik bir
+          // toast icin her basimda DB okumaya degmez. Metin yine guest-text.ts'te.
           body: JSON.stringify({ callback_query_id: cq.id, text: guestText('order_already_processed', 'tr') }),
         });
         return NextResponse.json({ ok: true });
