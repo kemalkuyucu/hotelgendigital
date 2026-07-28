@@ -199,6 +199,20 @@ check('12c halka-3 lead acilir (isim+soyisim+telefon TEK soru)',
 check('12d lead state konuyu tasir', leadOpen.state.topic, canliVaka);
 check('12e non-guest lead odasiz acilir', leadOpen.state.room, null);
 
+// ── (13) AYNI GUARD RE-VERIFY KAPISINDA DA KULLANILIR (route.ts:3146) ─────────
+// CANLI KIRILMA (2026-07-28 02:07): event guard fiyat kapisini atlattiktan SONRA mesaj
+// re-verify kapisina dustu — ROOM_REGEX (verify-guest.ts:79) prefix'siz oldugu icin
+// "40 kisilik" ifadesindeki "40" ODA NO sanildi, isPureIdentityClaim true dondu, bot
+// "in-house listesinde eslesme bulamadim" deyip RETURN etti -> event lead ACILMADI.
+// KRITIK REGRESYON: GERCEK salt-kimlik mesaji guard'a TAKILMAMALI, yoksa oda degistiren
+// misafirin re-verify'i sessizce olur.
+check('13a salt kimlik -> guard KAPALI (re-verify korunur)',
+  preferEventOverPrice('312 Kemal Kuyucu'), false);
+check('13b oda onekli salt kimlik -> guard KAPALI',
+  preferEventOverPrice('oda 312 kemal kuyucu'), false);
+check('13c canli kirilma cumlesi -> guard ACIK (re-verify atlanir)',
+  preferEventOverPrice('40 kişilik düğün organizasyonu için fiyat almak istiyoruz'), true);
+
 const total = pass + fails.length;
 if (fails.length > 0) {
   console.error(`\n${fails.length} FAIL:`);

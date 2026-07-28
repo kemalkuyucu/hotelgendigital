@@ -3143,7 +3143,15 @@ async function handleMessage(args: {
   };
   const currentVerifiedGuest: VerifiedGuestShape | null = persistentVerifiedGuest as VerifiedGuestShape | null;
 
-  if (currentVerifiedGuest && aiShouldForward && !rsCodeMatched) {
+  // ETKINLIK NEGATIF GUARD (fiyat kapisindaki ile AYNI predicate — satir 2411 ikizi).
+  // CANLI KIRILMA 2026-07-28: "40 kisilik dugun organizasyonu icin fiyat almak istiyoruz"
+  // -> ROOM_REGEX (verify-guest.ts:79) prefix'siz oldugu icin serbest metindeki "40"i ODA NO
+  // sandi, isPureIdentityClaim true dondu ve re-verify "eslesme yok" deyip RETURN etti;
+  // event lead (satir ~3899) HIC acilmadi. Guard etkinlik mesajini re-verify'dan MUAF tutar.
+  // Gercek salt-kimlik mesaji ("312 Kemal Kuyucu") etkinlik keyword'u TASIMAZ -> re-verify
+  // yolu DEGISMEDI. Parse'in kok nedeni (prefix'siz sayi + cekim eklerinin \b'den kacmasi)
+  // BILINCLI olarak DOKUNULMADAN birakildi — ayri is.
+  if (currentVerifiedGuest && aiShouldForward && !rsCodeMatched && !preferEventOverPrice(text)) {
     const reParsed = parseVerificationInput(text);
     if (
       !reParsed.hasEmbeddedRequest &&  // BEYINCIK: mesajda talep varsa re-verify YOK; dogrulanmis misafir "eslesme bulamadim" duymaz, talep normal akar (dedup ikinci karti keser)
