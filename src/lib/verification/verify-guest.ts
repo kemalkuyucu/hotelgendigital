@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { VERIFICATION_TTL_HOURS } from '@/lib/ai/verification-intents';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { hasEventKeyword } from '@/lib/ai/event-contact-gate';
 
 export interface VerifyResult {
   matched: boolean;
@@ -78,6 +79,9 @@ const STOP_WORDS = new Set([
 
 const ROOM_REGEX = /(?:oda|room|zimmer|номер|غرفة|no|numara|number)?\s*#?\s*(\d{2,4})/i;
 
+const QUANTITY_UNIT_RE =
+  /\bkisi|\bgece|\b(?:adet|gun|gunluk|kez|tane|hafta|saat|konaklama|pax|people|persons?|nights?|days?|guests?|adults?|kids?|children|personen|naechte|nacht|tage|leute)\b/;
+
 export function parseVerificationInput(text: string): ParsedVerification {
   const result: ParsedVerification = {
     roomNumber: null,
@@ -93,9 +97,16 @@ export function parseVerificationInput(text: string): ParsedVerification {
   const cleaned = text.trim().replace(/[,;:]/g, ' ');
 
   // 1) Oda numarası
+  const norm = normalizeTr(cleaned);
+  const disqualifiedAsRoom = hasEventKeyword(norm) || QUANTITY_UNIT_RE.test(norm);
   const roomMatch = cleaned.match(ROOM_REGEX);
   if (roomMatch) {
-    result.roomNumber = roomMatch[1];
+    const before = roomMatch[0].slice(0, roomMatch[0].indexOf(roomMatch[1]));
+    const wasPrefixed = before.replace(/[#\s]/g, '').length > 0;
+    // Prefixli sayi her zaman oda; prefixsiz sayi yalniz event/miktar baglami YOKKEN.
+    if (wasPrefixed || !disqualifiedAsRoom) {
+      result.roomNumber = roomMatch[1];
+    }
   }
 
   // 2) Oda numarasından sonraki kısımdan harf-only token'lar al, stop word'leri at
@@ -122,17 +133,14 @@ export function parseVerificationInput(text: string): ParsedVerification {
 
   // 4) Embedded request kontrolü
   if (result.roomNumber && result.firstName && result.lastName) {
-    const lowerText = cleaned.toLowerCase();
-    const requestStopWords = [
-      'klima', 'klimam', 'tv', 'televizyon', 'duş', 'banyo', 'havlu', 'bornoz',
-      'çarşaf', 'yastık', 'battaniye', 'minibar', 'bira', 'şarap', 'kahve',
-      'çay', 'yemek', 'wifi', 'lamba', 'priz', 'elektrik', 'temizlik',
-      'şikayet', 'iade', 'fatura', 'çalışmıyor', 'bozuk', 'kırık', 'eksik',
-      'kirli', 'soğuk', 'sıcak', 'lazım', 'istiyorum',
+    const requestStems = [
+      'klima', 'tv', 'televizyon', 'dus', 'banyo', 'havlu', 'bornoz',
+      'carsaf', 'yastik', 'battaniye', 'minibar', 'bira', 'sarap', 'kahve',
+      'cay', 'yemek', 'wifi', 'lamba', 'priz', 'elektrik', 'temizlik',
+      'sikayet', 'iade', 'fatura', 'calismiyor', 'bozuk', 'kirik', 'eksik',
+      'kirli', 'soguk', 'sicak', 'lazim', 'istiyor',
     ];
-    const stopWordHit = requestStopWords.some((sw) =>
-      new RegExp(`\\b${sw}\\b`, 'iu').test(lowerText),
-    );
+    const stopWordHit = requestStems.some((sw) => norm.includes(sw));
 
     if (stopWordHit) {
       result.hasEmbeddedRequest = true;
@@ -154,9 +162,13 @@ export function parseVerificationInput(text: string): ParsedVerification {
   //    "oda 312 Kemal Kuyucu" -> true
   //    "1001 kod 2 adet"      -> false  ("2" artik rakam)
   //    "15 agustos 2 kisi"    -> false
-  const residualAfterRoom = roomMatch ? cleaned.replace(roomMatch[0], ' ') : cleaned;
+  const residualAfterRoom = roomMatch && result.roomNumber ? cleaned.replace(roomMatch[0], ' ') : cleaned;
   result.isPureIdentityClaim =
-    !/\d/.test(residualAfterRoom) && !!result.firstName && !!result.lastName;
+    !disqualifiedAsRoom &&
+    tokens.length <= 4 &&
+    !/\d/.test(residualAfterRoom) &&
+    !!result.firstName &&
+    !!result.lastName;
 
   return result;
 }
