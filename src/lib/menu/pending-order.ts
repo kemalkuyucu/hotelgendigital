@@ -128,6 +128,26 @@ export function readPendingText(stored: string | null): ReadPendingResult {
 }
 
 /**
+ * "Bu siparis YAPILI (kod-bazli) mi?" — SAF karar, IO/LLM/zaman YOK.
+ *
+ * YAPILI  = parseOrder menu_items katalogunda EN AZ BIR kodu eslestirmis; zarfta
+ *           lines dolu. Siparis kalem+adet+fiyat tasir, personel kartinda
+ *           formatOrderSummary ozeti gorunur.
+ * SERBEST = mesajda kod yok YA DA kod katalogda yok -> lines bos -> structured null;
+ *           kartta misafirin ham cumlesi durur.
+ *
+ * NEDEN AYRI FONKSIYON: M2 bulanik dedup'i (Jaccard) YALNIZ yapili sipariste
+ * calisir (handle-order-callback.ts). Serbest metinde "bir kahve daha istiyorum"
+ * ile "kahve istiyorum" TAM 0.5'e denk gelip GERCEK ikinci siparisi blokluyordu.
+ * Karar tek yerde yasasin diye cagri yerinde `structured != null` YAZILMAZ.
+ */
+export function isStructuredOrder(
+  structured: StructuredOrder | null | undefined,
+): boolean {
+  return !!structured && Array.isArray(structured.lines) && structured.lines.length > 0;
+}
+
+/**
  * Damga kapisi karari — saf/yan-etkisiz (birim testi bunu import eder).
  * true=KABUL, false=RED. hkStampAccepts ikizi.
  *   ikisi de undefined          -> KABUL (deploy-ani damgasiz eski butonlar)

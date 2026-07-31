@@ -2,7 +2,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { sendForwardWithSlaButtons } from './send-forward-with-buttons';
 import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 import { extractOrderNote } from '@/lib/menu/parse-order';
-import { readPendingText, orderStampAccepts, formatOrderSummary } from '@/lib/menu/pending-order';
+import { readPendingText, orderStampAccepts, formatOrderSummary, isStructuredOrder } from '@/lib/menu/pending-order';
 import { guestText, readPreferredLang, resolvePreferredLang, type GuestLang } from '@/lib/i18n/guest-text';
 import { isDuplicateRequest } from './duplicate-guard';
 import { notifyDuplicateRequest } from './notify-duplicate';
@@ -171,6 +171,16 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     // akistir (misafir siparisi yeniden yazdi -> yeni kart -> yeniden onayladi).
     // Benzerlik karari duplicate-guard.ts'te (SAF); pencere + aday seti BURADA.
     //
+    // KAPI — YALNIZ YAPILI (kod-bazli) SIPARIS (isStructuredOrder, saf):
+    //   Bulanik Jaccard SERBEST METINDE gercek ikinci siparisi BLOKLUYORDU:
+    //   "bir kahve daha istiyorum" vs "kahve istiyorum" = kesisim 2 / birlesim 4
+    //   = TAM 0.5 -> esige denk gelir -> tekrar sanilir. Yon FAIL-SAFE'in TERSI
+    //   (kayip talep) oldugu icin serbest metin M2'yi ATLAR; o yolda cift-tik /
+    //   Telegram retry korumasi M1 atomik claim'dedir (ayni kart, ayni damga).
+    //   Yapili sipariste karsilastirilan metin kalem+adet+FIYAT ozetidir, ayrisma
+    //   nettir ("• Kahve × 2 = 100 TL..." vs "× 3 = 150 TL..." -> 0.43 < 0.5).
+    //   Serbest metnin ANLAMSAL tekrari (LLM isi) AYRI bir backlog maddesidir.
+    //
     // PENCERE 3 dk — HK'nin 10 dk'si DEGIL: siparis tekrari mesru bir istektir
     //   ("bir kahve daha"); genis pencere gercek ikinci siparisi yutardi.
     // ADAY yalniz ACIK F&B eventleri: personel karta bastiysa (responded_at dolu)
@@ -182,46 +192,52 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     // dalinda kart GONDERILMEDIGI icin o iki adimin ciktisi (oda/isim, alerji
     // uyarisi) kullanilmaz; alerjen dalindaki translateToTurkish bosa bir LLM
     // cagrisi olur ve callback'i uzatarak Telegram retry riskini buyutur.
-    const ORDER_DEDUP_WINDOW_MS = 3 * 60 * 1000;
-    const dedupSince = new Date(Date.now() - ORDER_DEDUP_WINDOW_MS).toISOString();
-    const { data: openDupEvents } = await params.supa
-      .from('sla_events')
-      .select('id, request_text, department_chat_id, department_message_id')
-      .eq('conversation_id', conversationId)
-      .eq('department_code', 'fb')
-      .is('responded_at', null)
-      .is('closed_at', null)
-      .gte('created_at', dedupSince)
-      .order('created_at', { ascending: false })
-      .limit(5);
-    const dupEvent = (openDupEvents ?? []).find((ev) =>
-      isDuplicateRequest(requestText, [String(ev.request_text ?? '')], {
-        threshold: 0.5,
-        minTokenLength: 1,
-      }),
-    );
-    if (dupEvent) {
-      // PERSONEL: yeni kart ACILMAZ, sla_events'e DOKUNULMAZ (SLA saati ve
-      // eskalasyon korunur); acik kartin ALTINA reply duser — housekeeping ile ayni
-      // desen. SESSIZ YUTMA YASAGI: bir talep kapida dusuyorsa iz birakmalidir.
-      await notifyDuplicateRequest({
-        botToken: params.botToken,
-        chatId: (dupEvent.department_chat_id as string) ?? fbChatId,
-        messageId: (dupEvent.department_message_id as number | null) ?? null,
-        repeatText: requestText,
-      });
-      // MISAFIR: ne oldugu ACIKCA soylenir; "iletildi" DENMEZ (SAHTE VAAT YASAGI).
-      await fetch(TG(params.botToken, 'sendMessage'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: guestChatId, text: guestText('order_duplicate_recent', lang) }),
-      }).catch(() => {});
-      await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('cb_lbl_processed', lang));
-      await answer(params.botToken, params.callbackQueryId, guestText('order_already_processed', lang));
-      console.log('[order-confirm] DEDUP: INSERT atlandi, yeni kart acilmadi', {
-        conversationId,
-        dupEventId: dupEvent.id,
-      });
-      return;
+    if (isStructuredOrder(structured)) {
+      const ORDER_DEDUP_WINDOW_MS = 3 * 60 * 1000;
+      const dedupSince = new Date(Date.now() - ORDER_DEDUP_WINDOW_MS).toISOString();
+      const { data: openDupEvents } = await params.supa
+        .from('sla_events')
+        .select('id, request_text, department_chat_id, department_message_id')
+        .eq('conversation_id', conversationId)
+        .eq('department_code', 'fb')
+        .is('responded_at', null)
+        .is('closed_at', null)
+        .gte('created_at', dedupSince)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      const dupEvent = (openDupEvents ?? []).find((ev) =>
+        isDuplicateRequest(requestText, [String(ev.request_text ?? '')], {
+          threshold: 0.5,
+          minTokenLength: 1,
+        }),
+      );
+      if (dupEvent) {
+        // PERSONEL: yeni kart ACILMAZ, sla_events'e DOKUNULMAZ (SLA saati ve
+        // eskalasyon korunur); acik kartin ALTINA reply duser — housekeeping ile ayni
+        // desen. SESSIZ YUTMA YASAGI: bir talep kapida dusuyorsa iz birakmalidir.
+        await notifyDuplicateRequest({
+          botToken: params.botToken,
+          chatId: (dupEvent.department_chat_id as string) ?? fbChatId,
+          messageId: (dupEvent.department_message_id as number | null) ?? null,
+          repeatText: requestText,
+        });
+        // MISAFIR: ne oldugu ACIKCA soylenir; "iletildi" DENMEZ (SAHTE VAAT YASAGI).
+        await fetch(TG(params.botToken, 'sendMessage'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: guestChatId, text: guestText('order_duplicate_recent', lang) }),
+        }).catch(() => {});
+        await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('cb_lbl_processed', lang));
+        await answer(params.botToken, params.callbackQueryId, guestText('order_already_processed', lang));
+        console.log('[order-confirm] DEDUP: INSERT atlandi, yeni kart acilmadi', {
+          conversationId,
+          dupEventId: dupEvent.id,
+        });
+        return;
+      }
+    } else {
+      // Serbest metin: M2 hic calismadi. Talep DUSMEZ — normal INSERT yoluna devam
+      // eder; bu satir canli UAT'de kapinin isledigini gosteren tek izdir.
+      console.log('[order-confirm] DEDUP atlandi: serbest-metin siparis', { conversationId });
     }
 
     // guest oda/isim — inhouse_guests_v2'den (telegram_id ile)

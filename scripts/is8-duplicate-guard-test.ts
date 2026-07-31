@@ -15,10 +15,15 @@
  *   F&B siparis                minTokenLength=1 -> miktar TOKEN olur, "2 kahve"
  *                              ile "3 kahve" AYRI siparistir.
  *
+ * (8) M2 KAPISI: bulanik dedup'in HANGI siparise uygulandigi karari
+ * (isStructuredOrder, src/lib/menu/pending-order.ts). Kapinin cagri yerindeki
+ * bagi (if bloguna alinmis olmasi) burada DEGIL — canli UAT / kod okumasi konusu.
+ *
  * DOGRULANAMAZ (canli UAT): gercek sla_events adaylarinin geldigi, kartin
  * acilmadigi, misafire dup mesajinin ulastigi.
  */
 import { isDuplicateRequest } from '@/lib/sla/duplicate-guard';
+import { isStructuredOrder, formatOrderSummary, type StructuredOrder } from '@/lib/menu/pending-order';
 
 let pass = 0;
 const fails: string[] = [];
@@ -103,6 +108,34 @@ check('7d "ığüşöç" tam kume', isDuplicateRequest('ığüşöç kelime', ['
 // Diyakritik normalize FARKLI kelimeleri ayni yapmamali
 check('7e farkli kelimeler diyakritikten sonra da farkli',
   isDuplicateRequest('şeker', ['seker suyu portakal limon'], FB), false);
+
+// ── (8) M2 KAPISI — bulanik dedup YALNIZ yapili (kod-bazli) sipariste ───────
+// backlog #1: serbest metinde Jaccard TAM esige denk gelip GERCEK ikinci siparisi
+// blokluyordu. Kapi handle-order-callback.ts'te: isStructuredOrder(structured)
+// false ise isDuplicateRequest HIC cagrilmaz. Asagidaki iki satir KOK SORUNU
+// (benzerlik gercekten >= 0.5) ve KAPININ kararini (yapili degil) AYRI AYRI
+// kilitler; birlesimleri "bu cift artik bloklanmaz" demektir.
+const BACKLOG_NEW = 'bir kahve daha istiyorum'; // {bir,kahve,daha,istiyorum}
+const BACKLOG_OLD = 'kahve istiyorum';          // {kahve,istiyorum} -> 2/4 = 0.500
+check('8a kok sorun: serbest-metin cifti TAM 0.5 -> guard TEK BASINA tekrar der',
+  isDuplicateRequest(BACKLOG_NEW, [BACKLOG_OLD], FB), true);
+check('8b serbest metin (structured yok) -> M2 kapisi KAPALI',
+  isStructuredOrder(null), false);
+
+// Yapili siparis MUHRU: kapi ACIK kalir ve identik ozet HALA tekrar sayilir.
+const mkOrder = (qty: number, unitPrice: number): StructuredOrder => ({
+  raw: `RS03 ${qty}`,
+  lines: [{ code: 'RS03', name: 'Kahve', unitPrice, qty, lineTotal: unitPrice * qty }],
+  total: unitPrice * qty,
+  currency: 'TRY',
+});
+const RS03_2 = mkOrder(2, 50);
+const RS03_3 = mkOrder(3, 50);
+check('8c yapili siparis -> M2 kapisi ACIK', isStructuredOrder(RS03_2), true);
+check('8d identik yapili siparis ozeti HALA tekrar (gercek formatOrderSummary)',
+  isDuplicateRequest(formatOrderSummary(RS03_2), [formatOrderSummary(RS03_2)], FB), true);
+check('8e farkli adet+tutar -> tekrar DEGIL (0.43 < 0.5)',
+  isDuplicateRequest(formatOrderSummary(RS03_3), [formatOrderSummary(RS03_2)], FB), false);
 
 const total = pass + fails.length;
 if (fails.length > 0) {

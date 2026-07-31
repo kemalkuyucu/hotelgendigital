@@ -9,9 +9,12 @@
  * [rs-total-fix] loglanir ve TURETILEN deger kullanilir (crash DEGIL). Ham/damgasiz/bozuk-JSON/
  * lines-bos -> structured=null (eski davranis KORUNUR).
  *
+ * Ayrica (g) isStructuredOrder: zarftan turetilen "yapili mi?" karari — IS 2 M2
+ * dedup kapisinin girdisi (handle-order-callback.ts serbest metinde dedup'i ATLAR).
+ *
  * Not: b/c/d vakalarinda [rs-total-fix] uyarisi BEKLENEN cikti (self-heal loglanir).
  */
-import { readPendingText } from '@/lib/menu/pending-order';
+import { readPendingText, isStructuredOrder } from '@/lib/menu/pending-order';
 
 let pass = 0;
 const fails: string[] = [];
@@ -94,6 +97,25 @@ const line = (over: LineOver) => ({ code: 'RS01', name: 'Kahve', unitPrice: 50, 
   const r2 = readPendingText(JSON.stringify({ v: 4, lines: [] })); // lines bos
   check('f2 structured null', r2.structured, null);
   check('f2 v korunur', r2.v, 4);
+}
+
+// g) isStructuredOrder — M2 dedup kapisinin SAF karari, ZARFTAN uctan uca.
+//    Kod-bazli zarf -> kapi ACIK; ham/bozuk/lines-siz zarf -> kapi KAPALI
+//    (serbest metin, bulanik dedup calismaz -> gercek 2. siparis bloklanmaz).
+{
+  const codeBased = JSON.stringify({ v: 1, raw: 'RS01 2', lines: [line({})], total: 100, currency: 'TRY' });
+  check('g1 kod-bazli zarf -> yapili', isStructuredOrder(readPendingText(codeBased).structured), true);
+  check('g2 ham metin (backlog cifti) -> yapili DEGIL',
+    isStructuredOrder(readPendingText('bir kahve daha istiyorum').structured), false);
+  check('g3 lines bos zarf -> yapili DEGIL',
+    isStructuredOrder(readPendingText(JSON.stringify({ v: 2, raw: 'kahve', lines: [] })).structured), false);
+  check('g4 lines yok -> yapili DEGIL',
+    isStructuredOrder(readPendingText(JSON.stringify({ v: 2, raw: 'kahve' })).structured), false);
+  check('g5 bozuk JSON -> yapili DEGIL', isStructuredOrder(readPendingText('{bozuk json').structured), false);
+  check('g6 null state -> yapili DEGIL', isStructuredOrder(readPendingText(null).structured), false);
+  // Dogrudan girdi (readPendingText disi cagri yeri acilirsa da guvenli olmali)
+  check('g7 null girdi', isStructuredOrder(null), false);
+  check('g8 lines bos nesne', isStructuredOrder({ raw: 'x', lines: [], total: 0, currency: 'TRY' }), false);
 }
 
 const total = pass + fails.length;
