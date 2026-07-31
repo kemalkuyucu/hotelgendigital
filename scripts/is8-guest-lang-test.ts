@@ -426,7 +426,7 @@ const TIER2_KEYS: readonly GuestTextKey[] = [
   'cb_lbl_processed', 'cb_already_processed',
   'order_sent_guest', 'order_cancelled_guest', 'order_already_processed',
   'order_lbl_cancelled', 'order_toast_cancelled', 'order_forward_failed',
-  'order_lbl_approved', 'order_toast_sent',
+  'order_lbl_approved', 'order_toast_sent', 'order_duplicate_recent',
   'note_already_done', 'note_ask_write', 'note_lbl_waiting', 'note_toast_write',
   'note_order_missing', 'note_lbl_cancel', 'note_lbl_continue', 'note_toast_awaiting',
   'hk_ask_towel_type', 'hk_lbl_bath_towel', 'hk_lbl_face_towel', 'hk_lbl_foot_towel',
@@ -495,6 +495,8 @@ const AR_TIER2_MUST: Array<[GuestTextKey, keyof typeof AR_ROOTS]> = [
   ['order_forward_failed', 'irsal'],
   ['order_lbl_approved', 'takid'],
   ['order_toast_sent', 'irsal'],
+  // IS 2 DEDUP metni: "طلبك" (siparisiniz) icinde talab KOKU gecer
+  ['order_duplicate_recent', 'talab'],
   ['note_already_done', 'khutwa'],
   ['note_ask_write', 'kitaba'],
   ['note_lbl_waiting', 'intizar'],

@@ -92,6 +92,7 @@ export type GuestTextKey =
   | 'order_forward_failed'     // toast: forward basarisiz (rollback yapildi)
   | 'order_lbl_approved'       // kart etiketi: onaylandi
   | 'order_toast_sent'         // toast: siparis iletildi
+  | 'order_duplicate_recent'   // IS 2 DEDUP: ayni siparis az once alinmis, TEKRAR ILETILMEDI
   // Not akisi callback'i
   | 'note_already_done'        // toast: not adimi zaten tamamlandi
   | 'note_ask_write'           // misafire: notunuzu yazin (mesaj)
@@ -486,6 +487,17 @@ const TEXTS: Record<GuestTextKey, Record<GuestLang, string>> = {
     de: 'Bestellung gesendet.',
     ru: 'Заказ отправлен.',
     ar: 'تم إرسال الطلب.',
+  },
+  // IS 2 DEDUP — ayni siparis kisa sure icinde IKINCI kez onaylandi: yeni kart
+  // ACILMADI, kayit YAZILMADI. Metin bunu ACIKCA soyler (SESSIZ YUTMA YASAGI) ve
+  // "iletildi" DEMEZ (SAHTE VAAT YASAGI); degisiklik icin yol gosterir ki misafir
+  // gercekten yeni bir sey istiyorsa kapi kapanmasin.
+  order_duplicate_recent: {
+    tr: 'Bu siparişinizi az önce almıştık; ilgili ekibe tekrar iletmedik. Bir değişiklik isterseniz lütfen yazın.',
+    en: 'We had already received this order a moment ago, so we did not send it to our team again. If you would like to change anything, please let us know.',
+    de: 'Wir hatten diese Bestellung soeben bereits erhalten und haben sie nicht erneut an unser Team weitergeleitet. Wenn Sie etwas aendern moechten, schreiben Sie uns bitte.',
+    ru: 'Мы уже получили этот заказ минуту назад и не стали передавать его команде повторно. Если хотите что-то изменить, пожалуйста, напишите нам.',
+    ar: 'لقد استلمنا طلبك هذا قبل قليل، ولم نرسله إلى الفريق مرة أخرى. إذا أردت تغيير شيء، فيرجى إخبارنا.',
   },
   note_already_done: {
     tr: 'Bu adım zaten tamamlandı.',

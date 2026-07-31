@@ -3,7 +3,9 @@ import { sendForwardWithSlaButtons } from './send-forward-with-buttons';
 import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 import { extractOrderNote } from '@/lib/menu/parse-order';
 import { readPendingText, orderStampAccepts, formatOrderSummary } from '@/lib/menu/pending-order';
-import { guestText, readPreferredLang, resolvePreferredLang } from '@/lib/i18n/guest-text';
+import { guestText, readPreferredLang, resolvePreferredLang, type GuestLang } from '@/lib/i18n/guest-text';
+import { isDuplicateRequest } from './duplicate-guard';
+import { notifyDuplicateRequest } from './notify-duplicate';
 
 const TG = (token: string, m: string) => `https://api.telegram.org/bot${token}/${m}`;
 
@@ -34,6 +36,14 @@ async function editCard(token: string, chatId: number | string, msgId: number, l
       reply_markup: { inline_keyboard: [[{ text: label, callback_data: 'order:noop' }]] },
     }),
   }).catch(() => {});
+}
+
+// "Bu siparis zaten islendi" cevabi IKI yerden verilir: bayrak zaten kapaliysa
+// (seri ikinci basim) ve M1 atomik claim RED'inde (es zamanli ikinci invocation).
+// Tek yerde durur — iki kopya olsa biri degisince digeri sessizce kayardi.
+async function replyAlreadyProcessed(p: OrderCallbackParams, lang: GuestLang): Promise<void> {
+  await answer(p.botToken, p.callbackQueryId, guestText('order_already_processed', lang));
+  await editCard(p.botToken, p.callbackChatId, p.callbackMessageId, guestText('cb_lbl_processed', lang));
 }
 
 // order_pending_text ZARFI ve tum yardimcilari src/lib/menu/pending-order.ts'te
@@ -71,10 +81,11 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
   // Fallback 'tr': kalici dil henuz yazilmamis ESKI konusmalarda eski davranis TR idi.
   const lang = resolvePreferredLang({ stored: readPreferredLang(conv.metadata), interfaceLang: 'tr' });
 
-  // idempotency — bayrak zaten kapaliysa islenmistir
+  // idempotency — bayrak zaten kapaliysa islenmistir. DIKKAT: bu okuma-sonra-yazma
+  // kapisi yalniz SERI ikinci basimi keser; es zamanli iki invocation ikisi de
+  // `true` okur -> asil koruma confirm dalindaki ATOMIK CLAIM'dir (M1).
   if (!conv.order_pending) {
-    await answer(params.botToken, params.callbackQueryId, guestText('order_already_processed', lang));
-    await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('cb_lbl_processed', lang));
+    await replyAlreadyProcessed(params, lang);
     return;
   }
 
@@ -117,10 +128,28 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
   }
 
   if (action === 'confirm') {
-    // bayragi KAPAT (cift basim korumasi icin once)
-    await params.supa.from('conversations')
+    // ── M1: ATOMIK CLAIM (bayragi KAPAT) ──────────────────────────────────
+    // Kosul UPDATE'in ICINDE: `.eq('order_pending', true)`. Es zamanli iki
+    // callback (hizli cift tik / Telegram retry) iki AYRI invocation'da kosar ve
+    // ikisi de yukarida `order_pending=true` OKUR; kosulsuz UPDATE ikisini de
+    // gecirir -> cift sla_events + cift room_service_orders + cift kart. Kosul
+    // veritabanina tasindiginda satiri YALNIZ BIRI alir (0 satir donen kaybeder).
+    // Yerel state GUVENDE: siparis verisi (structured/orderText/requestText) zaten
+    // yukarida okundu; order_pending_text'i null'lamak INSERT'leri etkilemez.
+    const { data: claimed, error: claimErr } = await params.supa.from('conversations')
       .update({ order_pending: false, order_pending_text: null })
-      .eq('id', conversationId);
+      .eq('id', conversationId)
+      .eq('order_pending', true)
+      .select('id');
+    if (claimErr) {
+      // DB hatasi "baskasi aldi" DEMEK DEGILDIR. Burada "zaten islendi" deyip
+      // cikmak siparisi SESSIZCE YUTARDI -> eski davranis (devam et) korunur.
+      console.error('[order-confirm] claim UPDATE hatasi, akis devam ediyor:', claimErr.message);
+    } else if (!claimed || claimed.length === 0) {
+      console.log('[order-cb] RED atomik claim (baska invocation aldi)', { conversationId });
+      await replyAlreadyProcessed(params, lang);
+      return;
+    }
 
     // F&B grup chat_id — departments tablosundan (otel-bazli; hardcode YOK).
     // sla_events.department_chat_id NOT NULL → chat_id yoksa insert'e hic girme.
@@ -134,6 +163,64 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     if (!fbChatId) {
       console.error('[order-confirm] departments.fb telegram_chat_id yok — siparis iletilemedi');
       await answer(params.botToken, params.callbackQueryId, guestText('cb_generic_error', lang));
+      return;
+    }
+
+    // ── M2: DEDUP — ayni siparis kisa sure icinde IKINCI kez mi onaylandi? ──
+    // M1 AYNI kartin es zamanli iki callback'ini keser; BURAYA dusen vaka AYRI bir
+    // akistir (misafir siparisi yeniden yazdi -> yeni kart -> yeniden onayladi).
+    // Benzerlik karari duplicate-guard.ts'te (SAF); pencere + aday seti BURADA.
+    //
+    // PENCERE 3 dk — HK'nin 10 dk'si DEGIL: siparis tekrari mesru bir istektir
+    //   ("bir kahve daha"); genis pencere gercek ikinci siparisi yutardi.
+    // ADAY yalniz ACIK F&B eventleri: personel karta bastiysa (responded_at dolu)
+    //   is akmistir, sonraki siparis ayri bir istir.
+    // minTokenLength 1 — F&B'de MIKTAR gercek bir siparis farkidir ("2 kahve" !=
+    //   "3 kahve"); HK'nin varsayilani (3) tek haneli rakamlari eler.
+    //
+    // KONUM: INSERT'lerden once ama inhouse/alerjen sorgularindan da ONCE — dup
+    // dalinda kart GONDERILMEDIGI icin o iki adimin ciktisi (oda/isim, alerji
+    // uyarisi) kullanilmaz; alerjen dalindaki translateToTurkish bosa bir LLM
+    // cagrisi olur ve callback'i uzatarak Telegram retry riskini buyutur.
+    const ORDER_DEDUP_WINDOW_MS = 3 * 60 * 1000;
+    const dedupSince = new Date(Date.now() - ORDER_DEDUP_WINDOW_MS).toISOString();
+    const { data: openDupEvents } = await params.supa
+      .from('sla_events')
+      .select('id, request_text, department_chat_id, department_message_id')
+      .eq('conversation_id', conversationId)
+      .eq('department_code', 'fb')
+      .is('responded_at', null)
+      .is('closed_at', null)
+      .gte('created_at', dedupSince)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    const dupEvent = (openDupEvents ?? []).find((ev) =>
+      isDuplicateRequest(requestText, [String(ev.request_text ?? '')], {
+        threshold: 0.5,
+        minTokenLength: 1,
+      }),
+    );
+    if (dupEvent) {
+      // PERSONEL: yeni kart ACILMAZ, sla_events'e DOKUNULMAZ (SLA saati ve
+      // eskalasyon korunur); acik kartin ALTINA reply duser — housekeeping ile ayni
+      // desen. SESSIZ YUTMA YASAGI: bir talep kapida dusuyorsa iz birakmalidir.
+      await notifyDuplicateRequest({
+        botToken: params.botToken,
+        chatId: (dupEvent.department_chat_id as string) ?? fbChatId,
+        messageId: (dupEvent.department_message_id as number | null) ?? null,
+        repeatText: requestText,
+      });
+      // MISAFIR: ne oldugu ACIKCA soylenir; "iletildi" DENMEZ (SAHTE VAAT YASAGI).
+      await fetch(TG(params.botToken, 'sendMessage'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: guestChatId, text: guestText('order_duplicate_recent', lang) }),
+      }).catch(() => {});
+      await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('cb_lbl_processed', lang));
+      await answer(params.botToken, params.callbackQueryId, guestText('order_already_processed', lang));
+      console.log('[order-confirm] DEDUP: INSERT atlandi, yeni kart acilmadi', {
+        conversationId,
+        dupEventId: dupEvent.id,
+      });
       return;
     }
 

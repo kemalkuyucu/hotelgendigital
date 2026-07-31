@@ -1,7 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { sendForwardWithSlaButtons } from './send-forward-with-buttons';
 import { labelForHousekeepingCode, type HkItem } from '@/lib/ai/department-brains';
-import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { isDuplicateRequest } from './duplicate-guard';
 import { notifyDuplicateRequest } from './notify-duplicate';
 
 // Housekeeping COKLU esya forward'i. handle-housekeeping-callback.ts'in eski
@@ -68,11 +68,10 @@ export async function forwardHousekeepingItems(p: {
   console.log('[hk-fwd] requestText', { requestText, roomNumber });
 
   // 5) DEDUP (eski callback 149-184 blogu AYNEN: son 10 dk + acik event + Jaccard>=0.5)
-  const dedupNorm = (s: string): string[] =>
-    normalizeTr(String(s ?? ''))
-      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-      .split(/\s+/)
-      .filter((w) => w.length >= 3);
+  //    Benzerlik karari duplicate-guard.ts'e tasindi (SAF, is8 korpusunda kosulur);
+  //    pencere + aday seti + notifyDuplicateRequest yolu BURADA kaldi. Varsayilanlar
+  //    (threshold 0.5 / minTokenLength 3) housekeeping'in canli degerleridir -> opts
+  //    GECILMEZ, davranis birebir korunur.
   const dedupWindowMs = 10 * 60 * 1000;
   const dedupSince = new Date(Date.now() - dedupWindowMs).toISOString();
   const { data: openDupEvents } = await supa
@@ -86,15 +85,9 @@ export async function forwardHousekeepingItems(p: {
     .order('created_at', { ascending: false })
     .limit(5);
   if (openDupEvents && openDupEvents.length > 0) {
-    const newSet = new Set(dedupNorm(requestText));
-    const dupEvent = openDupEvents.find((ev) => {
-      const oldSet = new Set(dedupNorm(String(ev.request_text ?? '')));
-      if (newSet.size === 0 || oldSet.size === 0) return false;
-      let inter = 0;
-      for (const t of newSet) if (oldSet.has(t)) inter++;
-      const uni = new Set([...newSet, ...oldSet]).size;
-      return uni > 0 && inter / uni >= 0.5;
-    });
+    const dupEvent = openDupEvents.find((ev) =>
+      isDuplicateRequest(requestText, [String(ev.request_text ?? '')]),
+    );
     if (dupEvent) {
       await notifyDuplicateRequest({
         botToken: p.botToken,
