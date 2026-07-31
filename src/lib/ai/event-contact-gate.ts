@@ -41,6 +41,36 @@ export const EVENT_KEYWORD_RES: readonly RegExp[] = [
   /\bdavet(?!siz)/,
 ];
 
+/**
+ * IS 16 (backlog #1 RU/AR kapsami): non-latin etkinlik kokleri.
+ *
+ * NEDEN REGEX DEGIL STRING+includes: JS `\b` ASCII `\w` tabanlidir — Kiril/Arap
+ * harfi `\w` SAYILMAZ, bu yuzden `\bсвадьба` HICBIR ZAMAN eslesmez (olu kod
+ * tuzagi). Substring eslesme hem bu tuzagi atlar hem RU cekim eklerini dogal
+ * olarak kapsar.
+ *
+ * NEDEN normalize edilmis metinde CALISIR: normalizeTr non-latin'i SILMEZ,
+ * yalniz TR diyakritigini katlar + toLowerCase yapar. Kiril kuculur
+ * (Свадьба -> свадьба), Arapca'da buyuk/kucuk harf yoktur.
+ *
+ * Latin metnini ETKILEMEZ (farkli alfabe) -> TR/EN/DE regresyon riski yok.
+ * Yanlis-pozitif fail-safe yondedir: cagiran taraf (verify-guest
+ * `disqualifiedAsRoom`) yalniz "oda formatini tekrar sor"a duser, YANLIS DAMGA
+ * atmaz. Forward yollari (`preferEventOverPrice` / `kwReq`) AND'in diger
+ * tarafinda TR-Latin sinyal bekledigi icin bu genisleme onlari degistirmez.
+ */
+export const EVENT_KEYWORDS_NONLATIN: readonly string[] = [
+  // RU: dugun(2 hal) / organizasyon / etkinlik / banket / konferans / gorusme /
+  //     istisare / seminer / toren / jubile / kurumsal
+  //     (IS 1b: "zal"=salon CIKARILDI — "skazal/vokzal/pokazal" ICINDE substring
+  //      yanlis-pozitifi veriyordu; geri EKLEME, kelime siniri gerekir)
+  'свадьба', 'свадьбу', 'организация', 'мероприятие', 'банкет', 'конференция',
+  'встреча', 'совещание', 'семинар', 'торжество', 'юбилей', 'корпоратив',
+  // AR: zifaf / urs / hafl / hafla / mu'temer / ictima / munasebe / tanzim /
+  //     velime / nedve / kaa(salon)
+  'زفاف', 'عرس', 'حفل', 'حفلة', 'مؤتمر', 'اجتماع', 'مناسبة', 'تنظيم', 'وليمة', 'ندوة', 'قاعة',
+];
+
 /** Etkinligi TALEBE ceviren sinyaller (bilgi sorusundan ayirir). */
 export const EVENT_REQUEST_SIGNALS: readonly string[] = [
   'organize', 'yaptirmak', 'planl', 'teklif', 'fiyat al', 'rezerv',
@@ -58,7 +88,10 @@ export const PROMISE_SIGNALS: readonly string[] = [
 ];
 
 export function hasEventKeyword(normalizedMsg: string): boolean {
-  return EVENT_KEYWORD_RES.some((re) => re.test(normalizedMsg));
+  return (
+    EVENT_KEYWORD_RES.some((re) => re.test(normalizedMsg)) ||
+    EVENT_KEYWORDS_NONLATIN.some((k) => normalizedMsg.includes(k))
+  );
 }
 
 export function hasEventRequestSignal(normalizedMsg: string): boolean {

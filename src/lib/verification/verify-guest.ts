@@ -82,6 +82,25 @@ const ROOM_REGEX = /(?:oda|room|zimmer|номер|غرفة|no|numara|number)?\s*
 const QUANTITY_UNIT_RE =
   /\bkisi|\bgece|\b(?:adet|gun|gunluk|kez|tane|hafta|saat|konaklama|pax|people|persons?|nights?|days?|guests?|adults?|kids?|children|personen|naechte|nacht|tage|leute)\b/;
 
+/**
+ * IS 16 (backlog #1 RU/AR kapsami): QUANTITY_UNIT_RE'nin non-latin ikizi.
+ * AYRI SET cunku `\b` ASCII `\w` tabanlidir — Kiril/Arap harfi `\w` sayilmaz,
+ * `\bчеловек` HICBIR ZAMAN eslesmez (olu kod). Substring eslesme kullanilir;
+ * RU cekim eklerini de kapsar. Latin metnini etkilemez -> TR regresyonu yok.
+ * (Etkinlik kokleri TEK KAYNAK olan `hasEventKeyword` icinde yasar.)
+ */
+const QUANTITY_UNITS_NONLATIN: readonly string[] = [
+  // RU: kisi(2 hal) / insanlar / misafir(2 hal) / gece(3 hal) / gun(cogul) /
+  //     yetiskin / cocuk(tekil-cogul)
+  //     (IS 1b: "den"=gun TEKIL CIKARILDI — "dengi"=para ICINDE substring
+  //      yanlis-pozitifi veriyordu; cogul "dney" KALDI)
+  'человек', 'человека', 'людей', 'гость', 'гостей',
+  'ночь', 'ночи', 'ночей', 'дней', 'взрослый', 'ребёнок', 'детей',
+  // AR: sahs / eshas / dayf / duyuf / leyle / leyali / yevm / eyyam / balig /
+  //     tifl / etfal
+  'شخص', 'أشخاص', 'ضيف', 'ضيوف', 'ليلة', 'ليالي', 'يوم', 'أيام', 'بالغ', 'طفل', 'أطفال',
+];
+
 export function parseVerificationInput(text: string): ParsedVerification {
   const result: ParsedVerification = {
     roomNumber: null,
@@ -98,7 +117,10 @@ export function parseVerificationInput(text: string): ParsedVerification {
 
   // 1) Oda numarası
   const norm = normalizeTr(cleaned);
-  const disqualifiedAsRoom = hasEventKeyword(norm) || QUANTITY_UNIT_RE.test(norm);
+  const disqualifiedAsRoom =
+    hasEventKeyword(norm) ||
+    QUANTITY_UNIT_RE.test(norm) ||
+    QUANTITY_UNITS_NONLATIN.some((u) => norm.includes(u));
   const roomMatch = cleaned.match(ROOM_REGEX);
   if (roomMatch) {
     const before = roomMatch[0].slice(0, roomMatch[0].indexOf(roomMatch[1]));

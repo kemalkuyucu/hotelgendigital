@@ -64,6 +64,25 @@ check('6a empty', parseVerificationInput('').roomNumber, null);
 check('6b selam', parseVerificationInput('merhaba').roomNumber, null);
 check('6c bare+quantity', parseVerificationInput('312 icin 2 gece').roomNumber, null);
 
+// ── (7) IS 16: non-latin (RU/AR) event/miktar baglami → ODA DEGIL ─────────
+// Girdiler codePoint'ten kurulur: kaynak dosyalardaki RU/AR literal TERS veya
+// bozuk gomulmusse bu vakalar KIRMIZI doner (goz karari yerine makine kaniti).
+const RU_WEDDING   = String.fromCodePoint(0x0441, 0x0432, 0x0430, 0x0434, 0x044C, 0x0431, 0x0430); // svadba
+const RU_WEDDING_U = String.fromCodePoint(0x0441, 0x0432, 0x0430, 0x0434, 0x044C, 0x0431, 0x0443); // svadbu
+const RU_PEOPLE    = String.fromCodePoint(0x0447, 0x0435, 0x043B, 0x043E, 0x0432, 0x0435, 0x043A); // chelovek
+const RU_NA        = String.fromCodePoint(0x043D, 0x0430);                                          // na
+const RU_NIGHTS    = String.fromCodePoint(0x043D, 0x043E, 0x0447, 0x0438);                          // nochi
+const AR_WEDDING   = String.fromCodePoint(0x0632, 0x0641, 0x0627, 0x0641);                          // zifaf
+const AR_PERSON    = String.fromCodePoint(0x0634, 0x062E, 0x0635);                                  // sahs
+
+check('7a ru event+kisi', parseVerificationInput(`${RU_WEDDING} 40 ${RU_PEOPLE}`).roomNumber, null);
+check('7b ru kisi+event', parseVerificationInput(`40 ${RU_PEOPLE} ${RU_NA} ${RU_WEDDING_U}`).roomNumber, null);
+check('7c ar event+kisi', parseVerificationInput(`${AR_WEDDING} 40 ${AR_PERSON}`).roomNumber, null);
+check('7d ru gece+kisi', parseVerificationInput(`2 ${RU_NIGHTS} 40 ${RU_PEOPLE}`).roomNumber, null);
+// REGRESYON: PREFIXLI oda non-latin baglamda da OKUNUR (prefix her zaman kazanir)
+check('7e ru prefix', parseVerificationInput(`${RU_ROOM} 312`).roomNumber, '312');
+check('7f ar prefix', parseVerificationInput(`${AR_ROOM} 312`).roomNumber, '312');
+
 const total = pass + fails.length;
 if (fails.length > 0) {
   console.error(`IS8 verify-parse: ${pass}/${total} PASS`);
