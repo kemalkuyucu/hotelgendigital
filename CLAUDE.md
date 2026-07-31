@@ -6,9 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- **SON PROD (13. oturum): `1cc5efb`** — P7b Tier-2 + IS 10 kalici dil. Zincir:
-  `262e659` (Tier-2 + IS 10) -> `d22cc5e` (hk `detected` slot fix + is8 kapsam) ->
-  `1cc5efb` (order:noop gerekcesi). Yedek tag: `pre-tier2-20260728`.
+- **SON PROD (16. oturum): `73d92ae`** — IS 2 RS-siparis DEDUP + atomik claim.
+  Deploy `dpl_3KF4cH772h7gQH3BDQT8d7pb4rQC` (target=production, Ready; alias
+  `hotelgen-v2.vercel.app` `vercel inspect` ile TEYITLI). Zincir:
+  `1cc5efb` (13. otu prod) -> `631d2a1` (docs) -> `6c30f6f` + `3d9e593`
+  (15. otu, backlog #1 oda-no parse + RU/AR) -> `73d92ae` (16. otu).
+  Yedek tag: `pre-tier2-20260728`.
 
 ## 1. CALISMA PRENSIPLERI
 - **Reconnaissance-first:** Edit'ten once ilgili dosyalari OKU. Varsayimla kod yazma.
@@ -67,7 +70,7 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
-- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (13. oturum sonu **1651/1651**, 10 dosya; 988 -> 1651: IS 10 resolver + sozluk-tamami §11 + ar yon §12 + `{liste}` §13) +
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (16. oturum sonu **1734/1734**, **12 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka)) +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip) +
   [D] sabit-marka taramasi (src/**, dosya-bazli allowlist). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
@@ -76,6 +79,17 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   kullanimlik teshis scriptleridir — test degil; referans alma, yenisini ekleme.
 - **Migrations do NOT run via npm.** They run from inside the app (admin UI / API routes) per-hotel. See *Migrations* below.
 - Node 20+. Deployed on **Vercel** (`hotelgen-v2.vercel.app`); env vars live in the Vercel dashboard, locally in `.env.local`.
+- **Izin ayari (15. oturum): `.claude/settings.local.json`** — git'te TAKIPSIZ (yalniz
+  `.claude/skills/**` takipli), yani commit gate'inde GORUNMEZ. `defaultMode: acceptEdits`;
+  `vercel`/`npx vercel` **ask** listesinde (deploy her defasinda acik onay ister — §3
+  DEPLOY kuralinin arac tarafindaki karsiligi), `.env*` okumasi ve `git push --force`
+  **deny**. Yeni bir komut reddedilirse once bu dosyaya bak, tahmin etme.
+- **`/api/health-check` PROD'da 503 doner — BOZUK DEGIL.** 6 kontrolden 5'i yesil
+  (env vars / Central / demo-hotel Supabase / encryption / pgvector); tek kirmizi
+  `seed_data`: Central `hotels`'ta `slug='demo-resort-spa'` YOK. Bu, Modul 1 doneminden
+  kalma bir bootstrap seed beklentisi (route'a son dokunus `4e592ec`, 2026-05-05);
+  `allOk=false` oldugu icin endpoint 503 uretir. Deploy sagligi icin olcut DEGIL —
+  gercek olcut: `/` 200 + webhook GET 405 + `vercel inspect` alias teyidi.
 
 ### Housekeeping akisi
 | Dosya | Sorumluluk |
@@ -158,11 +172,98 @@ yeni check-in ile yuklenince anahtar degisir → eski satir **arsivlenir**, YENI
   (pending misafirin inhouse kaydi olmadigindan konusma-isaretcisi tasima adimi YOK). Her iki yolda da
   WHERE'siz UPDATE YOK. Dogrulama: kart sorgusunun BIREBIR aynisini kosur.
 
+### Oda-no parse disqualifier (backlog #1) · sevk `6c30f6f` + `3d9e593` (15. otu)
+
+`ROOM_REGEX` (`verify-guest.ts:80`) **prefix'sizdir** — serbest metindeki HER 2-4
+haneli sayiyi oda no adayi yapar ("40 kisilik dugun..." -> oda "40"). Iki sevk
+kok nedeni DEGIL, **yanlis-pozitifi** kapatti:
+
+- **`6c30f6f` — yalin sayi oda SAYILMAZ:** prefixli sayi ("oda 312") her zaman oda;
+  **prefixsiz** sayi yalniz etkinlik/miktar baglami YOKKEN oda olur
+  (`wasPrefixed || !disqualifiedAsRoom`, verify-guest.ts:126-131). `isPureIdentityClaim`
+  de ayni sarti tasir (:189) -> event mesaji re-verify'a DUSMEZ.
+- **`3d9e593` — RU/AR kapsami:** `disqualifiedAsRoom` (verify-guest.ts:120-123) artik
+  **3 OR** — `hasEventKeyword(norm) || QUANTITY_UNIT_RE.test(norm) ||
+  QUANTITY_UNITS_NONLATIN.some(u => norm.includes(u))`.
+
+| Sabit | Yer | Not |
+|---|---|---|
+| `EVENT_KEYWORDS_NONLATIN` | `src/lib/ai/event-contact-gate.ts:62` | RU/AR etkinlik kokleri; **TEK KAYNAK `hasEventKeyword` icinde yasar** — ikinci liste YASAK |
+| `QUANTITY_UNITS_NONLATIN` | `src/lib/verification/verify-guest.ts:92` | `QUANTITY_UNIT_RE`nin non-latin ikizi (kisi/gece/gun/misafir/cocuk...) |
+
+- **SUBSTRING > REGEX (tuzak):** JS `\b` ASCII `\w` tabanlidir; Kiril/Arap harfi `\w`
+  SAYILMAZ -> `\bчеловек` HICBIR ZAMAN eslesmez (sessiz olu kod). Bu yuzden non-latin
+  setler `includes` ile taranir; RU cekim eklerini de kapsar.
+- **`normalizeTr` non-latin'i KORUR** (yalniz TR diyakritigini katlar + toLowerCase),
+  bu yuzden kontrol normalize edilmis metin uzerinde calisir. Latin metnini
+  etkilemez -> TR/EN/DE regresyonu yok.
+- **Fail-safe yon:** yanlis-pozitif olsa bile sonuc "oda formatini tekrar sor"dur,
+  YANLIS DAMGA atilmaz. (`'den'` = gun TEKIL listeden CIKARILDI: "dengi" icinde
+  substring yanlis-pozitifi veriyordu; cogul `'дней'` kaldi.)
+- Parse'in KOK NEDENI hala acik (bkz. §7) — prefix'siz `ROOM_REGEX` + `requestStopWords`
+  `\b` kalibinin cekim eklerini kacirmasi.
+
 ### Room-service akisi
 | Dosya | Sorumluluk |
 |---|---|
 | src/lib/menu/parse-order.ts | parseOrder regex kod+adet, extractOrderNote (DIKKAT: src/lib/ai/ ALTINDA DEGIL) |
-| src/lib/sla/handle-order-callback.ts | parsePendingOrder -> kart -> room_service_orders INSERT |
+| src/lib/menu/pending-order.ts | `order_pending_text` ZARFI: `buildPendingText` / `readPendingText` (matematik self-heal) / `orderStampAccepts` / `formatOrderSummary` / `bumpPendingOrder` (TEK yazma yolu) |
+| src/lib/sla/handle-order-callback.ts | damga kapisi -> **M1 atomik claim** -> **M2 dedup** -> sla_events + room_service_orders INSERT -> kart |
+| src/lib/sla/duplicate-guard.ts | **SAF** `isDuplicateRequest` — normalize + Jaccard; pencere/aday/bildirim YOK (cagirana ait) |
+
+(`parsePendingOrder` KALKTI — yerini `readPendingText` aldi; zarf ici `raw` sayesinde
+personel kartina ham JSON blob sizmaz.)
+
+### RS-siparis DEDUP + cift-kayit korumasi (IS 2) · sevk `73d92ae`
+
+**KOK SORUN:** tek koruma `conversations.order_pending` BOOLEAN'iydi ve bu bir
+OKUMA-SONRA-YAZMA kapisiydi: SELECT ile UPDATE arasi atomik degil. Es zamanli iki
+callback (hizli cift tik / Telegram retry) iki AYRI Vercel invocation'da kosar,
+ikisi de `order_pending=true` OKUR, ikisi de AYNI damgayi tasidigi icin damga
+kapisini gecer -> **cift `sla_events` + cift `room_service_orders` + cift kart**.
+Damga (`v`) bunu YAKALAMAZ: o BAYAT buton korumasidir, es zamanlilik degil.
+
+**IKI KATMAN — ayri problemler, ayri cozumler:**
+
+- **M1 ATOMIK CLAIM** (`handle-order-callback.ts`, confirm dali): bayrak temizleme
+  artik compare-and-swap — `.update({order_pending:false, order_pending_text:null})
+  .eq('id', convId).eq('order_pending', true).select('id')`. Donen dizi BOS ise
+  satiri baska invocation almistir -> `replyAlreadyProcessed` + return, INSERT'lerden
+  ve alerjen LLM'inden ONCE. **`claimErr` (DB hatasi) "baskasi aldi" SAYILMAZ** —
+  o dalda ESKI davranis (devam et) korunur, yoksa siparis sessizce yutulurdu.
+  Yerel state guvende: `structured`/`orderText`/`requestText` claim'den ONCE okundu,
+  kolonu null'lamak INSERT'leri etkilemez.
+- **M2 DEDUP** (INSERT'lerden once): son **3 dk** + **ACIK** (`responded_at` ve
+  `closed_at` NULL) F&B `sla_events` adaylari cekilir, `isDuplicateRequest(
+  requestText, [aday], {threshold: 0.5, minTokenLength: 1})` ile karsilastirilir.
+  Tutarsa **her iki INSERT ATLANIR**, YENI KART ACILMAZ, `sla_events`'e DOKUNULMAZ
+  (SLA saati + eskalasyon korunur); acik kartin ALTINA `notifyDuplicateRequest`
+  reply'i duser (HK ile ayni desen) ve misafire `order_duplicate_recent` gider.
+
+**PARAMETRELER — neden HK'den FARKLI:**
+| | housekeeping | F&B siparis |
+|---|---|---|
+| pencere | 10 dk | **3 dk** (siparis tekrari mesru: "bir kahve daha") |
+| `minTokenLength` | 3 (varsayilan) | **1** |
+
+`minTokenLength` **kritik**: varsayilan 3, tek haneli miktar rakamlarini ELER —
+"2 cay" ile "3 cay" AYNI kume olur. HK'de bu bugunku canli davranistir (korundu);
+F&B'de MIKTAR gercek bir siparis farkidir, ayni sayilirsa misafirin eline yanlis
+adette urun gider. Kod-bazli sipariste fiyat da degistigi icin ayrisma net
+(`• Kahve × 2 = 100 TL...` vs `× 3 = 150 TL...` -> 0.43 < 0.5).
+
+**KONUM KARARI:** M2, `sla_events` INSERT'inden once ama **inhouse ve alerjen
+sorgularindan da ONCE**. Dup dalinda kart GONDERILMEDIGI icin oda/isim ve alerji
+uyarisi kullanilmaz; alerjen dalindaki `translateToTurkish` bosa bir LLM cagrisi
+olur ve callback'i uzatarak Telegram retry riskini buyutur.
+
+**LOG SATIRLARI (canli UAT olcutu):** `[order-cb] RED atomik claim` (M1 kaybeden
+invocation) · `[order-confirm] DEDUP: INSERT atlandi, yeni kart acilmadi` (M2) ·
+`[dup-notify] gonderildi` (personel reply'i dustu).
+
+**KAPSAM DISI (bilincli):** `cancel` dali claim ALMAZ (cift iptal zararsiz);
+`sla_events`/`room_service_orders` uzerinde DB UNIQUE constraint YOK (M1 uygulama
+seviyesi korumadir); webhook seviyesinde `update_id` dedup'i YOK.
 
 ### Misafir dili (IS 10 — KALICI DIL) · sevk `1cc5efb`
 
@@ -243,11 +344,11 @@ Onceki "16 dosya" kaydi EKSIKTI; asagidaki 4'u tasimiyordu (hepsi SAF/yardimci):
 |---|---|
 | lead-capture.ts | IS 18 etkinlik lead akisi (SAF): `startLeadCapture` / `advanceLead` / `isLeadAbandon` / `decideLeadNotify` / `buildLeadFinalCard` + `conversations.metadata.lead_capture` state okuma-yazma (`readLeadCapture` / `withLeadCapture` / `clearLeadCapture`) |
 
-### src/lib/sla/ tam dosya listesi (13. oturumda canli dizinle TEYIT EDILDI — 10 dosya, eksik yok)
+### src/lib/sla/ tam dosya listesi (16. oturumda canli dizinle TEYIT EDILDI — 11 dosya, eksik yok)
 `handle-reception-reply.ts`, `check-runner.ts`, `handle-callback.ts`,
 `handle-menu-offer-callback.ts`, `send-forward-with-buttons.ts`, `handle-order-callback.ts`,
 `handle-note-callback.ts`, `handle-housekeeping-callback.ts`, `housekeeping-forward.ts`,
-`notify-duplicate.ts`
+`notify-duplicate.ts`, **`duplicate-guard.ts`** (16. otu — IS 2)
 
 ### Multi-tenant architecture (the core mental model)
 
@@ -359,6 +460,19 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   etiketi, kart etiketi, callback toast'i) `src/lib/i18n/guest-text.ts`'e 5 dille
   eklenir; dosya icine inline literal YAZILMAZ. Ikinci kopya = biri degisince
   digerinin sessizce kaymasi. Dil `resolvePreferredLang` ile cozulur.
+- **TEKRARLANAN KARAR/CEVAP TEK KAYNAKTA:** ayni karar ya da ayni misafir cevabi
+  ikinci bir yerde YENIDEN YAZILMAZ — ortak bir SAF fonksiyona/yardimciya cekilir.
+  Iki kopya = biri degisince digerinin SESSIZCE kaymasi. Bugunku TEK-KAYNAK kayitlari:
+  - **dedup benzerligi** -> `src/lib/sla/duplicate-guard.ts` `isDuplicateRequest`
+    (housekeeping-forward + handle-order-callback AYNI fonksiyonu cagirir; inline
+    Jaccard kopyasi 16. oturumda KALDIRILDI)
+  - **"bu siparis zaten islendi" cevabi** -> `handle-order-callback.ts`
+    `replyAlreadyProcessed` (bayrak-kapali dali + M1 claim RED'i ayni yardimci)
+  - **misafire donuk sabit metin** -> `guest-text.ts` (ustteki madde)
+  - **"bilgi yok" cevabi** -> `fallback-texts.ts` `NO_INFO_FALLBACK_TR`
+  - **soru/sikayet dedektoru** -> `department-brains.ts` `isInfoQuestion` (capraz-departman TEK)
+  - **non-latin etkinlik kokleri** -> `hasEventKeyword` (`event-contact-gate.ts`)
+  - **TR normalize** -> `normalize-tr.ts` `normalizeTr` (ikinci normalizer YASAK)
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
 ## 4. TUZAKLAR (defalarca saat kaybettirdi)
@@ -382,7 +496,19 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   Dogru: Get-ChildItem -Path src -Recurse -Filter *.ts | Select-String "..."
 - **Commit mesaji ASCII only.** Turkce karakter YASAK.
 - **Misafire donuk metinler TAM Turkce karakterli.**
+- **JS `\b` ASCII-ONLY:** `\w` Kiril/Arap harfini SAYMAZ -> `\bчеловек` / `\bحفل`
+  kaliplari HICBIR ZAMAN eslesmez ve SESSIZ OLU KOD olur (test yesil, canli bos).
+  Non-latin keyword taramasi `includes` (substring) ile yapilir; `normalizeTr`
+  non-latin'i SILMEZ, o yuzden normalize edilmis metinde calisir.
+- **Okuma-sonra-yazma bayragi ES ZAMANLILIGI KESMEZ:** `SELECT ... if (flag) ...
+  UPDATE` deseni iki paralel invocation'in ikisini de gecirir (Vercel'de her
+  callback ayri instance). Cift kayit istemiyorsan kosulu UPDATE'in ICINE koy
+  (`.eq('flag', true).select('id')` -> donen dizi bos = kaybettin). Bkz. IS 2 M1.
 - **callback_data 64 byte siniri.** Asarsan state DB'ye.
+- **Telegram `update_id` OKUNMUYOR** (`src/lib/telegram/types.ts:42`'de tanimli,
+  hicbir yerde kullanilmiyor) -> webhook seviyesinde retry dedup'i YOK. Telegram
+  yanit gecikirse AYNI update'i tekrar gonderir; koruma her akisin kendi
+  state'indedir (order: M1 claim; hk/note: damga).
 - **Bot kimligi:** setWebhook ONCESI getMe ile token dogrula.
 - **Vercel:** "Deploy Ready" yetmez. vercel --prod + Production teyidi.
   vercel logs CLI ECONNRESET verir — log web panelinden okunur.
@@ -419,16 +545,41 @@ Asla "tamamlandi, calisiyor" yazma. Neyin dogrulanmadigini yaz.
 callback/toast dili · IS 10 kalici dil · `handle-order/note-callback` iki
 `lang='tr'` HARDCODE'u · B4 alerjen-cevap dili · hk `language` yanlis-slot (madde-5).
 
+**15. oturumda KAPANDI:** yalin sayinin oda sayilmasi (`6c30f6f`) · oda-no
+disqualifier'in RU/AR kapsami (`3d9e593`) — bkz. §2 *Oda-no parse disqualifier*.
+
+**16. oturumda KAPANDI:** **RS-siparis DEDUP yoktu** — ayni siparis kisa sure
+icinde iki kez kayit/kart uretebiliyordu; artik M1 atomik claim (es zamanli
+callback) + M2 dedup (ayri akis tekrari) var. Ayrica housekeeping'in inline
+Jaccard kopyasi ortak `duplicate-guard.ts`e tasindi (`73d92ae`).
+
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida).
 
-- **verification parse yanlis-pozitifi (SIRADAKI IS):** `ROOM_REGEX`
-  (`verify-guest.ts:79`) prefix'siz oldugu icin serbest metindeki HER 2-4 haneli
-  sayiyi oda no sayar; "40 kisilik dugun..." -> oda "40". Ustune `requestStopWords`
-  `\b` kalibi cekim eklerini KACIRIR ("istiyoruz" != "istiyorum") -> mesaj
-  `isPureIdentityClaim` sayilip re-verify'a duser. Su an event mesajlari
-  `preferEventOverPrice` guard'iyla o kapidan MUAF; asil parse DUZELTILMEDI —
-  baska mesaj siniflarinda ayni tuzak DURUYOR. Duzeltmek verification cekirdegine
-  dokunmaktir, ayri korpus ister.
+- **verification parse yanlis-pozitifi (SIRADAKI IS — kok neden ACIK):** `ROOM_REGEX`
+  (`verify-guest.ts:80`) prefix'siz oldugu icin serbest metindeki HER 2-4 haneli
+  sayiyi oda no ADAYI yapar. Ustune `requestStopWords` `\b` kalibi cekim eklerini
+  KACIRIR ("istiyoruz" != "istiyorum"). 15. oturum yalniz **yanlis-pozitifi**
+  kapatti (`disqualifiedAsRoom` 3 OR + prefixsiz-sayi sarti, TR/EN/DE + RU/AR);
+  regex'in kendisi ve stop-word kalibi DUZELTILMEDI -> disqualifier'in gormedigi
+  mesaj siniflarinda tuzak DURUYOR. Duzeltmek verification cekirdegine dokunmaktir,
+  ayri korpus ister (`is8-verify-parse-test.ts` zemini hazir, 42 vaka).
+- **IS 2 dedup — serbest-metin yanlis-pozitifi:** kod-bazli sipariste fiyat+adet
+  ayrisma sagliyor, ama **serbest metinde** "kahve istiyorum" vs "bir kahve daha
+  istiyorum" Jaccard TAM 0.5'e denk gelir -> tekrar sayilir ve ikinci siparis
+  ILETILMEZ. Yon FAIL-SAFE'in TERSI (kayip talep) oldugu icin en oncelikli dedup
+  borcu budur; 3 dk penceresi + "acik event" sarti riski sinirlar, misafir
+  `order_duplicate_recent` ile BILGILENDIRILIR (sessiz yutma degil). Cozum
+  muhtemelen yapisal karsilastirma (kod+adet) ya da serbest metinde daha yuksek esik.
+- **`cancel` dali atomik claim ALMAZ** (yalniz `confirm`). Es zamanli iki iptal
+  misafire iki mesaj gonderebilir — kozmetik, kayit uretmez.
+- **`sla_events` / `room_service_orders` uzerinde UNIQUE constraint YOK**
+  (`003_sla_events.sql`, `023_menu_catalog.sql`: yalniz PK + normal index). M1
+  uygulama seviyesi bir korumadir; ileride BASKA bir INSERT noktasi acilirsa ayni
+  garantiyi otomatik ALMAZ. DB-seviyesi garanti yeni migration ister.
+- **Webhook `update_id` dedup'i YOK** (bkz. §4). M1 order akisini korur; `note:`/
+  `hk:` akislari yalniz damgaya guvenir.
+- **`claimErr` aninda cift-kayit korumasi DUSER:** M1'de DB hatasi olursa akis
+  bilincli olarak DEVAM eder (siparisi yutmamak icin). Nadir ama kayitli.
 - **ru/ar ceviri anlam review'u YOK:** 5-dil sozlukteki Rusca/Arapca metinler is8
   ile yalniz YON, DOLULUK ve "tr'den farkli" acisindan dogrulanir; ANLAM/uslup
   icin native goz gecmedi. Misafire giden metinler, oncelik orta.
