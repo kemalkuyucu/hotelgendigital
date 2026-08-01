@@ -6,11 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- **SON PROD (16. oturum): `73d92ae`** — IS 2 RS-siparis DEDUP + atomik claim.
-  Deploy `dpl_3KF4cH772h7gQH3BDQT8d7pb4rQC` (target=production, Ready; alias
-  `hotelgen-v2.vercel.app` `vercel inspect` ile TEYITLI). Zincir:
+- **SON PROD (17. oturum): `d5b9408`** — IS 2 M2 dedup artik YALNIZ yapili
+  (kod-bazli) sipariste kosar; serbest-metin yanlis-pozitifi kapandi.
+  Deploy `dpl_7ejoCZTRfzvYeYFLvUK3GbDGur9X` (target=production, READY; alias
+  `hotelgen-v2.vercel.app` `vercel inspect` + panel ile TEYITLI). Zincir:
   `1cc5efb` (13. otu prod) -> `631d2a1` (docs) -> `6c30f6f` + `3d9e593`
-  (15. otu, backlog #1 oda-no parse + RU/AR) -> `73d92ae` (16. otu).
+  (15. otu, oda-no parse + RU/AR) -> `73d92ae` (16. otu, IS 2 M1+M2)
+  -> `d5b9408` (17. otu). Onceki prod deploy: `dpl_3KF4cH772h7gQH3BDQT8d7pb4rQC`.
   Yedek tag: `pre-tier2-20260728`.
 
 ## 1. CALISMA PRENSIPLERI
@@ -70,7 +72,7 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
-- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (16. oturum sonu **1734/1734**, **12 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka)) +
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (17. oturum sonu **1747/1747**, **12 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`)) +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip) +
   [D] sabit-marka taramasi (src/**, dosya-bazli allowlist). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
@@ -207,14 +209,14 @@ kok nedeni DEGIL, **yanlis-pozitifi** kapatti:
 | Dosya | Sorumluluk |
 |---|---|
 | src/lib/menu/parse-order.ts | parseOrder regex kod+adet, extractOrderNote (DIKKAT: src/lib/ai/ ALTINDA DEGIL) |
-| src/lib/menu/pending-order.ts | `order_pending_text` ZARFI: `buildPendingText` / `readPendingText` (matematik self-heal) / `orderStampAccepts` / `formatOrderSummary` / `bumpPendingOrder` (TEK yazma yolu) |
-| src/lib/sla/handle-order-callback.ts | damga kapisi -> **M1 atomik claim** -> **M2 dedup** -> sla_events + room_service_orders INSERT -> kart |
+| src/lib/menu/pending-order.ts | `order_pending_text` ZARFI: `buildPendingText` / `readPendingText` (matematik self-heal) / `orderStampAccepts` / `formatOrderSummary` / **`isStructuredOrder`** (M2 kapisi) / `bumpPendingOrder` (TEK yazma yolu) |
+| src/lib/sla/handle-order-callback.ts | damga kapisi -> **M1 atomik claim** -> **M2 dedup (yalniz yapili siparis)** -> sla_events + room_service_orders INSERT -> kart |
 | src/lib/sla/duplicate-guard.ts | **SAF** `isDuplicateRequest` — normalize + Jaccard; pencere/aday/bildirim YOK (cagirana ait) |
 
 (`parsePendingOrder` KALKTI — yerini `readPendingText` aldi; zarf ici `raw` sayesinde
 personel kartina ham JSON blob sizmaz.)
 
-### RS-siparis DEDUP + cift-kayit korumasi (IS 2) · sevk `73d92ae`
+### RS-siparis DEDUP + cift-kayit korumasi (IS 2) · sevk `73d92ae` (M1+M2) + `d5b9408` (M2 kapisi)
 
 **KOK SORUN:** tek koruma `conversations.order_pending` BOOLEAN'iydi ve bu bir
 OKUMA-SONRA-YAZMA kapisiydi: SELECT ile UPDATE arasi atomik degil. Es zamanli iki
@@ -233,12 +235,48 @@ Damga (`v`) bunu YAKALAMAZ: o BAYAT buton korumasidir, es zamanlilik degil.
   o dalda ESKI davranis (devam et) korunur, yoksa siparis sessizce yutulurdu.
   Yerel state guvende: `structured`/`orderText`/`requestText` claim'den ONCE okundu,
   kolonu null'lamak INSERT'leri etkilemez.
-- **M2 DEDUP** (INSERT'lerden once): son **3 dk** + **ACIK** (`responded_at` ve
-  `closed_at` NULL) F&B `sla_events` adaylari cekilir, `isDuplicateRequest(
-  requestText, [aday], {threshold: 0.5, minTokenLength: 1})` ile karsilastirilir.
-  Tutarsa **her iki INSERT ATLANIR**, YENI KART ACILMAZ, `sla_events`'e DOKUNULMAZ
-  (SLA saati + eskalasyon korunur); acik kartin ALTINA `notifyDuplicateRequest`
-  reply'i duser (HK ile ayni desen) ve misafire `order_duplicate_recent` gider.
+- **M2 DEDUP** (INSERT'lerden once, **yalniz YAPILI siparis** — bkz. M2 KAPISI): son
+  **3 dk** + **ACIK** (`responded_at` ve `closed_at` NULL) F&B `sla_events` adaylari
+  cekilir, `isDuplicateRequest(requestText, [aday], {threshold: 0.5,
+  minTokenLength: 1})` ile karsilastirilir. Tutarsa **her iki INSERT ATLANIR**, YENI
+  KART ACILMAZ, `sla_events`'e DOKUNULMAZ (SLA saati + eskalasyon korunur); acik
+  kartin ALTINA `notifyDuplicateRequest` reply'i duser (HK ile ayni desen) ve
+  misafire `order_duplicate_recent` gider.
+
+**M2 KAPISI — bulanik dedup YALNIZ yapili sipariste (17. otu, `d5b9408`):**
+
+`handle-order-callback.ts` confirm dalinda M2 blogunun TAMAMI (aday sorgusu dahil)
+`if (isStructuredOrder(structured))` icindedir; else dalinda tek satir log dusup akis
+**normal INSERT yoluna** devam eder. Esik `0.5` / `minTokenLength 1` AYNEN korundu —
+identik yapili ozet hala 1.0 ile tekrar sayilir. `duplicate-guard.ts` (jenerik),
+`housekeeping-forward.ts` (HK cagri yeri) ve `route.ts` DEGISMEDI.
+
+- **KOK SORUN:** serbest metinde Jaccard esige TAM oturuyordu — "bir kahve daha
+  istiyorum" {bir,kahve,daha,istiyorum} vs "kahve istiyorum" {kahve,istiyorum} =
+  kesisim 2 / birlesim 4 = **0.500** >= esik -> GERCEK ikinci siparis tekrar sanilip
+  ILETILMIYORDU. Yon FAIL-SAFE'in TERSI (kayip talep).
+- **`isStructuredOrder(structured)`** (`pending-order.ts`, SAF): zarfta `lines` dolu
+  mu? YAPILI = `parseOrder` `menu_items` katalogunda en az bir KOD eslestirmis
+  (karsilastirilan metin kalem+adet+FIYAT ozeti, ayrisma net). SERBEST = kod yok ya
+  da kod katalogda yok -> karsilastirilan metin misafirin ham cumlesi.
+- **Serbest metinde koruma M1'dedir:** ayni kartin cift tiki / Telegram retry'i atomik
+  claim'de durur. Kapali olan yalniz AYRI akis tekrarinin bulanik yakalanmasidir.
+- **BULGU — freeform yol GERCEK, olu kod DEGIL** (17. otu kod okumasi): serbest-metin
+  siparis onay karti canli bir yoldur. Zincir: `route.ts:3858`
+  `inMenu = hasCodes ? true : await isOrderInMenu(text, supa)` -> urun menude VARSA
+  erken return YOK -> `:3899` `structured = hasCodes ? {...} : null` -> `:3902`
+  `bumpPendingOrder(..., null)` -> `:3911` **`order_confirm_prompt_freeform`** karti
+  (`guest-text.ts`, 5 dilde dolu) + normal `order:confirm` butonlari. Yani backlog #1
+  savunma guard'i degil, ERISILEBILIR bir bug idi. `isOrderInMenu` fail-safe TRUE
+  (menu bos / Haiku suphede / hata -> var say) oldugundan menusu yuklenmemis tenant'ta
+  HER serbest-metin siparis bu yoldan gecer.
+- **TEST TUZAGI:** serbest-metin testi icin urun MENUDE OLMALI. Menude olmayan urun
+  (`kahve`) `isOrderInMenu`=false doner -> `menu:show` kademeli oneri dalina duser,
+  onay karti HIC cikmaz -> callback'e ulasilmaz. Dogru test girdisi: **menudeki bir
+  urunu KODSUZ istemek** (canli mühürde `cay`).
+- **CANLI CIFT MUHUR (`dpl_7ejo`, 17. otu UAT):** *Test A* serbest `cay` x2 -> **2 ayri
+  kart** acildi, log `[order-confirm] DEDUP atlandi: serbest-metin siparis` x2.
+  *Test B* yapili `RS03` x2 -> dedup tetiklendi, `INSERT atlandi`, ikinci kart YOK.
 
 **PARAMETRELER — neden HK'den FARKLI:**
 | | housekeeping | F&B siparis |
@@ -258,12 +296,15 @@ uyarisi kullanilmaz; alerjen dalindaki `translateToTurkish` bosa bir LLM cagrisi
 olur ve callback'i uzatarak Telegram retry riskini buyutur.
 
 **LOG SATIRLARI (canli UAT olcutu):** `[order-cb] RED atomik claim` (M1 kaybeden
-invocation) · `[order-confirm] DEDUP: INSERT atlandi, yeni kart acilmadi` (M2) ·
-`[dup-notify] gonderildi` (personel reply'i dustu).
+invocation) · `[order-confirm] DEDUP: INSERT atlandi, yeni kart acilmadi` (M2 tuttu) ·
+**`[order-confirm] DEDUP atlandi: serbest-metin siparis`** (M2 kapisi KAPALI, akis
+INSERT'e devam etti) · `[dup-notify] gonderildi` (personel reply'i dustu).
 
 **KAPSAM DISI (bilincli):** `cancel` dali claim ALMAZ (cift iptal zararsiz);
 `sla_events`/`room_service_orders` uzerinde DB UNIQUE constraint YOK (M1 uygulama
-seviyesi korumadir); webhook seviyesinde `update_id` dedup'i YOK.
+seviyesi korumadir); webhook seviyesinde `update_id` dedup'i YOK; **serbest metinde
+bulanik dedup YOK** — ayni cumle 2 kez onaylanirsa 2 kart acilir (fazladan kart,
+kayip talepten iyidir; bkz. §7).
 
 ### Misafir dili (IS 10 — KALICI DIL) · sevk `1cc5efb`
 
@@ -466,6 +507,8 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   - **dedup benzerligi** -> `src/lib/sla/duplicate-guard.ts` `isDuplicateRequest`
     (housekeeping-forward + handle-order-callback AYNI fonksiyonu cagirir; inline
     Jaccard kopyasi 16. oturumda KALDIRILDI)
+  - **"siparis YAPILI mi" karari** -> `src/lib/menu/pending-order.ts`
+    `isStructuredOrder` (M2 kapisi; cagri yerinde `structured != null` YAZILMAZ)
   - **"bu siparis zaten islendi" cevabi** -> `handle-order-callback.ts`
     `replyAlreadyProcessed` (bayrak-kapali dali + M1 claim RED'i ayni yardimci)
   - **misafire donuk sabit metin** -> `guest-text.ts` (ustteki madde)
@@ -504,6 +547,11 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   UPDATE` deseni iki paralel invocation'in ikisini de gecirir (Vercel'de her
   callback ayri instance). Cift kayit istemiyorsan kosulu UPDATE'in ICINE koy
   (`.eq('flag', true).select('id')` -> donen dizi bos = kaybettin). Bkz. IS 2 M1.
+- **Serbest-metin siparis UAT'i: urun MENUDE OLMALI.** Menude olmayan urunle
+  ("kahve") test edersen `isOrderInMenu`=false doner, akis `menu:show` kademeli
+  oneri dalina sapar ve onay karti HIC cikmaz -> `order:confirm` callback'ine
+  ULASILAMAZ, dedup/kapi davranisi olculemez. Menudeki urunu KODSUZ iste
+  (bkz. §2 *M2 KAPISI*).
 - **callback_data 64 byte siniri.** Asarsan state DB'ye.
 - **Telegram `update_id` OKUNMUYOR** (`src/lib/telegram/types.ts:42`'de tanimli,
   hicbir yerde kullanilmiyor) -> webhook seviyesinde retry dedup'i YOK. Telegram
@@ -553,6 +601,13 @@ icinde iki kez kayit/kart uretebiliyordu; artik M1 atomik claim (es zamanli
 callback) + M2 dedup (ayri akis tekrari) var. Ayrica housekeeping'in inline
 Jaccard kopyasi ortak `duplicate-guard.ts`e tasindi (`73d92ae`).
 
+**17. oturumda KAPANDI:** **M2 dedup'in serbest-metin YANLIS-POZITIFI** (`d5b9408`) —
+"bir kahve daha istiyorum" vs "kahve istiyorum" Jaccard TAM 0.5 oldugu icin GERCEK
+ikinci siparis iletilmiyordu; M2 artik yalniz yapili (kod-bazli) sipariste kosar
+(`isStructuredOrder` kapisi). Kod okumasiyla ayrica TEYIT EDILDI ki bu yol
+**erisilebilir** bir bug'di (freeform onay karti canli — bkz. §2 *M2 KAPISI*), savunma
+guard'i degil. (DIKKAT: 15. oturumun "backlog #1"i AYRI bir istir — oda-no parse.)
+
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida).
 
 - **verification parse yanlis-pozitifi (SIRADAKI IS — kok neden ACIK):** `ROOM_REGEX`
@@ -563,13 +618,13 @@ Jaccard kopyasi ortak `duplicate-guard.ts`e tasindi (`73d92ae`).
   regex'in kendisi ve stop-word kalibi DUZELTILMEDI -> disqualifier'in gormedigi
   mesaj siniflarinda tuzak DURUYOR. Duzeltmek verification cekirdegine dokunmaktir,
   ayri korpus ister (`is8-verify-parse-test.ts` zemini hazir, 42 vaka).
-- **IS 2 dedup — serbest-metin yanlis-pozitifi:** kod-bazli sipariste fiyat+adet
-  ayrisma sagliyor, ama **serbest metinde** "kahve istiyorum" vs "bir kahve daha
-  istiyorum" Jaccard TAM 0.5'e denk gelir -> tekrar sayilir ve ikinci siparis
-  ILETILMEZ. Yon FAIL-SAFE'in TERSI (kayip talep) oldugu icin en oncelikli dedup
-  borcu budur; 3 dk penceresi + "acik event" sarti riski sinirlar, misafir
-  `order_duplicate_recent` ile BILGILENDIRILIR (sessiz yutma degil). Cozum
-  muhtemelen yapisal karsilastirma (kod+adet) ya da serbest metinde daha yuksek esik.
+- **Serbest-metin ANLAMSAL tekrar dedup'i YOK (17. otu artik borcu):** M2 serbest
+  metinde KAPALI oldugu icin misafir ayni cumleyi 3 dk icinde iki kez onaylarsa **iki
+  kart** acilir. BILINCLI tradeoff: fazladan kart, kayip talepten iyidir (personel
+  ikinci karti gorur ve kapatir; kayip talep GORUNMEZ). Ayni kartin cift tiki /
+  Telegram retry'i M1 atomik claim'de durur — acik olan yalniz AYRI akis tekrari.
+  Gercek cozum kelime kumesi degil ANLAM karsilastirmasidir (LLM); bulanik esigi
+  serbest metne geri acmak KOK NEDENI geri getirir, YAPMA.
 - **`cancel` dali atomik claim ALMAZ** (yalniz `confirm`). Es zamanli iki iptal
   misafire iki mesaj gonderebilir — kozmetik, kayit uretmez.
 - **`sla_events` / `room_service_orders` uzerinde UNIQUE constraint YOK**
