@@ -6,16 +6,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- Bu dosya **18. oturum sonrasi** durumu yansitir; sohbet tarafindaki **DEVIR v32**
-  ile hizalidir.
-- **SON PROD (18. oturum): `df3f6b5`** — webhook-girisi `update_id` dedup
-  (backlog #3): Telegram'in AYNI update'i tekrar teslimi TEK GIRISTE kesilir.
-  Deploy `dpl_JBrt8hqMoHx9ruxR4M3kXLsTgXL2` (target=production, READY; alias
-  `hotelgen-v2.vercel.app` `vercel inspect` ile TEYITLI). Zincir:
+- Bu dosya **20. oturum sonrasi** durumu yansitir; sohbet tarafindaki
+  **DEVIR + MASTER (v34)** ile hizalidir.
+- **SON PROD (20. oturum): `92edccb`** — oda-prefix **TEK KAYNAK `ROOM_PREFIXES`**
+  (backlog #5 **KOK**): ayni 8 prefix UC AYRI yerde elle yaziliydi; artik regex
+  alternasyonu + strip regex + STOP_WORDS tek diziden URETILIR.
+  Deploy `dpl_FCKu2qhQww4bazAhHoFLxBMBzcDH` (target=production, READY; alias
+  `hotelgen-v2.vercel.app` `vercel inspect` ile TEYITLI — alias UZERINDEN inspect
+  AYNI dpl id'yi cozdu). **`f5a56a7` + `92edccb` BIRLIKTE deploy edildi.** Zincir:
   `1cc5efb` (13. otu prod) -> `631d2a1` (docs) -> `6c30f6f` + `3d9e593`
   (15. otu, oda-no parse + RU/AR) -> `73d92ae` (16. otu, IS 2 M1+M2)
   -> `d5b9408` (17. otu, M2 kapisi; deploy `dpl_7ejoCZTRfzvYeYFLvUK3GbDGur9X`)
-  -> `df3f6b5` (18. otu). Yedek tag: `pre-tier2-20260728`.
+  -> `df3f6b5` (18. otu; deploy `dpl_JBrt8hqMoHx9ruxR4M3kXLsTgXL2`)
+  -> `48ea1ea` (19. otu, backlog #5 **SEMPTOM**: AR prefixi strip listesine eklendi)
+  -> `f5a56a7` + `92edccb` (20. otu, **KOK**). Yedek tag: `pre-tier2-20260728`.
+- **DOKUMAN GECIKMESI (20. otu tespiti):** 19. oturum sevki (`48ea1ea`) bu dosyaya
+  DOKUNMADI — CLAUDE.md v32/18. oturumda kalmisti. Bu senkron 19+20'yi BIRLIKTE
+  tasir. Ders: kod sevki ile doc sevki ayri commit'ler; biri atlanirsa doc sessizce
+  bayatlar (kod dogru, harita yanlis).
 
 ## 1. CALISMA PRENSIPLERI
 - **Reconnaissance-first:** Edit'ten once ilgili dosyalari OKU. Varsayimla kod yazma.
@@ -76,9 +84,10 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
-- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (18. oturum sonu **1775/1775**, **13 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10)) +
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (20. oturum sonu **1827/1827**, **13 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)) +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip;
-  18. otu sonu **GEREKLI 45 / MEVCUT 46**, `migration-eksik: [yok]`) +
+  20. otu sonu **GEREKLI 45 / MEVCUT 46**, `migration-eksik: [yok]` — 18. otu ile AYNI,
+  20. otu DOC-ONLY + kod refactoru oldugu icin sema DEGISMEDI) +
   [D] sabit-marka taramasi (src/**, dosya-bazli allowlist). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
 - Kalan dogrulama yine `npm run type-check` + `npm run build` + manuel/UAT. Repo kokundeki
@@ -185,22 +194,23 @@ yeni check-in ile yuklenince anahtar degisir → eski satir **arsivlenir**, YENI
 
 ### Oda-no parse disqualifier (backlog #1) · sevk `6c30f6f` + `3d9e593` (15. otu)
 
-`ROOM_REGEX` (`verify-guest.ts:80`) **prefix'sizdir** — serbest metindeki HER 2-4
-haneli sayiyi oda no adayi yapar ("40 kisilik dugun..." -> oda "40"). Iki sevk
-kok nedeni DEGIL, **yanlis-pozitifi** kapatti:
+`ROOM_REGEX` (`verify-guest.ts:131`) prefix kismi ARTIK TEK KAYNAKTAN gelir (20. otu,
+asagidaki bolum) ama **prefix ZORUNLU DEGIL** — `(?:...)?` opsiyoneldir, yani serbest
+metindeki HER 2-4 haneli sayi hala oda no adayidir ("40 kisilik dugun..." -> oda "40").
+Iki sevk kok nedeni DEGIL, **yanlis-pozitifi** kapatti:
 
 - **`6c30f6f` — yalin sayi oda SAYILMAZ:** prefixli sayi ("oda 312") her zaman oda;
   **prefixsiz** sayi yalniz etkinlik/miktar baglami YOKKEN oda olur
-  (`wasPrefixed || !disqualifiedAsRoom`, verify-guest.ts:126-131). `isPureIdentityClaim`
-  de ayni sarti tasir (:189) -> event mesaji re-verify'a DUSMEZ.
-- **`3d9e593` — RU/AR kapsami:** `disqualifiedAsRoom` (verify-guest.ts:120-123) artik
+  (`wasPrefixed || !disqualifiedAsRoom`, verify-guest.ts:190). `isPureIdentityClaim`
+  de ayni sarti tasir (:249) -> event mesaji re-verify'a DUSMEZ.
+- **`3d9e593` — RU/AR kapsami:** `disqualifiedAsRoom` (verify-guest.ts:181-184) artik
   **3 OR** — `hasEventKeyword(norm) || QUANTITY_UNIT_RE.test(norm) ||
   QUANTITY_UNITS_NONLATIN.some(u => norm.includes(u))`.
 
 | Sabit | Yer | Not |
 |---|---|---|
 | `EVENT_KEYWORDS_NONLATIN` | `src/lib/ai/event-contact-gate.ts:62` | RU/AR etkinlik kokleri; **TEK KAYNAK `hasEventKeyword` icinde yasar** — ikinci liste YASAK |
-| `QUANTITY_UNITS_NONLATIN` | `src/lib/verification/verify-guest.ts:92` | `QUANTITY_UNIT_RE`nin non-latin ikizi (kisi/gece/gun/misafir/cocuk...) |
+| `QUANTITY_UNITS_NONLATIN` | `src/lib/verification/verify-guest.ts:153` | `QUANTITY_UNIT_RE`nin non-latin ikizi (kisi/gece/gun/misafir/cocuk...) |
 
 - **SUBSTRING > REGEX (tuzak):** JS `\b` ASCII `\w` tabanlidir; Kiril/Arap harfi `\w`
   SAYILMAZ -> `\bчеловек` HICBIR ZAMAN eslesmez (sessiz olu kod). Bu yuzden non-latin
@@ -211,8 +221,51 @@ kok nedeni DEGIL, **yanlis-pozitifi** kapatti:
 - **Fail-safe yon:** yanlis-pozitif olsa bile sonuc "oda formatini tekrar sor"dur,
   YANLIS DAMGA atilmaz. (`'den'` = gun TEKIL listeden CIKARILDI: "dengi" icinde
   substring yanlis-pozitifi veriyordu; cogul `'дней'` kaldi.)
-- Parse'in KOK NEDENI hala acik (bkz. §7) — prefix'siz `ROOM_REGEX` + `requestStopWords`
-  `\b` kalibinin cekim eklerini kacirmasi.
+- Parse'in KOK NEDENI hala acik (bkz. §7) — prefix'i OPSIYONEL `ROOM_REGEX` +
+  `requestStopWords` `\b` kalibinin cekim eklerini kacirmasi.
+
+### Oda-prefix TEK KAYNAK — `ROOM_PREFIXES` (backlog #5 KOK) · sevk `f5a56a7` + `92edccb` (20. otu)
+
+**KOK SORUN:** ayni 8 oda-prefixi (`oda` / `room` / `zimmer` / `номер` / <AR gurfa> /
+`no` / `numara` / `number`) **UC AYRI yerde** elle yaziliydi. Ikizler kayinca AR prefixi
+strip listesinde EKSIK kaldi -> "<AR oda> 312 <talep>" mesajinda oda DOGRU okunuyor
+(ROOM_REGEX AR'i taniyor) ama prefix kelimesi TALEP metnine sizip **personel kartina**
+dusuyordu. 19. otu (`48ea1ea`) SEMPTOMU kapatti (AR'i strip listesine ekledi);
+20. otu KOK'u kapatti: uc kopya -> tek dizi.
+
+| Uretim | Yer | Not |
+|---|---|---|
+| `ROOM_PREFIXES` (**TEK KAYNAK**) | `verify-guest.ts:67` | 8 eleman, **sira BAGLAYICI**; AR girisi `String.fromCodePoint(0x063a,0x0631,0x0641,0x0629)` |
+| `escapeForRegex` + `ROOM_PREFIX_ALT` | `:119` / `:123` | alternasyon TEK yerde kurulur; regex-ozel karakterler kacirilir |
+| `ROOM_REGEX` | `:131` | yalniz **prefix kismi** diziden; sayi grubu / `#?` / ayrac / bayrak AYNEN korundu |
+| `ROOM_PREFIX_STRIP_RE` | `:141` | `gi` — **yalniz `.replace()`** |
+| `STOP_WORDS` | `:85` | `new Set<string>([...ROOM_PREFIXES, ...kalan 102 kelime])` |
+
+- **`AR_ROOM_PREFIX` ayri sabiti KALKTI** — diziye tekillestirildi.
+- **`ROOM_PREFIXES` blogu STOP_WORDS'un USTUNDE durmak ZORUNDA:** STOP_WORDS onu spread
+  eder; `const` TDZ'si nedeniyle asagi tasinirsa tsc **TS2448** verir (runtime'da
+  ReferenceError). Blok sirasi kozmetik DEGIL.
+- **`ROOM_REGEX`e `g` EKLEME:** `.match()` ile kullanilir; global regex'te
+  `String.prototype.match` **capture group DONDURMEZ** -> `roomMatch[1]` undefined olur ve
+  `parseVerificationInput`in **5 cagri yeri** (route.ts **996 / 1508 / 2224 / 2727 / 3248**)
+  oda numarasini kaybeder. `ROOM_PREFIX_STRIP_RE` ise `g` TASIR -> `.test()` / `.exec()`
+  YASAK (lastIndex cagrilar arasi tasiyip bir esini sessizce kacirir).
+- **Davranis-KORUYUCU oldugu OLCULDU, varsayilmadi:** iki regex'in `.source`'u refactor
+  ONCESI elle yazilmis literallerle **BIREBIR** ayni (is8 §9 byte-esdegerlik vakasi);
+  STOP_WORDS kumesi degismedi — uyeler codePoint'e cevrilip **SHA256** alindi:
+  **110 -> 110**, hash AYNI (`9aaced4981...`), 0 fark. Eski ham AR girisi de olculdu ve
+  codePoint'liyle BIREBIR ayniydi (yoksa birlestirme kumeyi kaydirirdi).
+- **is8 kilidi:** §9 (38 vaka) her prefix icin "miktar baglaminda oda OKUNUR" + "prefix
+  talebe SIZMAZ" + iki `.source` byte-esdegerligi + bayrak muhru (`i` / `gi`);
+  §10 (8 vaka) `ROOM_PREFIXES.every(p => STOP_WORDS.has(p))` + `size === 110` + kritik
+  non-prefix stop-word'ler. **NEGATIF KONTROL KOSULDU:** `zimmer` gecici cikarilinca
+  `9g[2]` (oda okunamadi) ve `9i[2]` (prefix TALEBE SIZDI) KIRMIZI dondu — vakalar
+  gercekten baglayici. Dongu **SABIT** beklenen listeden surulur: kaynaktan turetilseydi
+  prefix dusunce dongu de kisalir ve test **kendini dogrulardi** (ilk denemede bu tuzaga
+  dusuldu, duzeltildi).
+- **RTL (20. otu):** bu dosyadaki **son ham AR oda-prefix literali KALKTI**. Kalan ham
+  non-ASCII: `QUANTITY_UNITS_NONLATIN` AR uyeleri (`:162` — acik borc, bkz. §7) ve
+  `номер` Kiril literali (`:71` — LTR, ters-gorunum riski YOK).
 
 ### Room-service akisi
 | Dosya | Sorumluluk |
@@ -398,6 +451,10 @@ siparis/not/housekeeping akisinda Turkce cevap aliyordu. Telegram arayuz dili
   `12z` sayaci kapsam disi anahtar eklenirse kirmiziya doner. §6'nin noktalama
   tripwire'i yalniz '؟' ile BITEN cumleleri yakalar — duz cumle reversal'ini
   ancak §12 yakalar. Cekim eki degisebilir: KOK aranir ("ملاحظتك" icinde "ملاحظ").
+  **Ayni kural KAYNAK KODU icin de gecerli (20. otu):** AR sabitleri kaynaga LITERAL
+  yazilmaz, `String.fromCodePoint`ten kurulur; verify-guest.ts'in son ham AR
+  oda-prefix literali bu yuzden kalkti (bkz. *Oda-prefix TEK KAYNAK*). Bir ham AR
+  literalini SILMEDEN once codePoint'ini OLC — goz karariyla "ayni" deme.
 - **Ceviri unutma kapisi:** §11 `ALL_GUEST_TEXT_KEYS`i (sozlukten TURER, elde liste
   YOK) gezer; her anahtar 5 dilde DOLU ve `ru != tr`, `ar != tr` olmak zorunda.
 
@@ -573,6 +630,11 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   - **"bilgi yok" cevabi** -> `fallback-texts.ts` `NO_INFO_FALLBACK_TR`
   - **soru/sikayet dedektoru** -> `department-brains.ts` `isInfoQuestion` (capraz-departman TEK)
   - **non-latin etkinlik kokleri** -> `hasEventKeyword` (`event-contact-gate.ts`)
+  - **oda-prefix (oda/room/zimmer/номер/AR/no/numara/number)** ->
+    `verify-guest.ts` **`ROOM_PREFIXES`** (20. otu). `ROOM_REGEX`in prefix
+    alternasyonu, `ROOM_PREFIX_STRIP_RE` ve `STOP_WORDS` UCU DE bu diziden
+    URETILIR; dorduncu bir kopya YAZILMAZ. Yeni prefix eklemek DAVRANIS
+    degisikligidir (bkz. §7 acik borc), doc-only senkron degil.
   - **TR normalize** -> `normalize-tr.ts` `normalizeTr` (ikinci normalizer YASAK)
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
@@ -686,16 +748,51 @@ ikinci `false`, farkli slug `true`; (2) SQL — ikinci INSERT satir eklemedi, `s
 degismedi; (3) PROD — `[update-dedup] first-seen` satiri canlida gorundu.
 Ayrinti: §2 *Webhook-girisi update_id dedup*.
 
+**19. oturumda KAPANDI (SEMPTOM):** **AR oda-prefixi TALEP metnine siziyordu**
+(`48ea1ea`) — `ROOM_PREFIX_STRIP_RE`, `ROOM_REGEX` prefix alternasyonunun IKIZIYDI ama
+AR prefixi EKSIKTI; oda DOGRU okunuyor, prefix kelimesi personel kartindaki talep
+metnine dusuyordu. Strip listesine AR eklendi (`is8-verify-parse` §8, 6 vaka;
+1775 -> 1781). **KOK (uc kopya) ACIK KALDI** -> 20. otu. Bu sevk CLAUDE.md'yi
+GUNCELLEMEDI (bkz. §0 *DOKUMAN GECIKMESI*).
+
+**20. oturumda KAPANDI (KOK):** **backlog #5 KOK — oda-prefixin UC KOPYASI**
+(`f5a56a7` + `92edccb`; deploy `dpl_FCKu2qhQww4bazAhHoFLxBMBzcDH`). Ayni 8 prefix
+`ROOM_REGEX` alternasyonu + `ROOM_PREFIX_STRIP_RE` + `STOP_WORDS` olmak uzere UC yerde
+elle yaziliydi; hepsi artik TEK `ROOM_PREFIXES` dizisinden URETILIR, `AR_ROOM_PREFIX`
+ayri sabiti kalkti ve dosyanin son ham AR oda-prefix literali gitti. **UCLU KANIT:**
+(1) iki regex `.source` byte-esdegerligi (is8 §9), (2) STOP_WORDS codePoint dump
+**SHA256 AYNI, 110 -> 110, 0 fark**, (3) NEGATIF KONTROL — `zimmer` gecici cikarilinca
+`9g[2]` (oda okunamadi) + `9i[2]` (prefix TALEBE SIZDI) KIRMIZI dondu.
+is8 1781 -> 1827. Ayrinti: §2 *Oda-prefix TEK KAYNAK*.
+**CANLI BOT UAT'i BEKLIYOR** — refactor davranis-koruyucu, ama kanit su an saf-parse +
+kume seviyesinde; gercek Telegram mesajiyla (AR/RU prefixli dogrulama -> kart metni)
+olculmedi.
+
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida).
 
 - **verification parse yanlis-pozitifi (SIRADAKI IS — kok neden ACIK):** `ROOM_REGEX`
-  (`verify-guest.ts:80`) prefix'siz oldugu icin serbest metindeki HER 2-4 haneli
-  sayiyi oda no ADAYI yapar. Ustune `requestStopWords` `\b` kalibi cekim eklerini
+  (`verify-guest.ts:131`) prefix'i OPSIYONEL tuttugu icin serbest metindeki HER 2-4
+  haneli sayiyi oda no ADAYI yapar. Ustune `requestStopWords` `\b` kalibi cekim eklerini
   KACIRIR ("istiyoruz" != "istiyorum"). 15. oturum yalniz **yanlis-pozitifi**
   kapatti (`disqualifiedAsRoom` 3 OR + prefixsiz-sayi sarti, TR/EN/DE + RU/AR);
   regex'in kendisi ve stop-word kalibi DUZELTILMEDI -> disqualifier'in gormedigi
-  mesaj siniflarinda tuzak DURUYOR. Duzeltmek verification cekirdegine dokunmaktir,
-  ayri korpus ister (`is8-verify-parse-test.ts` zemini hazir, 42 vaka).
+  mesaj siniflarinda tuzak DURUYOR. **20. otu bunu KAPATMADI** — tek-kaynak refactoru
+  prefix LISTESINI birlestirdi, `(?:...)?` opsiyonelligine DOKUNMADI. Duzeltmek
+  verification cekirdegine dokunmaktir, ayri korpus ister (`is8-verify-parse-test.ts`
+  zemini hazir, **94 vaka**).
+- **Oda-prefix listesi GENISLETME (20. otu, acik):** `ROOM_PREFIXES` bugun **8** uye
+  tasiyor. Eksik gorunen adaylar: RU `комната` (oda), AR `مقر`, ve belirlilik takisi
+  `ال` ile gelen formlar. Eklemek **DAVRANIS DEGISIKLIGIDIR**, tek-kaynak senkronu
+  DEGIL: yeni bir uye AYNI ANDA `ROOM_REGEX`i (daha cok sayi oda sayilir),
+  `ROOM_PREFIX_STRIP_RE`yi (daha cok kelime talepten silinir) ve `STOP_WORDS`u (daha cok
+  token ISIM olmaktan cikar) genisletir. `ال` ozellikle riskli: cok kisa/yaygin bir
+  substring ve strip `gi` **substring** eslesmesiyle calisir -> talep metnini yiyebilir.
+  Native (RU/AR) goz + yeni is8 vakalari + §9 `.source` muhurlerinin GUNCELLENMESI sart.
+- **`QUANTITY_UNITS_NONLATIN` ham AR literalleri (20. otu, dusuk):**
+  `verify-guest.ts:162` hala kaynakta HAM Arapca literal tasir (11 uye) — RTL kurali
+  geregi codePoint'e cevrilmeli. Oda-prefix DEGIL, o yuzden 20. otu kapsami disinda
+  birakildi. Cevirirken once mevcut literallerin codePoint'i OLCULMELI, yoksa kume
+  sessizce kayar (oda-prefixte bu olcum yapildi ve birebir cikti).
 - **Serbest-metin ANLAMSAL tekrar dedup'i YOK (17. otu artik borcu):** M2 serbest
   metinde KAPALI oldugu icin misafir ayni cumleyi 3 dk icinde iki kez onaylarsa **iki
   kart** acilir. BILINCLI tradeoff: fazladan kart, kayip talepten iyidir (personel
