@@ -3,7 +3,12 @@
  * backlog #1 kok fix: prefixsiz sayi ODA sanma + isPureIdentityClaim siniri +
  * requestStopWords cekim eki. GERCEK modulu import eder; ag/LLM/DB YOK (saf parse).
  */
-import { parseVerificationInput } from '@/lib/verification/verify-guest';
+import {
+  parseVerificationInput,
+  ROOM_PREFIXES,
+  ROOM_REGEX,
+  ROOM_PREFIX_STRIP_RE,
+} from '@/lib/verification/verify-guest';
 
 let pass = 0;
 const fails: string[] = [];
@@ -101,6 +106,48 @@ check('7f ar prefix', parseVerificationInput(`${AR_ROOM} 312`).roomNumber, '312'
   check('8e tr prefix sizmaz', /oda/i.test(trRes.embeddedRequest ?? ''), false);
   const ruRes = parseVerificationInput(`${RU_ROOM} 312 Ahmet Yilmaz klima bozuk`);
   check('8f ru prefix sizmaz', (ruRes.embeddedRequest ?? '').includes(RU_ROOM), false);
+}
+
+// ── (9) BACKLOG #5 KOK: ROOM_PREFIXES TEK KAYNAK ──────────────────────────
+// Iki regex (ROOM_REGEX prefix alternasyonu + ROOM_PREFIX_STRIP_RE) artik TEK
+// diziden URETILIR. Bu bolum uc seyi muhurler:
+//  (i)   her prefix ROOM_REGEX'te ISE YARIYOR: miktar baglaminda prefixSIZ sayi
+//        ODA SAYILMAZ (9f zemini), prefixLI sayi OKUNUR. Bir prefix diziden
+//        dusesse ilgili 9g vakasi KIRMIZI doner -> negatif kontrol otomatiktir.
+//  (ii)  her prefix strip'te ISE YARIYOR: talep metnine SIZMIYOR (kart temiz).
+//  (iii) BYTE-ESDEGERLIK: uretilen `.source`, refactor ONCESI elle yazilmis
+//        literallerin BIREBIR aynisi. Sira/icerik kaymasi burada yakalanir.
+{
+  // Beklenen liste refactor ONCESI literalden BIREBIR kopyadir ve asagidaki
+  // donguyu de O surer — kaynaktan TURETILMEZ. (Kaynagi kopyalayan bir dongu
+  // kendi kendini dogrular: prefix diziden dusunce dongu de kisalir, vaka
+  // KIRMIZI DONMEZ. Sabit liste bir prefixin dusmesini davranis seviyesinde
+  // yakalar; non-latin parcalar codePoint'ten kurulur.)
+  const EXPECTED_PREFIXES = ['oda', 'room', 'zimmer', RU_ROOM, AR_ROOM, 'no', 'numara', 'number'];
+  check('9a prefix listesi', ROOM_PREFIXES.join('|'), EXPECTED_PREFIXES.join('|'));
+
+  // (iii) byte-esdegerlik
+  const EXPECTED_ALT = EXPECTED_PREFIXES.join('|');
+  check('9b ROOM_REGEX.source', ROOM_REGEX.source, `(?:${EXPECTED_ALT})?\\s*#?\\s*(\\d{2,4})`);
+  check('9c STRIP.source', ROOM_PREFIX_STRIP_RE.source, `(?:${EXPECTED_ALT})`);
+  // Bayrak muhru: ROOM_REGEX'e `g` EKLENIRSE String.match capture group DONDURMEZ
+  // -> roomMatch[1] undefined, tum cagri yerleri oda numarasini kaybeder.
+  check('9d ROOM_REGEX.flags', ROOM_REGEX.flags, 'i');
+  check('9e STRIP.flags', ROOM_PREFIX_STRIP_RE.flags, 'gi');
+
+  // (i) NEGATIF ZEMIN: ayni cumle prefixSIZ iken oda OKUNMAZ (miktar baglami)
+  check('9f prefixsiz zemin', parseVerificationInput('312 icin 2 gece').roomNumber, null);
+
+  EXPECTED_PREFIXES.forEach((p, i) => {
+    // (i) prefixLI iken oda OKUNUR -> prefix alternasyonda gercekten var
+    check(`9g[${i}] prefix odayi okur`, parseVerificationInput(`${p} 312 icin 2 gece`).roomNumber, '312');
+
+    // (ii) prefix embedded-request'e SIZMAZ, talep icerigi KORUNUR
+    const r = parseVerificationInput(`${p} 312 Ahmet Yilmaz klima bozuk`);
+    check(`9h[${i}] embedded bayrak`, r.hasEmbeddedRequest, true);
+    check(`9i[${i}] prefix sizmaz`, (r.embeddedRequest ?? '').toLowerCase().includes(p.toLowerCase()), false);
+    check(`9j[${i}] talep korunur`, (r.embeddedRequest ?? '').includes('klima'), true);
+  });
 }
 
 const total = pass + fails.length;
