@@ -100,6 +100,26 @@ export async function GET(req: NextRequest) {
     } catch (e) {
       console.warn('[cevre] piggyback skipped', e)
     }
+
+    // processed_telegram_updates TTL temizligi (backlog #3) — 24 saatten eski
+    // satirlar silinir. Tablo yalniz "bu update islendi mi?" sorusuna cevap verir;
+    // Telegram retry penceresi saatler mertebesinde oldugu icin 24 saat fazlasiyla
+    // yeterli. Kendi try/catch'inde: tablosu henuz migrate edilmemis bir tenant'ta
+    // hata SLA akisini ETKILEMEZ.
+    try {
+      const ptuCutoff = new Date(Date.now() - 86400000).toISOString()
+      for (const h of hotelEntries) {
+        const hsupa = await getHotelSupabase(h.id)
+        if (!hsupa) continue
+        const { error: ptuErr } = await hsupa
+          .from('processed_telegram_updates')
+          .delete()
+          .lt('seen_at', ptuCutoff)
+        if (ptuErr) console.warn(`[update-dedup] TTL temizligi atlandi slug=${h.slug}:`, ptuErr.message)
+      }
+    } catch (e) {
+      console.warn('[update-dedup] TTL piggyback skipped', e)
+    }
   } catch (slaErr) {
     console.error('[health-check] SLA check error:', slaErr)
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { TelegramClient } from '@/lib/telegram/client';
 import { verifyTelegramSecret } from '@/lib/telegram/verify';
+import { extractUpdateId, claimTelegramUpdate } from '@/lib/telegram/update-dedup';
 import type { TelegramUpdate, TelegramMessage } from '@/lib/telegram/types';
 import { getHotelBySlug } from '@/lib/tenant/get-hotel-by-slug';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
@@ -337,6 +338,26 @@ export async function POST(
       update = (await req.json()) as TelegramUpdate;
     } catch {
       return NextResponse.json({ ok: false, error: 'invalid json' }, { status: 400 });
+    }
+
+    // ── WEBHOOK-GIRISI update_id DEDUP (backlog #3) ─────────────────────────
+    // Telegram yaniti gec/hatali gorurse AYNI update'i TEKRAR gonderir. Buraya
+    // kadar hicbir yan etki uretilmedi (yalniz okuma) — retry'i kesmek icin en
+    // erken guvenli nokta burasi: TUM dispatch dallarindan (callback_query,
+    // message, note:/hk:/order:) ONCE.
+    //
+    // M1 atomik claim'i (handle-order-callback) TAMAMLAR, YERINI ALMAZ:
+    //   M1  = misafirin hizli CIFT TIK'i -> IKI FARKLI update_id (bu kapi gecirir).
+    //   bu  = AYNI update'in tekrar teslimi -> ayni update_id (M1 yalniz siparis
+    //         akisinda yakalardi; note:/hk:/mesaj yolunda koruma YOKTU).
+    // Kimlik okunamazsa (update_id yok/bozuk) dedup ATLANIR — mesaji islemek,
+    // sessizce yutmaktan iyidir.
+    const _uid = extractUpdateId(update);
+    if (_uid === null) {
+      console.log('[update-dedup] no update_id, dedup atlandi');
+    } else if (!(await claimTelegramUpdate(supa, hotelSlug, _uid))) {
+      // Tekrar teslim: 200 don, YAN ETKI URETME (Telegram non-200'de tekrar dener).
+      return NextResponse.json({ ok: true });
     }
 
     // ============================================================
