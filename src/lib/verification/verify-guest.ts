@@ -42,11 +42,49 @@ export interface ParsedVerification {
   isPureIdentityClaim: boolean;
 }
 
+/**
+ * BACKLOG #5 KOK: oda-prefix kelimelerinin TEK KAYNAGI.
+ *
+ * Hem ROOM_REGEX'in prefix alternasyonu, hem ROOM_PREFIX_STRIP_RE, hem de
+ * STOP_WORDS'un "Mekan/keyword" satiri bu diziden BESLENIR. Eskiden ayni 8
+ * prefix UC AYRI yerde elle yaziliydi; ikizler kayinca AR prefixi strip
+ * tarafinda EKSIK kalmisti -> "gurfa 312 <talep>" mesajinda oda dogru okunuyor
+ * (ROOM_REGEX AR'i taniyor) fakat prefix kelimesi TALEP metnine sizip personel
+ * kartina dusuyordu. Tek kaynak bu kaymayi yapisal olarak imkansiz kilar
+ * (semptom degil kok).
+ *
+ * SIRA BAGLAYICIDIR: alternasyon soldan-saga ilk eslesmeyi alir. Sira ya da
+ * icerik degisirse iki regex'in `.source`'u degisir ve is8 §9 byte-esdegerlik
+ * vakasi KIRMIZI doner.
+ *
+ * BU DIZI STOP_WORDS'TEN ONCE DURMAK ZORUNDA: STOP_WORDS onu spread eder, `const`
+ * TDZ'si nedeniyle asagi tasinirsa modul yuklenirken ReferenceError verir.
+ *
+ * AR girisi "gurfa" (= oda) — U+063A U+0631 U+0641 U+0629 — KAYNAGA LITERAL
+ * YAZILMAZ: Arapca metin diff'te/relay'de TERS gorunur, goz karariyla
+ * dogrulanamaz. Kod noktasindan kurulur (is8 vakasi ayni yoldan uretilir).
+ */
+export const ROOM_PREFIXES: readonly string[] = [
+  'oda',
+  'room',
+  'zimmer',
+  'номер',
+  String.fromCodePoint(0x063a, 0x0631, 0x0641, 0x0629),
+  'no',
+  'numara',
+  'number',
+];
+
 // Türkçe/İngilizce/Almanca/Rusça/Arapça sık kullanılan stop word'ler
 // (talep cümlelerinde geçen kelimeler — isim olarak alınmamalı)
-const STOP_WORDS = new Set([
-  // Mekan/keyword
-  'oda', 'room', 'zimmer', 'номер', 'غرفة', 'no', 'numara', 'number',
+//
+// BACKLOG #5 (3. ve SON kopya): oda-prefixleri burada ELLE YAZILMAZ, ROOM_PREFIXES'ten
+// gelir. Onceki halinde ayni 8 prefix ucuncu kez elle yaziliydi (ham AR literali
+// dahil); ROOM_PREFIXES'e eklenip buraya eklenmeyen bir prefix ISIM sanilirdi.
+// is8 §10 invaryanti (her prefix STOP_WORDS'te) bunu kilitler.
+export const STOP_WORDS = new Set<string>([
+  // Mekan/keyword — oda prefixleri TEK KAYNAKTAN
+  ...ROOM_PREFIXES,
   'soyad', 'soyadım', 'soyadı', 'lastname', 'surname', 'familyname',
   'ben', 'benim', 'ismim', 'adım', 'ad', 'name',
 
@@ -76,35 +114,6 @@ const STOP_WORDS = new Set([
   'temizlik', 'temizlemiş', 'temizlenmiş',
   'şikayet', 'rahatsız', 'iade', 'fatura',
 ]);
-
-/**
- * BACKLOG #5 KOK: oda-prefix kelimelerinin TEK KAYNAGI.
- *
- * Hem ROOM_REGEX'in prefix alternasyonu hem ROOM_PREFIX_STRIP_RE bu diziden
- * URETILIR. Eskiden iki ayri elle yazilmis IKIZ listeydi; ikizler kayinca AR
- * prefixi strip tarafinda EKSIK kalmisti -> "gurfa 312 <talep>" mesajinda oda
- * dogru okunuyor (ROOM_REGEX AR'i taniyor) fakat prefix kelimesi TALEP metnine
- * sizip personel kartina dusuyordu. Tek kaynak bu kaymayi yapisal olarak
- * imkansiz kilar (semptom degil kok).
- *
- * SIRA BAGLAYICIDIR: alternasyon soldan-saga ilk eslesmeyi alir. Sira ya da
- * icerik degisirse iki regex'in `.source`'u degisir ve is8 §9 byte-esdegerlik
- * vakasi KIRMIZI doner.
- *
- * AR girisi "gurfa" (= oda) — U+063A U+0631 U+0641 U+0629 — KAYNAGA LITERAL
- * YAZILMAZ: Arapca metin diff'te/relay'de TERS gorunur, goz karariyla
- * dogrulanamaz. Kod noktasindan kurulur (is8 vakasi ayni yoldan uretilir).
- */
-export const ROOM_PREFIXES: readonly string[] = [
-  'oda',
-  'room',
-  'zimmer',
-  'номер',
-  String.fromCodePoint(0x063a, 0x0631, 0x0641, 0x0629),
-  'no',
-  'numara',
-  'number',
-];
 
 /** Regex-ozel karakterleri kacirir (liste bugun harf-only; ileride bozulmasin). */
 function escapeForRegex(s: string): string {

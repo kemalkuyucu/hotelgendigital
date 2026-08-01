@@ -8,6 +8,7 @@ import {
   ROOM_PREFIXES,
   ROOM_REGEX,
   ROOM_PREFIX_STRIP_RE,
+  STOP_WORDS,
 } from '@/lib/verification/verify-guest';
 
 let pass = 0;
@@ -148,6 +149,31 @@ check('7f ar prefix', parseVerificationInput(`${AR_ROOM} 312`).roomNumber, '312'
     check(`9i[${i}] prefix sizmaz`, (r.embeddedRequest ?? '').toLowerCase().includes(p.toLowerCase()), false);
     check(`9j[${i}] talep korunur`, (r.embeddedRequest ?? '').includes('klima'), true);
   });
+}
+
+// ── (10) BACKLOG #5, 3. ve SON kopya: STOP_WORDS prefixleri ROOM_PREFIXES'ten ─
+// Ayni 8 prefix ucuncu kez STOP_WORDS'te elle yaziliydi (ham AR literali dahil);
+// artik spread ile geliyor. Bu bolum birlestirmenin kume ICERIGINI degistirmedigini
+// ve listenin ileride SESSIZCE kaymayacagini kilitler.
+{
+  // (a) INVARYANT: her oda-prefixi ayni zamanda stop-word. Dusen bir prefix ISIM
+  //     token'i sayilir ("oda 312 Ahmet" -> firstName='oda').
+  check('10a her prefix stop-word', ROOM_PREFIXES.every((p) => STOP_WORDS.has(p)), true);
+  // Non-latin prefixler ayrica codePoint needle ile (ters/bozuk gomulme kontrolu)
+  check('10b ru prefix stop-word', STOP_WORDS.has(RU_ROOM), true);
+  check('10c ar prefix stop-word', STOP_WORDS.has(AR_ROOM), true);
+
+  // (b) BOYUT MUHRU: birlestirme oncesi de 110'du (dump SHA256 esdegerligi ile
+  //     olculdu). Sessiz dusus/artis burada kirmizi doner.
+  check('10d STOP_WORDS.size', STOP_WORDS.size, 110);
+
+  // (c) isim-parse zemini: kritik NON-prefix stop-word'ler yerinde mi? Dususlerinde
+  //     "oda 312 Ahmet Yilmaz klima bozuk" vakasinda 'klima'/'bozuk' ISIM token'i
+  //     sayilir, firstName/lastName kayar (§5/§8/§9 coker).
+  check('10e klima', STOP_WORDS.has('klima'), true);
+  check('10f bozuk', STOP_WORDS.has('bozuk'), true);
+  check('10g istiyorum', STOP_WORDS.has('istiyorum'), true);
+  check('10h lastname', STOP_WORDS.has('lastname'), true);
 }
 
 const total = pass + fails.length;
