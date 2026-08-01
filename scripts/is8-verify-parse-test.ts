@@ -83,6 +83,26 @@ check('7d ru gece+kisi', parseVerificationInput(`2 ${RU_NIGHTS} 40 ${RU_PEOPLE}`
 check('7e ru prefix', parseVerificationInput(`${RU_ROOM} 312`).roomNumber, '312');
 check('7f ar prefix', parseVerificationInput(`${AR_ROOM} 312`).roomNumber, '312');
 
+// ── (8) BACKLOG #5: oda-prefix embedded-request'e SIZMAZ ──────────────────
+// ROOM_REGEX prefixi TANIR ama strip listesi ayri bir kopyaydi ve AR prefixi
+// EKSIKTI -> oda dogru okunuyor, prefix kelimesi TALEP metnine sizip personel
+// kartina dusuyordu. needle codePoint'ten kurulur: kaynaktaki AR literal ters/bozuk
+// gomulmusse bu vaka KIRMIZI doner (goz karari yerine makine kaniti).
+{
+  const arRes = parseVerificationInput(`${AR_ROOM} 312 Ahmet Yilmaz klima bozuk`);
+  check('8a ar prefix + talep -> oda okunur', arRes.roomNumber, '312');
+  check('8b ar prefix + talep -> embedded request bayragi', arRes.hasEmbeddedRequest, true);
+  // ASIL MUHUR: prefix kelimesi talep metninde KALMAMALI
+  check('8c ar prefix TALEBE SIZMAZ', (arRes.embeddedRequest ?? '').includes(AR_ROOM), false);
+  check('8d talep icerigi korunur', (arRes.embeddedRequest ?? '').includes('klima'), true);
+
+  // Ayni davranis latin/kiril prefixlerde ZATEN vardi — regresyon kilidi
+  const trRes = parseVerificationInput('oda 312 Ahmet Yilmaz klima bozuk');
+  check('8e tr prefix sizmaz', /oda/i.test(trRes.embeddedRequest ?? ''), false);
+  const ruRes = parseVerificationInput(`${RU_ROOM} 312 Ahmet Yilmaz klima bozuk`);
+  check('8f ru prefix sizmaz', (ruRes.embeddedRequest ?? '').includes(RU_ROOM), false);
+}
+
 const total = pass + fails.length;
 if (fails.length > 0) {
   console.error(`IS8 verify-parse: ${pass}/${total} PASS`);

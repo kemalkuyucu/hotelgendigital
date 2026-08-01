@@ -79,6 +79,30 @@ const STOP_WORDS = new Set([
 
 const ROOM_REGEX = /(?:oda|room|zimmer|номер|غرفة|no|numara|number)?\s*#?\s*(\d{2,4})/i;
 
+/**
+ * AR oda-prefixi "gurfa" (= oda) — U+063A U+0631 U+0641 U+0629.
+ * KAYNAGA RTL LITERAL YAZILMAZ: Arapca metin diff'te/relay'de TERS gorunur, goz
+ * karariyla dogrulanamaz. Kod noktasindan kurulur (is8 vakasi ayni yoldan uretilir).
+ */
+const AR_ROOM_PREFIX = String.fromCodePoint(0x063a, 0x0631, 0x0641, 0x0629);
+
+/**
+ * Embedded-request strip'inde oda-prefix kelimelerini silen regex.
+ *
+ * BACKLOG #5: bu liste ROOM_REGEX'in prefix alternasyonunun IKIZIDIR, ama AR
+ * prefixi EKSIKTI -> "gurfa 312 <talep>" mesajinda oda dogru okunuyor (ROOM_REGEX
+ * AR'i taniyor) fakat prefix kelimesi TALEP metnine sizip personel kartina
+ * dusuyordu. Alternasyon ROOM_REGEX ile AYNI sirada/bicimde tutulur.
+ *
+ * DIKKAT: `g` bayrakli paylasilan regex. Yalniz `.replace()` ile kullanilir
+ * (replace lastIndex'i sifirlar). `.test()` ile KULLANMA — cagrilar arasi
+ * lastIndex tasiyip bir esini sessizce kacirir.
+ */
+const ROOM_PREFIX_STRIP_RE = new RegExp(
+  `(?:oda|room|zimmer|номер|${AR_ROOM_PREFIX}|no|numara|number)`,
+  'gi',
+);
+
 const QUANTITY_UNIT_RE =
   /\bkisi|\bgece|\b(?:adet|gun|gunluk|kez|tane|hafta|saat|konaklama|pax|people|persons?|nights?|days?|guests?|adults?|kids?|children|personen|naechte|nacht|tage|leute)\b/;
 
@@ -170,7 +194,7 @@ export function parseVerificationInput(text: string): ParsedVerification {
         .replace(new RegExp(`\\b${result.roomNumber}\\b`, 'g'), '')
         .replace(new RegExp(`\\b${result.firstName}\\b`, 'iu'), '')
         .replace(new RegExp(`\\b${result.lastName}\\b`, 'iu'), '')
-        .replace(/(?:oda|room|zimmer|номер|no|numara|number)/gi, '')
+        .replace(ROOM_PREFIX_STRIP_RE, '')
         .replace(/\s+/g, ' ')
         .trim();
       result.embeddedRequest = stripped.length > 3 ? stripped : null;
