@@ -6,14 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- **SON PROD (17. oturum): `d5b9408`** — IS 2 M2 dedup artik YALNIZ yapili
-  (kod-bazli) sipariste kosar; serbest-metin yanlis-pozitifi kapandi.
-  Deploy `dpl_7ejoCZTRfzvYeYFLvUK3GbDGur9X` (target=production, READY; alias
-  `hotelgen-v2.vercel.app` `vercel inspect` + panel ile TEYITLI). Zincir:
+- Bu dosya **18. oturum sonrasi** durumu yansitir; sohbet tarafindaki **DEVIR v32**
+  ile hizalidir.
+- **SON PROD (18. oturum): `df3f6b5`** — webhook-girisi `update_id` dedup
+  (backlog #3): Telegram'in AYNI update'i tekrar teslimi TEK GIRISTE kesilir.
+  Deploy `dpl_JBrt8hqMoHx9ruxR4M3kXLsTgXL2` (target=production, READY; alias
+  `hotelgen-v2.vercel.app` `vercel inspect` ile TEYITLI). Zincir:
   `1cc5efb` (13. otu prod) -> `631d2a1` (docs) -> `6c30f6f` + `3d9e593`
   (15. otu, oda-no parse + RU/AR) -> `73d92ae` (16. otu, IS 2 M1+M2)
-  -> `d5b9408` (17. otu). Onceki prod deploy: `dpl_3KF4cH772h7gQH3BDQT8d7pb4rQC`.
-  Yedek tag: `pre-tier2-20260728`.
+  -> `d5b9408` (17. otu, M2 kapisi; deploy `dpl_7ejoCZTRfzvYeYFLvUK3GbDGur9X`)
+  -> `df3f6b5` (18. otu). Yedek tag: `pre-tier2-20260728`.
 
 ## 1. CALISMA PRENSIPLERI
 - **Reconnaissance-first:** Edit'ten once ilgili dosyalari OKU. Varsayimla kod yazma.
@@ -46,6 +48,8 @@ somutlastirir — koru:
 
 **HotelGen v2** — a multi-tenant hotel guest-assistant SaaS built on **Next.js 16 (App Router) + TypeScript + Supabase**. Guests message a hotel over **Telegram** (and ManyChat = WhatsApp/Instagram); an AI orchestrator (Claude) answers from the hotel's knowledge base, runs guest verification, and forwards actionable requests to the right hotel department over Telegram, with SLA escalation. Staff/owners manage everything through role-based admin panels.
 
+Telegram webhook retry'ini **webhook-girisinde** engeller (`update_id` dedup — 18. otu): ayni update'in tekrar teslimi hicbir dispatch dalina ulasmadan 200 ile kapanir.
+
 The codebase and all guest-facing strings are **Turkish**. Guests are served in TR/EN/DE/RU/AR (+FR/IT in some prompts). Work is organized into numbered "Modüller" (M1–M22); commit messages and code comments reference them.
 
 ### Komutlar (Commands) — package.json'dan dogrulandi
@@ -72,8 +76,9 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
-- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (17. oturum sonu **1747/1747**, **12 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`)) +
-  [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip) +
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (18. oturum sonu **1775/1775**, **13 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10)) +
+  [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip;
+  18. otu sonu **GEREKLI 45 / MEVCUT 46**, `migration-eksik: [yok]`) +
   [D] sabit-marka taramasi (src/**, dosya-bazli allowlist). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
 - Kalan dogrulama yine `npm run type-check` + `npm run build` + manuel/UAT. Repo kokundeki
@@ -86,6 +91,10 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   `vercel`/`npx vercel` **ask** listesinde (deploy her defasinda acik onay ister — §3
   DEPLOY kuralinin arac tarafindaki karsiligi), `.env*` okumasi ve `git push --force`
   **deny**. Yeni bir komut reddedilirse once bu dosyaya bak, tahmin etme.
+- **UYARI — IKI AYRI health-check, KARISTIRMA:** `/api/health-check` (asagidaki 503'lu
+  TESHIS endpoint'i) ile `/api/cron/health-check` (gunluk CRON: bridge testi +
+  `runSlaCheck` + cevre kesfi + **`processed_telegram_updates` TTL supurmesi**) AYRI
+  dosyalardir. TTL supurmesi CRON tarafindadir; 503'lu olan onu ETKILEMEZ.
 - **`/api/health-check` PROD'da 503 doner — BOZUK DEGIL.** 6 kontrolden 5'i yesil
   (env vars / Central / demo-hotel Supabase / encryption / pgvector); tek kirmizi
   `seed_data`: Central `hotels`'ta `slug='demo-resort-spa'` YOK. Bu, Modul 1 doneminden
@@ -302,9 +311,49 @@ INSERT'e devam etti) · `[dup-notify] gonderildi` (personel reply'i dustu).
 
 **KAPSAM DISI (bilincli):** `cancel` dali claim ALMAZ (cift iptal zararsiz);
 `sla_events`/`room_service_orders` uzerinde DB UNIQUE constraint YOK (M1 uygulama
-seviyesi korumadir); webhook seviyesinde `update_id` dedup'i YOK; **serbest metinde
-bulanik dedup YOK** — ayni cumle 2 kez onaylanirsa 2 kart acilir (fazladan kart,
-kayip talepten iyidir; bkz. §7).
+seviyesi korumadir); **serbest metinde bulanik dedup YOK** — ayni cumle 2 kez
+onaylanirsa 2 kart acilir (fazladan kart, kayip talepten iyidir; bkz. §7).
+(GUNCELLEME 18. otu: "webhook seviyesinde `update_id` dedup'i YOK" kaydi ARTIK
+GECERSIZ — giriste gate var, bkz. §2 *Webhook-girisi update_id dedup*. M1 yine de
+gerekli: gate retry'i keser, M1 cift-tik'i.)
+
+### Webhook-girisi update_id dedup (backlog #3) · sevk `df3f6b5` (18. otu)
+
+**KOK SORUN:** Telegram, yaniti gec/hatali gorurse **AYNI update'i TEKRAR gonderir.**
+Koruma bugune kadar akis-basinaydi: `order:` akisinda M1 atomik claim, `note:` / `hk:`
+akislarinda YALNIZ damga (`v`). Damga BAYAT BUTON korumasidir — ayni damgayi tasiyan bir
+RETRY'i memnuniyetle gecirir. Yani note:/hk:/duz-mesaj yolunda retry korumasi **YOKTU**.
+
+| Dosya | Sorumluluk |
+|---|---|
+| src/lib/telegram/update-dedup.ts (**YENI**) | `extractUpdateId` (SAF, is8 §u1-u10) + `claimTelegramUpdate` (IO, upsert `ignoreDuplicates`) |
+| .../webhooks/telegram/[hotelSlug]/route.ts | **:341 gate** — body parse SONRASI, TUM dispatch dallarindan ONCE |
+| src/app/api/cron/health-check/route.ts | per-hotel dongude 24 saatlik TTL supurmesi (ayri try/catch) |
+| migrations/tenant/029_processed_telegram_updates.sql | tablo: `(hotel_slug, update_id)` PK + `idx_ptu_seen_at` |
+
+- **M1 ile ILISKI — TAMAMLAYICI, ikisi de kalir.** M1 = misafirin hizli **CIFT TIK**'i
+  (IKI FARKLI `update_id`) -> bu kapi onu GECIRIR. Bu gate = **ayni update'in tekrar
+  teslimi** (ayni `update_id`) -> M1 bunu yalniz siparis akisinda yakalardi. M1'e
+  DOKUNULMADI.
+- **ANAHTAR `(hotel_slug, update_id)`:** `update_id` **BOT BAZINDA** artar, global
+  DEGIL. Slug olmasa bir otelin update'i digerini susturabilirdi (canli probe ile
+  dogrulandi: ayni id + farkli slug -> `true`).
+- **ATOMIKLIK okuma-sonra-yazma DEGIL:** karar PRIMARY KEY catismasindan gelir.
+  `upsert(..., {ignoreDuplicates:true}).select()` catismada **BOS DIZI** doner ->
+  `.insert()` + `error.code==='23505'` fallback'ine **GEREK KALMADI** (canli probe
+  kaniti; tahminle birakilmadi).
+- **GATE'IN YERI:** hotel/token/tenant-client cozumunden SONRA, cunku update govdesi
+  ancak orada parse ediliyor. Sonuc: bir retry uc okumayi yine oder — **yan etki
+  uretmez** ama "sifir maliyet" degildir (bkz. §7).
+- **KAPSAM DISI (bilincli):** `telegram-manager` webhook'u — `src/lib/telegram/commands/*`
+  altinda `.insert(`/`.update(`/`.upsert(`/`.delete(` **HIC YOK**, komutlar yalniz rapor
+  uretir; retry en fazla ayni raporu tekrar gonderir. ManyChat'e dokunulmadi.
+- **`telegram/types.ts:42` `update_id` artik OKUNUYOR** (eskiden tanimliydi ama hicbir
+  yerde kullanilmiyordu — o kayit ARTIK GECERSIZ).
+- **LOG SATIRLARI (canli teshis):** `[update-dedup] first-seen update_id=... slug=...`
+  (normal trafik) · `[update-dedup] skip duplicate update_id=... slug=...` (retry
+  kesildi) · `[update-dedup] no update_id, dedup atlandi` (kimlik okunamadi) ·
+  `[update-dedup] claim-error, devam` (DB hatasi, fail-safe).
 
 ### Misafir dili (IS 10 — KALICI DIL) · sevk `1cc5efb`
 
@@ -412,6 +461,7 @@ Entry point: `src/app/api/webhooks/telegram/[hotelSlug]/route.ts` (~2600 lines �
 Order of processing in the guest webhook (each is an early-return gate):
 1. **Secret check** — header `x-telegram-bot-api-secret-token` vs `TELEGRAM_WEBHOOK_SECRET` (`verifyTelegramSecret`).
 2. **Resolve hotel** by slug; resolve bot token + hotel DB client.
+2b. **`update_id` gate (:341)** — body parse SONRASI, TUM dispatch dallarindan ONCE: `extractUpdateId` + `claimTelegramUpdate` (`src/lib/telegram/update-dedup.ts`). Tekrar teslim -> `{ok:true}` 200, YAN ETKI YOK. Kimlik okunamaz ya da DB hatasi -> dedup ATLANIR, mesaj ISLENIR (fail-safe).
 3. **`callback_query`** → SLA inline-button handlers (`handleSlaCallback`).
 4. **Group reply to an SLA escalation** → `handleReceptionReply`.
 5. In `handleMessage`: **rate limit** (10 msg / 60 s per user, in-memory), **voice** (Telegram audio → `downloadTelegramAudio` → `whisperTranscribe` (OpenAI Whisper)), **non-audio media filter**, **URL filter** (regex, blocks links), `/start` & `/help`.
@@ -443,13 +493,13 @@ Two-stage, both Anthropic but different models:
 ### Cron jobs (`vercel.json`, `src/app/api/cron/`)
 
 Two Vercel Cron jobs, both daily at 00:00 (`vercel.json`), authed by `Authorization: Bearer ${CRON_SECRET}`:
-- `/api/cron/health-check` — bridge health check for all active hotels **and** runs `runSlaCheck` (SLA scan is piggybacked here to stay within the Vercel Hobby 2-cron limit; the comment says "her dakika" but the schedule is currently daily — adjust the schedule if you need minute-level SLA).
+- `/api/cron/health-check` — bridge health check for all active hotels **and** runs `runSlaCheck` (SLA scan is piggybacked here to stay within the Vercel Hobby 2-cron limit; the comment says "her dakika" but the schedule is currently daily — adjust the schedule if you need minute-level SLA). 18. otu: ayni per-hotel donguye **`processed_telegram_updates` 24 saatlik TTL supurmesi** eklendi (kendi try/catch'inde — tablosu migrate edilmemis tenant SLA taramasini BOZAMAZ).
 - `/api/cron/archive-checked-out` — archives checked-out guests.
 
 ### Migrations (`src/lib/migrations/`, `migrations/`)
 
 Versioned, idempotent SQL applied **per hotel DB at runtime** — not a CLI step.
-- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (ADIM 2'de dogrulandi): `027_hk_pending.sql`.** (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
+- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (18. otu): `029_processed_telegram_updates.sql`** — yeni tablo, ADDITIVE ve GUVENLI (mevcut kolon/veriye dokunmaz). **YALNIZ v5 tenant'a uygulandi**; her YENI tenant'ta calistirilmasi gerekir, aksi halde `claimTelegramUpdate` fail-safe `true` doner ve o otelde dedup sessizce DEVRE DISI kalir (davranis eskisiyle ayni, bozulma yok). (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil. Onceki kayit "027" idi, 028 zaten mevcuttu — duzeltildi.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
 - `runMigrations({ hotelSlug })` (`runMigrations.ts`) decrypts the hotel bridge, builds a tenant client, ensures `schema_migrations`, and runs unapplied files via the **`exec_sql` RPC** (SQL executed through a Postgres function, not the JS query builder).
 - Triggered from admin UI / API: `/api/admin/migrations` (tenant), `/api/admin/central-migrations`, `/api/admin/hotels/[id]/run-migrations`, with a `migrations` admin page. Also `seedBaseline` / `runBootstrap`.
 - **Single source of truth for tenant schema = `migrations/tenant/*`.** The legacy `sql/0x` hotel-side files (`05_hotel_schema` … `12_*`) are DEPRECATED/archive only — pre-migration manual "Supabase SQL Editor" bootstrap; never re-run them. (A15/AUDIT D7, resolved 2026-06-01: a read-only probe of both live tenants — demo-hotel + green-park-test — confirmed **no schema drift**; both are pure 001-chain. Only live difference: `match_documents()` RPC present on demo, absent on green-park → a Phase-C/RAG follow-up, not a schema conflict.)
@@ -471,12 +521,17 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 ## 3. KALICI KARARLAR (IHLAL EDILEMEZ)
 - **#3 DETERMINISTIK KAPI:** Sayisal/esik/yonlendirme kararlari KODDA.
   LLM'e uygun: dil tespiti, intent etiketi. LLM'e YASAK: forward karari,
-  esikler, esya/adet, alerjen karari, onay.
+  esikler, esya/adet, alerjen karari, onay, **update-kimlik-cikarimi
+  (`extractUpdateId`)**.
 - **SESSIZ YUTMA YASAGI:** Bir talep herhangi bir kapida dusuruluyorsa
   (dedup/gate/filtre) personel veya misafir MUTLAKA haberdar edilir.
   Sessiz continue/return = kayip. **Bir SIKAYET'i bilgi cevabiyla kapatmak da
   sessiz yutmadir** — aksaklik bildiren misafire KB metni donup kimseye
   iletmemek yasak (IS 8 sikayet dali bunun icin var).
+  **FAIL-SAFE YONU (18. otu):** bir dedup kapisi KARAR VEREMIYORSA mesaji
+  ISLER, atmaz. Kimlik okunamaz -> `[update-dedup] no update_id, dedup atlandi`;
+  DB hatasi -> `[update-dedup] claim-error, devam`. Ikisi de akisi SURDURUR
+  (fazladan islem, kayip talepten iyidir) ve iz birakir.
 - **SAHTE VAAT YASAGI:** Forward'i kesen bir kapi, metni ureten LLM'i de
   susturmak ZORUNDA. Bilgi-sorusu dalinda TALEP beyninin metni KULLANILAMAZ —
   "talebiniz alindi, getirecegiz" deyip kimseye iletmemek yalan vaattir.
@@ -509,6 +564,9 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     Jaccard kopyasi 16. oturumda KALDIRILDI)
   - **"siparis YAPILI mi" karari** -> `src/lib/menu/pending-order.ts`
     `isStructuredOrder` (M2 kapisi; cagri yerinde `structured != null` YAZILMAZ)
+  - **update kimligi + "bu update islendi mi"** -> `src/lib/telegram/update-dedup.ts`
+    `extractUpdateId` (SAF) + `claimTelegramUpdate` (IO). Kimlik cikarimi route'a
+    inline YAZILMAZ; ikinci bir webhook girisine gate gerekirse AYNI ikili cagrilir.
   - **"bu siparis zaten islendi" cevabi** -> `handle-order-callback.ts`
     `replyAlreadyProcessed` (bayrak-kapali dali + M1 claim RED'i ayni yardimci)
   - **misafire donuk sabit metin** -> `guest-text.ts` (ustteki madde)
@@ -553,14 +611,25 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   ULASILAMAZ, dedup/kapi davranisi olculemez. Menudeki urunu KODSUZ iste
   (bkz. §2 *M2 KAPISI*).
 - **callback_data 64 byte siniri.** Asarsan state DB'ye.
-- **Telegram `update_id` OKUNMUYOR** (`src/lib/telegram/types.ts:42`'de tanimli,
-  hicbir yerde kullanilmiyor) -> webhook seviyesinde retry dedup'i YOK. Telegram
-  yanit gecikirse AYNI update'i tekrar gonderir; koruma her akisin kendi
-  state'indedir (order: M1 claim; hk/note: damga).
+- **Telegram `update_id` ARTIK OKUNUYOR (18. otu).** Eski kayit ("tanimli ama hicbir
+  yerde kullanilmiyor -> webhook seviyesinde retry dedup'i YOK") **GECERSIZ**:
+  `src/lib/telegram/update-dedup.ts` + route.ts :341 gate. Akis-basina korumalar
+  (order: M1 claim; hk/note: damga) YERINDE DURUYOR — gate onlarin YERINI ALMAZ,
+  farkli bir yarisi kapatir (retry vs cift-tik).
 - **Bot kimligi:** setWebhook ONCESI getMe ile token dogrula.
 - **Vercel:** "Deploy Ready" yetmez. vercel --prod + Production teyidi.
   vercel logs CLI ECONNRESET verir — log web panelinden okunur.
-- **Scratchpad scriptleri repo root'a YAZILMAZ.** Ayri dizin kullan.
+  `vercel inspect` PowerShell'de **exit 255** donebilir (stderr'e yazilan plugin
+  satiri yuzunden) — CIKTI dogruysa deploy saglamdir, exit koduna guvenme.
+- **Scratchpad scriptleri repo root'a YAZILMAZ.** Ayri dizin kullan. IO'lu bir modulu
+  canli DB'ye karsi denemek gerekiyorsa (`@/` import'u scratchpad'de patlar) gecici
+  probe `scripts/__tmp-*.ts` olarak acilir, KOSULUR ve **hemen SILINIR** — commit
+  gate'inde gorunmemelidir (`__*` zaten .gitignore'da).
+- **`tsql.js` DDL de calistirir** (`exec_sql` RPC uzerinden) — migration'i canli
+  tenant'a uygulamak icin Supabase SQL Editor sart DEGIL. AMA `exec_sql_json`
+  sorguyu alt-sorguya sardigi icin **veri-degistiren CTE** (`WITH ins AS (INSERT
+  ... RETURNING)`) calismaz: "data-modifying statement must be at top level".
+  Cozum: DML'i ayri calistir, sonucu ayri `SELECT count(*)` ile dogrula.
 
 ### Korunmus: Conventions & gotchas (orijinal — ustteki maddelerle celismez, tamamlar)
 - **Turkish normalization:** use the shared `normalizeTr()` (`src/lib/utils/normalize-tr.ts`) for any keyword/name matching — verification and interest-tag detection both depend on it. Don't roll a second normalizer (some older code inlines `.replace(/İ/g,'i')…` chains; prefer the shared util).
@@ -608,6 +677,15 @@ ikinci siparis iletilmiyordu; M2 artik yalniz yapili (kod-bazli) sipariste kosar
 **erisilebilir** bir bug'di (freeform onay karti canli — bkz. §2 *M2 KAPISI*), savunma
 guard'i degil. (DIKKAT: 15. oturumun "backlog #1"i AYRI bir istir — oda-no parse.)
 
+**18. oturumda KAPANDI:** **webhook-girisi `update_id` dedup'i YOKTU (backlog #3)**
+(`df3f6b5`) — Telegram'in tekrar teslimi yalniz `order:` akisinda (M1) kesiliyordu;
+`note:`/`hk:`/duz-mesaj yolunda koruma yoktu. Artik `extractUpdateId` (SAF) +
+`claimTelegramUpdate` (PK catismasi) + `migrations/tenant/029` var; is8 1775/1775.
+**UCLU MUHUR:** (1) canli probe — gercek `claimTelegramUpdate` ilk cagri `true`,
+ikinci `false`, farkli slug `true`; (2) SQL — ikinci INSERT satir eklemedi, `seen_at`
+degismedi; (3) PROD — `[update-dedup] first-seen` satiri canlida gorundu.
+Ayrinti: §2 *Webhook-girisi update_id dedup*.
+
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida).
 
 - **verification parse yanlis-pozitifi (SIRADAKI IS — kok neden ACIK):** `ROOM_REGEX`
@@ -631,8 +709,18 @@ guard'i degil. (DIKKAT: 15. oturumun "backlog #1"i AYRI bir istir — oda-no par
   (`003_sla_events.sql`, `023_menu_catalog.sql`: yalniz PK + normal index). M1
   uygulama seviyesi bir korumadir; ileride BASKA bir INSERT noktasi acilirsa ayni
   garantiyi otomatik ALMAZ. DB-seviyesi garanti yeni migration ister.
-- **Webhook `update_id` dedup'i YOK** (bkz. §4). M1 order akisini korur; `note:`/
-  `hk:` akislari yalniz damgaya guvenir.
+- **029 migration'inin COK-TENANT yayilimi (18. otu, dusuk):** `029_processed_telegram_updates`
+  yalniz **v5** tenant'a uygulandi. Migration'i kosmamis bir otelde `claimTelegramUpdate`
+  fail-safe `true` doner -> dedup SESSIZCE devre disi (davranis eskisiyle ayni, bozulma
+  yok) ama koruma da YOK. Yeni tenant acilisinda migration kosulmali.
+- **`update_id` gate'inin maliyet notu (18. otu, dusuk):** gate hotel/token/tenant-client
+  cozumunden SONRA calisir (update govdesi ancak orada parse ediliyor). Bir retry bu uc
+  okumayi yine oder — yan etki uretmez, ama "sifir maliyetli" degildir. Daha erkene
+  almak mevcut hata-yonetimi sirasini degistirmeyi gerektirir.
+- **`[update-dedup] skip duplicate` prod-logu MANUEL ZORLANAMAZ (18. otu, dusuk — #31
+  ailesi):** gercek Telegram redelivery'sini tetiklemek elde degildir; ayni `update_id`'yi
+  elle POST etmek `TELEGRAM_WEBHOOK_SECRET` gerektirir. Normal trafikte gorunen satir
+  `first-seen`'dir; `skip duplicate` ancak dogal bir retry aninda log'a duser.
 - **`claimErr` aninda cift-kayit korumasi DUSER:** M1'de DB hatasi olursa akis
   bilincli olarak DEVAM eder (siparisi yutmamak icin). Nadir ama kayitli.
 - **ru/ar ceviri anlam review'u YOK:** 5-dil sozlukteki Rusca/Arapca metinler is8
