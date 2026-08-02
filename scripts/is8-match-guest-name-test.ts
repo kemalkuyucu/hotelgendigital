@@ -141,6 +141,36 @@ check('8e legacy birebir ayni', legacySame('Kemal Kuyucu', 'kemal kuyucu'), true
 check('8f legacy gercek farkli', legacySame('Kemal Kuyucu', 'Ahmet Yilmaz'), false);
 check('8g yeni gercek farkli', sameGuestByText('Kemal Kuyucu', 'Ahmet Yilmaz'), false);
 
+// ── (9) allergen-verify-gate (site 7) — ad+soyad + TR-fold; legacy oracle negatif kontrol ─
+// Site 7 ESKI kodu: DB adinin SON kelimesi === yazilan soyad, toLowerCase (TR katlamasi
+// YOK), ad HIC kiyaslanmaz, find() ilk-alma. Oracle modulden TURETILMEZ (oz-dogrulama
+// tuzagi); olculen sey "yalniz soyad + TR-katlamasiz" karari.
+const legacyAllergenMatch = (dbName: string, typedLast: string): boolean => {
+  const parts = dbName.trim().split(/\s+/);
+  const lastWord = (parts[parts.length - 1] ?? '').toLowerCase();
+  return lastWord === typedLast.trim().toLowerCase();
+};
+
+check('9a dogru kisi', matchesGuestName('Mehmet Akın', 'Mehmet', 'Akın'), true);
+check('9b ANA HEDEF ayni soyad farkli ad', matchesGuestName('Ayşe Akın', 'Mehmet', 'Akın'), false);
+check('9c TR-fold', matchesGuestName('Şahin Yılmaz', 'Sahin', 'Yilmaz'), true);
+check('9d orta isim toleransli', matchesGuestName('Mehmet Ali Kuyucu', 'Mehmet', 'Kuyucu'), true);
+check('9e ad oneki DEGIL', matchesGuestName('Kemal Kuyucu', 'Kemalettin', 'Kuyucu'), false);
+check('9f dogru kisi (ayni oda ikizi)', matchesGuestName('Ayşe Akın', 'Ayşe', 'Akın'), true);
+check('9g farkli soyad', matchesGuestName('Mehmet Demir', 'Mehmet', 'Akın'), false);
+
+// (a) ANA HEDEF: eski TRUE (alerji YANLIS kisiye yazilirdi) / yeni FALSE
+check('9h legacy ANA HEDEF', legacyAllergenMatch('Ayşe Akın', 'Akın'), true);
+check('9i yeni ANA HEDEF', matchesGuestName('Ayşe Akın', 'Mehmet', 'Akın'), false);
+// (b) TR katlama boslugu: eski FALSE (gercek misafir kilitlenirdi) / yeni TRUE
+check('9j legacy TR katlama yok', legacyAllergenMatch('Şahin Yılmaz', 'Yilmaz'), false);
+check('9k yeni TR katlama var', matchesGuestName('Şahin Yılmaz', 'Sahin', 'Yilmaz'), true);
+// (c) Oracle KOR DEGIL: dogru kiside ikisi de TRUE, farkli soyadda ikisi de FALSE
+check('9l legacy dogru kisi', legacyAllergenMatch('Mehmet Akın', 'Akın'), true);
+check('9m yeni dogru kisi', matchesGuestName('Mehmet Akın', 'Mehmet', 'Akın'), true);
+check('9n legacy farkli soyad', legacyAllergenMatch('Mehmet Demir', 'Akın'), false);
+check('9o yeni farkli soyad', matchesGuestName('Mehmet Demir', 'Mehmet', 'Akın'), false);
+
 const total = pass + fails.length;
 if (fails.length > 0) {
   console.error(`IS8 match-guest-name: ${pass}/${total} PASS`);

@@ -2256,14 +2256,15 @@ async function handleMessage(args: {
       console.error('[allergen-verify-gate] inhouse_guests_v2 sorgu hatası:', avV2Error.message);
     }
 
-    // Eşleşme: guest_name case-insensitive, trim (son kelime = soyad)
-    const avLastLower = avLastName.trim().toLowerCase();
-    const avMatched = (avV2Rows ?? []).find((row) => {
-      const gn: string = (row.guest_name as string) ?? '';
-      const parts = gn.trim().split(/\s+/);
-      const lastWord = parts[parts.length - 1]?.toLowerCase() ?? '';
-      return lastWord === avLastLower;
-    });
+    // Eşleşme: TEK KAYNAK (match-guest-name.ts) — ad+soyad TAM KELİME (normalizeTr) + tek-anlamlılık guard.
+    // parseVerificationInput firstName+lastName'i BİRLİKTE doldurur (>=2 token); avLastName kontrolü
+    // geçtiyse avParsed.firstName de garanti doludur. find() ilk-alma yerine tam-1-aday: 0/>1 → eşleşme YOK
+    // (belirsizken yanlış kişiye alerji yazma — fail-safe). "Ayşe Akın" ile "Mehmet Akın" artık ayrışır.
+    const avFirstNameTyped = avParsed.firstName ?? '';
+    const avCandidates = (avV2Rows ?? []).filter((row) =>
+      matchesGuestName((row.guest_name as string) ?? '', avFirstNameTyped, avLastName),
+    );
+    const avMatched = avCandidates.length === 1 ? avCandidates[0] : undefined;
 
     if (avMatched) {
       // ✅ Eşleşti — guest_allergens güncelle + bildirim gönder
