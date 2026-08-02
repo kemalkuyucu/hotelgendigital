@@ -6,20 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- Bu dosya **20. oturum sonrasi** durumu yansitir; sohbet tarafindaki
-  **DEVIR + MASTER (v34)** ile hizalidir.
-- **SON PROD (20. oturum): `92edccb`** — oda-prefix **TEK KAYNAK `ROOM_PREFIXES`**
+- Bu dosya **21. oturum sonrasi** durumu yansitir; sohbet tarafindaki
+  **DEVIR + MASTER (v35)** ile hizalidir.
+- **SON PROD (21. oturum): `9e46fdf`** — misafir **isim eslesmesi TEK KAYNAK +
+  TAM KELIME** (backlog #13): ad/soyad UC AYRI yerde inline ve SUBSTRING
+  karsilastiriliyordu (ismin bir PARCASI kimlik kaniti sayiliyordu); artik
+  `src/lib/verification/match-guest-name.ts` TEK karar verir.
+  Deploy `dpl_8bMJpYxVmY4gYn3EgacSWD9FAks7` (target=production, READY; alias
+  `hotelgen-v2.vercel.app` TEYITLI — hem deployment URL'i hem alias UZERINDEN
+  `vercel inspect` AYNI dpl id'yi cozdu). Push `9c4df63..9e46fdf` (uzak uc v34
+  doc commit'iydi -> fast-forward). Saglik: `/` 200 · webhook GET 405 ·
+  webhook POST secret'siz 401.
+- **ONCEKI PROD (20. oturum): `92edccb`** — oda-prefix **TEK KAYNAK `ROOM_PREFIXES`**
   (backlog #5 **KOK**): ayni 8 prefix UC AYRI yerde elle yaziliydi; artik regex
   alternasyonu + strip regex + STOP_WORDS tek diziden URETILIR.
   Deploy `dpl_FCKu2qhQww4bazAhHoFLxBMBzcDH` (target=production, READY; alias
-  `hotelgen-v2.vercel.app` `vercel inspect` ile TEYITLI — alias UZERINDEN inspect
-  AYNI dpl id'yi cozdu). **`f5a56a7` + `92edccb` BIRLIKTE deploy edildi.** Zincir:
+  `vercel inspect` ile TEYITLI). **`f5a56a7` + `92edccb` BIRLIKTE deploy edildi.** Zincir:
   `1cc5efb` (13. otu prod) -> `631d2a1` (docs) -> `6c30f6f` + `3d9e593`
   (15. otu, oda-no parse + RU/AR) -> `73d92ae` (16. otu, IS 2 M1+M2)
   -> `d5b9408` (17. otu, M2 kapisi; deploy `dpl_7ejoCZTRfzvYeYFLvUK3GbDGur9X`)
   -> `df3f6b5` (18. otu; deploy `dpl_JBrt8hqMoHx9ruxR4M3kXLsTgXL2`)
   -> `48ea1ea` (19. otu, backlog #5 **SEMPTOM**: AR prefixi strip listesine eklendi)
-  -> `f5a56a7` + `92edccb` (20. otu, **KOK**). Yedek tag: `pre-tier2-20260728`.
+  -> `f5a56a7` + `92edccb` (20. otu, **KOK**)
+  -> `9e46fdf` (21. otu, backlog #13). Yedek tag: `pre-tier2-20260728`.
 - **DOKUMAN GECIKMESI (20. otu tespiti):** 19. oturum sevki (`48ea1ea`) bu dosyaya
   DOKUNMADI — CLAUDE.md v32/18. oturumda kalmisti. Bu senkron 19+20'yi BIRLIKTE
   tasir. Ders: kod sevki ile doc sevki ayri commit'ler; biri atlanirsa doc sessizce
@@ -84,10 +93,12 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
-- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (20. oturum sonu **1827/1827**, **13 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)) +
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (21. oturum sonu **1872/1872**, **14 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)
+  -> 1872 (21. otu **YENI DOSYA** `is8-match-guest-name-test.ts`, **45 vaka**)) +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip;
-  20. otu sonu **GEREKLI 45 / MEVCUT 46**, `migration-eksik: [yok]` — 18. otu ile AYNI,
-  20. otu DOC-ONLY + kod refactoru oldugu icin sema DEGISMEDI) +
+  21. otu sonu **GEREKLI 45 / MEVCUT 46**, `migration-eksik: [yok]` — 18. otu ile AYNI,
+  20-21. oturumlar migration EKLEMEDIGI icin sema DEGISMEDI. Bir kosuda gecici
+  `fetch failed` WARN'i gorulebilir; host ayakta olsa bile olur, TEKRAR KOS) +
   [D] sabit-marka taramasi (src/**, dosya-bazli allowlist). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
 - Kalan dogrulama yine `npm run type-check` + `npm run build` + manuel/UAT. Repo kokundeki
@@ -168,6 +179,7 @@ duzeltmek karti duzeltmez. Damgayi yazan yerler: 17.c oda eslesmesi ve dogrulama
 | Dosya | Sorumluluk |
 |---|---|
 | src/lib/verification/inhouse-link.ts | `isInhouseRowLinkable` (C1 bayat-link) + `planTelegramCarryOver` (C2 damga tasima) — saf, IO yok |
+| src/lib/verification/match-guest-name.ts | `matchesGuestName` + `matchesGuestNameFromText` — isim eslesmesinin TEK KAYNAGI (21. otu, asagidaki bolum); saf, IO yok |
 
 **KIRILMA (canli, 2026-07-19):** import anahtari `room_number::check_in_date`. Ayni misafir
 yeni check-in ile yuklenince anahtar degisir → eski satir **arsivlenir**, YENI id acilir ve
@@ -191,6 +203,51 @@ yeni check-in ile yuklenince anahtar degisir → eski satir **arsivlenir**, YENI
   tek-damga temizligidir: `telegram_id`+`status='active'` ile NULL'la, sonra YENI satir INSERT
   (pending misafirin inhouse kaydi olmadigindan konusma-isaretcisi tasima adimi YOK). Her iki yolda da
   WHERE'siz UPDATE YOK. Dogrulama: kart sorgusunun BIREBIR aynisini kosur.
+
+### Misafir ismi eslesmesi TEK KAYNAK — `match-guest-name.ts` (backlog #13) · sevk `9e46fdf` (21. otu)
+
+**KOK SORUN:** ad/soyad karsilastirmasi UC AYRI yerde inline yaziliydi ve ucu de
+**SUBSTRING** calisiyordu — ismin bir PARCASI kimlik kaniti sayiliyordu. Somut
+kirilma: oda 102'de "Ayse Akin" kayitliyken misafir "102 Mehmet Ak" yazar; 'akin'
+icinde 'ak' gectigi icin eslesir, odada tek aday oldugu icin `length === 1`
+korumasini da gecer -> `telegram_id` **YANLIS KISIYE** damgalanir (§3 KIMLIK/LINK
+TASIMA ihlali: misafir baskasinin odasini/taleplerini gorur). Ustelik 17.7-B kendi
+yerel `normalise`'ini kullaniyordu -> "Sahin" yazan misafir ORADA "Şahin" kaydiyla
+eslesMEZken site 1/3'te esleSIYORdu (ayni soru, iki farkli gercek).
+
+**KARAR — "DENGELI":** ad + soyad **TAM KELIME** eslesir, **orta isimler IKI TARAFTA
+da yok sayilir**. Tam-dize esitligi cok kati olurdu (PMS/pasaport kaydinda orta isim
+var/yok farki yaygin, gercek misafiri kilitler); substring ise cok gevsek.
+
+| Uretim | Yer | Not |
+|---|---|---|
+| `matchesGuestName(dbName, firstName, lastName)` | `match-guest-name.ts` | PARSE EDILMIS giris; ad = ILK token, soyad = SON token; ikisi de DB adinin token'lari icinde TAM olmali |
+| `matchesGuestNameFromText(dbName, typedText)` | ayni dosya | HAM metin; **en az 2 kelime** tabani + ilk token = ad, son token = soyad |
+| `tokenize` (dahili, export DEGIL) | ayni dosya | `normalizeTr` + `\s+` bolme; **ikinci normalizer YOK** |
+
+- **TEK-ANLAMLILIK BU MODULDE DEGIL:** fonksiyonlar tek bir aday icin "esliyor mu?"
+  sorusuna cevap verir. "Kac aday esledi?" karari CAGIRANA aittir — her uc cagri
+  yerinde de damga YALNIZCA **tek** eslesmede atilir.
+- **Cagri yerleri (3 site):**
+  - **SITE 1** — `route.ts` `[17c-rn]` (~:1527): `gn.includes(ad soyad) || gn.includes(soyad)`
+    KALKTI (soyad TEK BASINA yetiyordu). `rnMatches.length === 1` korumasi AYNEN duruyor.
+  - **SITE 2** — `route.ts` 17.7-B (~:1694): yerel `normalise` + substring + **`find()`**
+    KALKTI -> `filter` + `nameMatches.length === 1 ? [0] : null`. `find()` coklu adayda
+    ILK sirayi aliyordu, oysa bu dal tanimi geregi odada BIRDEN FAZLA misafir varken
+    calisir. **DAVRANIS DEGISTI:** 0 ya da >1 eslesme -> eslesme YOK, deneme sayaci
+    isler (3 denemede on buro bildirimi). Bilincli: yanlis damga > fazladan soru.
+  - **SITE 3** — `verify-guest.ts` v2 dali (~:311): AND sarti KORUNDU, degisen yalniz
+    substring -> TAM KELIME ("Ak" artik "Akin" kaydina uymaz).
+- **is8 kilidi:** `is8-match-guest-name-test.ts` **45 vaka**. **CIFT-YONLU NEGATIF
+  KONTROL:** (1) teste ELLE yazilan `legacySubstringMatch` oracle — test edilen
+  modulden TURETILMEZ — ANA HEDEF vakada TRUE donerken gercek fonksiyon FALSE;
+  (2) modul gecici olarak eski semantige cevrilince `2a/2b/2c/5b/5d`, `t.length < 2`
+  tabani kaldirilinca `4a/4b` KIRMIZI dondu -> vakalar gercekten baglayici.
+- **HENUZ BAGLI DEGIL (backlog #6):** site 5 `reception-approval.ts` GUARD B ve
+  site 6 `route.ts` re-verify (`:3266`/`:3414`). Ikisi de yanlis-damga URETMEZ
+  (biri yalniz uyari uretir, digeri tam-dize esitsizligi) — ayrinti §7.
+- **CANLI BOT UAT'i BEKLIYOR:** kanit su an saf-karar seviyesinde; gercek Telegram
+  mesajiyla (yanlis-isim reddi + gercek misafirin baglanmasi) olculmedi.
 
 ### Oda-no parse disqualifier (backlog #1) · sevk `6c30f6f` + `3d9e593` (15. otu)
 
@@ -579,7 +636,7 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - **#3 DETERMINISTIK KAPI:** Sayisal/esik/yonlendirme kararlari KODDA.
   LLM'e uygun: dil tespiti, intent etiketi. LLM'e YASAK: forward karari,
   esikler, esya/adet, alerjen karari, onay, **update-kimlik-cikarimi
-  (`extractUpdateId`)**.
+  (`extractUpdateId`)**, **isim-eslesme (`matchesGuestName`)**.
 - **SESSIZ YUTMA YASAGI:** Bir talep herhangi bir kapida dusuruluyorsa
   (dedup/gate/filtre) personel veya misafir MUTLAKA haberdar edilir.
   Sessiz continue/return = kayip. **Bir SIKAYET'i bilgi cevabiyla kapatmak da
@@ -635,6 +692,12 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     alternasyonu, `ROOM_PREFIX_STRIP_RE` ve `STOP_WORDS` UCU DE bu diziden
     URETILIR; dorduncu bir kopya YAZILMAZ. Yeni prefix eklemek DAVRANIS
     degisikligidir (bkz. §7 acik borc), doc-only senkron degil.
+  - **isim-eslesme (ad/soyad ayni kisi mi?)** -> `verify-guest.ts` DEGIL,
+    **`match-guest-name.ts`** `matchesGuestName` (parse edilmis ad/soyad) /
+    `matchesGuestNameFromText` (ham metin) — 21. otu. route.ts SITE 1 + SITE 2 ve
+    `verifyGuest` v2 dali AYNI ikiliyi cagirir; inline `includes` YAZILMAZ.
+    **Site 5 (`reception-approval.ts` GUARD B) ve site 6 (route.ts re-verify
+    :3266/:3414) HENUZ BAGLI DEGIL** — backlog #6, ikisi de yanlis-damga uretmez.
   - **TR normalize** -> `normalize-tr.ts` `normalizeTr` (ikinci normalizer YASAK)
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
@@ -768,7 +831,21 @@ is8 1781 -> 1827. Ayrinti: §2 *Oda-prefix TEK KAYNAK*.
 kume seviyesinde; gercek Telegram mesajiyla (AR/RU prefixli dogrulama -> kart metni)
 olculmedi.
 
-**SIRADAKI ACIK IS:** verification-core kok nedeni (asagida).
+**21. oturumda KAPANDI:** **backlog #13 — isim eslesmesinin UC SUBSTRING KOPYASI**
+(`9e46fdf`; deploy `dpl_8bMJpYxVmY4gYn3EgacSWD9FAks7`). Ad/soyad UC AYRI yerde inline
+ve SUBSTRING karsilastiriliyordu: "102 Mehmet Ak" mesaji odadaki "Ayse Akin" kaydini
+esler, tek aday oldugu icin `length === 1` korumasini da gecer ve `telegram_id`
+YANLIS kisiye damgalanirdi. Artik TEK saf modul `match-guest-name.ts` karar verir
+(TAM KELIME; orta isimler iki tarafta da yok sayilir) ve 17.7-B'de `find()` yerine
+TEK-ANLAMLI eslesme sarti vardir. is8 1827 -> 1872 (YENI dosya, 45 vaka),
+`npm run doctor` YESIL (tsc 0 · sema 45/46 · sabit-marka 0 unexpected).
+Ayrinti: §2 *Misafir ismi eslesmesi TEK KAYNAK*.
+**CANLI BOT UAT'i BEKLIYOR** — kanit saf-karar seviyesinde. Olculecekler:
+(i) "102 Mehmet Ak" -> damga ATILMAMALI, (ii) gercek misafir normal baglanmali,
+(iii) 17.7-B'de tam isim baglanmali / belirsiz isim 3 denemede on buroya dusmeli.
+
+**SIRADAKI ACIK IS:** verification-core kok nedeni (asagida) + backlog #6
+(isim-karsilastirma tam konsolidasyon).
 
 - **verification parse yanlis-pozitifi (SIRADAKI IS — kok neden ACIK):** `ROOM_REGEX`
   (`verify-guest.ts:131`) prefix'i OPSIYONEL tuttugu icin serbest metindeki HER 2-4
@@ -780,6 +857,21 @@ olculmedi.
   prefix LISTESINI birlestirdi, `(?:...)?` opsiyonelligine DOKUNMADI. Duzeltmek
   verification cekirdegine dokunmaktir, ayri korpus ister (`is8-verify-parse-test.ts`
   zemini hazir, **94 vaka**).
+- **#6 isim-karsilastirma TAM KONSOLIDASYON (21. otu, acik — orta/dusuk):** backlog #13
+  UC siteyi `match-guest-name.ts`e bagladi; IKI site DISARIDA kaldi. Ikisi de
+  **yanlis-damga URETMEZ** — o yuzden acik birakildi, sessiz risk degil:
+  - **site 5** `reception-approval.ts:226-229` GUARD B — kendi normalizer'i
+    (`toLocaleLowerCase('tr')`; §3 "ikinci normalizer YASAK" ihlali) + tam-dize
+    **esitsizligi**. Yalniz `roomNameConflict` UYARISI uretir, INSERT'i ENGELLEMEZ.
+    Duz swap DEGIL: mantik **NEGASYON** ("eslesmeyen bir kayit bul") ve karsilastirilan
+    `attempted_guest_name` HAM tek string -> `!matchesGuestNameFromText(...)` tek
+    kelimelik isimlerde HER ZAMAN "catisma" der.
+  - **site 6** `route.ts:3266-3267` / `:3414` re-verify — `normalizeTr` uzerinde
+    **oda + soyad tam-dize esitsizligi** (substring DEGIL, mevcut halinde daha SIKI).
+    Coklu-token soyadda ("Al Saleh" yazan misafir, kayit "Saleh") gereksiz re-verify
+    tetikleyebilir.
+  Ikisi de DAVRANIS-HASSASTIR: dokunmak dogrulama akisini degistirir, yeni is8 vakasi +
+  negatif kontrol sart.
 - **Oda-prefix listesi GENISLETME (20. otu, acik):** `ROOM_PREFIXES` bugun **8** uye
   tasiyor. Eksik gorunen adaylar: RU `комната` (oda), AR `مقر`, ve belirlilik takisi
   `ال` ile gelen formlar. Eklemek **DAVRANIS DEGISIKLIGIDIR**, tek-kaynak senkronu
