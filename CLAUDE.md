@@ -841,6 +841,13 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - **PowerShell:** && desteklemez, komutlar ayri satir.
   Select-String -Path src\**\*.ts subdirectory'e GIRMEZ.
   Dogru: Get-ChildItem -Path src -Recurse -Filter *.ts | Select-String "..."
+- **`vercel --prod`'u Select-String / pipe ile SARMA (23. otu):**
+  `vercel --prod | Select-String -Pattern "...\"..."` gibi bir filtre, PowerShell'in
+  `\"` kacisini parametre baglamasinda dusurup komutu **vercel'i HIC calistirmadan**
+  patlatir -> deploy sessizce TETIKLENMEZ (exit != 0 ama deployment YOK).
+  `vercel --prod`'u CIPLAK kos; ciktiyi suzmen gerekiyorsa AYRI satirda yap.
+  Suphede `vercel ls` ile yeni Production kaydi olup olmadigini teyit et
+  (23. otu: ilk deneme boyle dustu, cift-deploy olmadi).
 - **Commit mesaji ASCII only.** Turkce karakter YASAK.
 - **Misafire donuk metinler TAM Turkce karakterli.**
 - **JS `\b` ASCII-ONLY:** `\w` Kiril/Arap harfini SAYMAZ -> `\bчеловек` / `\bحفل`
