@@ -70,3 +70,34 @@ export function matchesGuestNameFromText(
   const db = tokenize(dbName);
   return db.includes(t[0]) && db.includes(t[t.length - 1]);
 }
+
+/**
+ * Iki TAM ISIM AYNI misafiri mi? (reception-approval GUARD B = site 5).
+ * Ilk token=ad, son token=soyad; orta isimler iki tarafta yok sayilir.
+ * Tek normalizer (tokenize->normalizeTr) -> "Sahin"~"Sahin(diakritikli)" ayni.
+ * Bos taraf -> false. Tek-token tarafta ilk=son ayni token.
+ */
+export function sameGuestByText(
+  nameA: string | null | undefined,
+  nameB: string | null | undefined,
+): boolean {
+  const a = tokenize(nameA);
+  const b = tokenize(nameB);
+  if (a.length === 0 || b.length === 0) return false;
+  return a[0] === b[0] && a[a.length - 1] === b[b.length - 1];
+}
+
+/**
+ * Iki SOYAD ayni mi? Son token (whole-word); cok-tokenlu soyadda
+ * ("Al Saleh"~"Saleh") gereksiz farkliligi onler (route.ts re-verify = site 6).
+ * Tek normalizer. Bos taraf -> false.
+ */
+export function sameLastName(
+  lastA: string | null | undefined,
+  lastB: string | null | undefined,
+): boolean {
+  const a = tokenize(lastA).at(-1);
+  const b = tokenize(lastB).at(-1);
+  if (!a || !b) return false;
+  return a === b;
+}

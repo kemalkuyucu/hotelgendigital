@@ -22,7 +22,7 @@ import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
 import { isInhouseRowLinkable } from '@/lib/verification/inhouse-link';
-import { matchesGuestName, matchesGuestNameFromText } from '@/lib/verification/match-guest-name';
+import { matchesGuestName, matchesGuestNameFromText, sameLastName } from '@/lib/verification/match-guest-name';
 import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/verification/verify-guest';
 import { createReceptionApproval, receptionNotifiedMsg, receptionWaitMsg, handlePendingMatchCallback } from '@/lib/verification/reception-approval';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
@@ -3264,7 +3264,7 @@ async function handleMessage(args: {
       reParsed.lastName !== null &&
       (
         normalizeTr(reParsed.roomNumber) !== normalizeTr(currentVerifiedGuest.room_number) ||
-        normalizeTr(reParsed.lastName) !== normalizeTr(currentVerifiedGuest.last_name ?? '')
+        !sameLastName(reParsed.lastName, currentVerifiedGuest.last_name)
       )
     ) {
       // Misafir yeni kimlik bilgisi yazmış → re-verify
@@ -3420,8 +3420,8 @@ async function handleMessage(args: {
       reParsed.roomNumber !== null &&
       reParsed.firstName !== null &&
       reParsed.lastName !== null &&
-      reParsed.roomNumber === currentVerifiedGuest.room_number &&
-      normalizeTr(reParsed.lastName) === normalizeTr(currentVerifiedGuest.last_name ?? '') &&
+      normalizeTr(reParsed.roomNumber) === normalizeTr(currentVerifiedGuest.room_number) &&
+      sameLastName(reParsed.lastName, currentVerifiedGuest.last_name) &&
       !reParsed.hasEmbeddedRequest &&
       !['alerj', 'allerg', 'intoleran'].some((kw) => normalizeTr(text).includes(kw))
     ) {

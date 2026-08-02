@@ -11,7 +11,12 @@
  * normalizeTr paylasilir — cunku eski site-1 kodu da birebir onu cagiriyordu;
  * elle yazilan kisim SUBSTRING KARARIDIR, olculen sey de odur.
  */
-import { matchesGuestName, matchesGuestNameFromText } from '@/lib/verification/match-guest-name';
+import {
+  matchesGuestName,
+  matchesGuestNameFromText,
+  sameGuestByText,
+  sameLastName,
+} from '@/lib/verification/match-guest-name';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 
 let pass = 0;
@@ -94,6 +99,47 @@ check('5i yeni tek harf', matchesGuestNameFromText('Ayse Akin', 'a'), false);
 // (e) 17.7-B TR katlama boslugu: eski FALSE (misafir kilitlenirdi) / yeni TRUE
 check('5j legacy TR katlama yok', legacyFromTextMatch('Şahin Öz', 'sahin oz'), false);
 check('5k yeni TR katlama var', matchesGuestNameFromText('Şahin Öz', 'sahin oz'), true);
+
+// ── (6) sameGuestByText — SITE 5 (reception-approval GUARD B) ─────────────
+// Iki TAM ISIM ayni misafiri mi? Ilk token = ad, son token = soyad.
+check('6a tam ayni', sameGuestByText('Kemal Kuyucu', 'Kemal Kuyucu'), true);
+check('6b A orta isimli', sameGuestByText('Kemal Ali Kuyucu', 'Kemal Kuyucu'), true);
+check('6c B orta isimli', sameGuestByText('Kemal Kuyucu', 'Kemal Ali Kuyucu'), true);
+check('6d ayni soyad farkli ad', sameGuestByText('Ayse Akin', 'Mehmet Akin'), false);
+check('6e soyad-parcasi', sameGuestByText('Ayse Akin', 'Mehmet Ak'), false);
+check('6f TR diyakritik', sameGuestByText('Sahin Yilmaz', 'Şahin Yılmaz'), true);
+check('6g tek token esit', sameGuestByText('Kemal', 'Kemal'), true);
+check('6h tek token farkli', sameGuestByText('Kemal', 'Ahmet Yilmaz'), false);
+check('6i tek token vs cift', sameGuestByText('Kemal', 'Kemal Kuyucu'), false);
+check('6j bos taraf', sameGuestByText('', 'Kemal Kuyucu'), false);
+check('6k fazla bosluk', sameGuestByText('  Kemal   Kuyucu  ', 'kemal kuyucu'), true);
+
+// ── (7) sameLastName — SITE 6 (route.ts re-verify) ────────────────────────
+check('7a esit', sameLastName('Kuyucu', 'Kuyucu'), true);
+check('7b farkli', sameLastName('Kuyucu', 'Yilmaz'), false);
+check('7c coklu-token A', sameLastName('Al Saleh', 'Saleh'), true);
+check('7d coklu-token B', sameLastName('Saleh', 'Al Saleh'), true);
+check('7e TR diyakritik', sameLastName('Şahin', 'Sahin'), true);
+check('7f onek DEGIL', sameLastName('Ak', 'Akin'), false);
+check('7g A bos', sameLastName('', 'Kuyucu'), false);
+check('7h B bos', sameLastName('Kuyucu', ''), false);
+
+// ── (8) NEGATIF KONTROL — site 5'in ESKI normalizer'i ELLE yeniden uretilir ─
+// reception-approval GUARD B ESKI kodu: toLocaleLowerCase('tr') + TAM-DIZE esitlik.
+// Modulden TURETILMEZ (oz-dogrulama tuzagi); olculen sey TAM-DIZE vs TOKEN karari.
+const legacySame = (a: string, b: string): boolean =>
+  String(a).toLocaleLowerCase('tr').trim() === String(b).toLocaleLowerCase('tr').trim();
+
+// (a) TR katlama: eski FALSE (ayni kisi "farkli" sayilirdi) / yeni TRUE
+check('8a legacy TR katlama yok', legacySame('Sahin Yilmaz', 'Şahin Yılmaz'), false);
+check('8b yeni TR katlama var', sameGuestByText('Sahin Yilmaz', 'Şahin Yılmaz'), true);
+// (b) orta isim: eski FALSE / yeni TRUE
+check('8c legacy orta isim', legacySame('Kemal Kuyucu', 'Kemal Ali Kuyucu'), false);
+check('8d yeni orta isim', sameGuestByText('Kemal Kuyucu', 'Kemal Ali Kuyucu'), true);
+// (c) Oracle KOR DEGIL: birebir ayni yazimda TRUE, gercek farkli kiside FALSE
+check('8e legacy birebir ayni', legacySame('Kemal Kuyucu', 'kemal kuyucu'), true);
+check('8f legacy gercek farkli', legacySame('Kemal Kuyucu', 'Ahmet Yilmaz'), false);
+check('8g yeni gercek farkli', sameGuestByText('Kemal Kuyucu', 'Ahmet Yilmaz'), false);
 
 const total = pass + fails.length;
 if (fails.length > 0) {

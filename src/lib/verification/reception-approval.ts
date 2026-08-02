@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { sameGuestByText } from '@/lib/verification/match-guest-name';
 
 const TG_API = (token: string, method: string) =>
   `https://api.telegram.org/bot${token}/${method}`;
@@ -223,9 +224,10 @@ export async function handlePendingMatchCallback(args: {
         .eq('room_number', roomStr)
         .eq('status', 'active');
       if (roomRows && roomRows.length > 0) {
-        const wanted = nameStr.toLocaleLowerCase('tr').trim();
+        // Ayni odada, onaylanan misafirden FARKLI kisi var mi? (ad+soyad tam-kelime)
+        // Tek kaynak: sameGuestByText. Bespoke toLocaleLowerCase kalkti.
         const other = roomRows.find(
-          (r) => String(r.guest_name ?? '').toLocaleLowerCase('tr').trim() !== wanted,
+          (r) => !sameGuestByText(String(r.guest_name ?? ''), nameStr),
         );
         if (other) roomNameConflict = String(other.guest_name);
       }
