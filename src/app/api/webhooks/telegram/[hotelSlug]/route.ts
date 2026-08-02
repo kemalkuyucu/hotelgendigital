@@ -22,6 +22,7 @@ import { forwardToDepartment } from '@/lib/telegram/forward-to-department';
 import { translateToTurkish } from '@/lib/ai/translate-to-turkish';
 import { requiresVerification, MAX_VERIFICATION_ATTEMPTS } from '@/lib/ai/verification-intents';
 import { isInhouseRowLinkable } from '@/lib/verification/inhouse-link';
+import { matchesGuestName, matchesGuestNameFromText } from '@/lib/verification/match-guest-name';
 import { parseVerificationInput, verifyGuest, isVerificationValid } from '@/lib/verification/verify-guest';
 import { createReceptionApproval, receptionNotifiedMsg, receptionWaitMsg, handlePendingMatchCallback } from '@/lib/verification/reception-approval';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
@@ -1518,12 +1519,13 @@ async function handleMessage(args: {
           .eq('room_number', rnParsed.roomNumber)
           .eq('status', 'active');
 
-        const rnFullName = normalizeTr(`${rnParsed.firstName} ${rnParsed.lastName}`);
-        const rnLastName = normalizeTr(rnParsed.lastName);
-        const rnMatches = (rnCandidates ?? []).filter((c) => {
-          const gn = normalizeTr(c.guest_name as string);
-          return gn.includes(rnFullName) || gn.includes(rnLastName);
-        });
+        // backlog #13: TAM KELIME eşleşme (tek kaynak → match-guest-name.ts).
+        // Eskiden soyad TEK BAŞINA substring olarak yeterdi: "102 Mehmet Ak" mesajı
+        // odadaki "Ayşe Akın" kaydını eşler ('akin' içinde 'ak') ve tek aday olduğu
+        // için damga YANLIŞ kişiye giderdi.
+        const rnMatches = (rnCandidates ?? []).filter((c) =>
+          matchesGuestName(c.guest_name as string, rnParsed.firstName, rnParsed.lastName),
+        );
 
         if (rnMatches.length === 1) {
           const matched = rnMatches[0];
@@ -1680,10 +1682,18 @@ async function handleMessage(args: {
           .eq('room_number', multiMatchPendingRoom)
           .eq('status', 'active');
 
-        const normalise = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-        const matched = (candidates ?? []).find((c) =>
-          normalise(c.guest_name as string).includes(normalise(nameAttempt)),
+        // backlog #13: yerel `normalise` + substring + find() KALKTI.
+        //  - Normalize tek kaynak (normalizeTr): eskiden "Sahin" yazan misafir burada
+        //    "Şahin" kaydıyla eşleşMEZken site 1/3'te eşleşiyordu (iki farklı gerçek).
+        //  - TAM KELİME + en az 2 kelime tabanı: ham mesaj parse'tan geçmiyor, tek
+        //    harflik bir metin bile adayın içinde geçtiği için eşleşebiliyordu.
+        //  - TEK-ANLAMLI eşleşme şartı: find() ilk adayı alıyordu; oysa bu dal tanımı
+        //    gereği odada BİRDEN FAZLA misafir varken çalışır. 0 veya >1 → eşleşme YOK
+        //    (aşağıdaki deneme sayacı işler, site 1 mantığı).
+        const nameMatches = (candidates ?? []).filter((c) =>
+          matchesGuestNameFromText(c.guest_name as string, nameAttempt),
         );
+        const matched = nameMatches.length === 1 ? nameMatches[0] : null;
 
         if (matched) {
           // ✅ Name matched — link and welcome

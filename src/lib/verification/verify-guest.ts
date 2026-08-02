@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { VERIFICATION_TTL_HOURS } from '@/lib/ai/verification-intents';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { matchesGuestName } from '@/lib/verification/match-guest-name';
 import { hasEventKeyword } from '@/lib/ai/event-contact-gate';
 
 export interface VerifyResult {
@@ -267,7 +268,8 @@ export function parseVerificationInput(text: string): ParsedVerification {
  *  - room_number = trimmedRoom (TEXT)
  *  - status = 'active'
  *  - check_out_date >= bugün
- *  - guest_name içinde BOTH firstName AND lastName geçmeli (case-insensitive + Türkçe tolerans)
+ *  - guest_name TAM KELİME olarak hem firstName hem lastName taşımalı
+ *    (case-insensitive + Türkçe tolerans; backlog #13 → match-guest-name.ts)
  *
  * Eski tablo match kuralı:
  *  - room_number eşit, first_name ILIKE, last_name ILIKE, is_active=true, check_out >= bugün
@@ -302,11 +304,12 @@ export async function verifyGuest(
     console.error('[verify-guest] v2 Supabase error:', v2Error.message);
     // v2 hata verdi → eski tabloya düş
   } else if (v2Rows && v2Rows.length > 0) {
-    // JS tarafında guest_name içinde her iki token'ı ara (Türkçe tolerant)
-    const v2Match = v2Rows.find((row) => {
-      const normName = normalizeTr((row.guest_name as string) ?? '');
-      return normName.includes(normFirst) && normName.includes(normLast);
-    });
+    // backlog #13: ad + soyad TAM KELİME eşleşmeli (tek kaynak → match-guest-name.ts).
+    // AND şartı KORUNDU; değişen yalnızca substring → tam kelime: "Ak" artık "Akın"
+    // kaydına uymaz. Türkçe tolerans normalizeTr üzerinden aynen sürer.
+    const v2Match = v2Rows.find((row) =>
+      matchesGuestName(row.guest_name as string, trimmedFirst, trimmedLast),
+    );
 
     if (v2Match) {
       // guest_name'i firstName/lastName olarak parçala (son kelime = soyad)
