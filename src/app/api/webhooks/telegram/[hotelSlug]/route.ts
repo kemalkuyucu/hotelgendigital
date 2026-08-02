@@ -2344,6 +2344,45 @@ async function handleMessage(args: {
       console.log(`[allergen-verify-gate] ❌ Eşleşmedi: room=${avRoom} lastName=${avLastName} attempt=${currentAttempt}/${MAX_ALLERGEN_VERIFY_ATTEMPTS}`);
 
       if (currentAttempt >= MAX_ALLERGEN_VERIFY_ATTEMPTS) {
+        // ── SESSİZ YUTMA FIX: state temizlenmeden ÖNCE ön büroyu uyar.
+        // MAX denemede doğrulama başarısız → bildirilen alerji personele HİÇ ulaşmadan
+        // kaybolmasın (§3 SESSİZ YUTMA YASAĞI). Fail-safe: bildirim hatası akışı KIRMAZ;
+        // misafir mesajı + state temizliği aynen devam eder. Staff kartı TR plain-text.
+        try {
+          const { data: avFailAllergenRow } = await supa
+            .from('guest_allergens')
+            .select('allergen_text')
+            .eq('platform', 'telegram')
+            .eq('platform_user_id', String(userId))
+            .eq('is_active', true)
+            .maybeSingle();
+          const { data: avFailDept } = await supa
+            .from('departments')
+            .select('telegram_chat_id')
+            .eq('code', 'front_office')
+            .maybeSingle();
+          const avFailChatId = avFailDept?.telegram_chat_id;
+          if (avFailChatId) {
+            const avFailAllergen = (avFailAllergenRow?.allergen_text as string)?.trim() || '(belirtilmemiş)';
+            const avFailName = `${avParsed.firstName ?? ''} ${avLastName}`.trim();
+            const avFailText =
+              `🧴 Alerji Doğrulaması Başarısız — Manuel Kontrol\n` +
+              `━━━━━━━━━━\n` +
+              `Bir misafir alerji bildirdi ama ${MAX_ALLERGEN_VERIFY_ATTEMPTS} denemede oda + isim doğrulanamadı.\n\n` +
+              `Beyan edilen oda: ${avRoom}\n` +
+              `Beyan edilen ad-soyad: ${avFailName}\n` +
+              `Bildirilen alerji: ${avFailAllergen}\n` +
+              `━━━━━━━━━━\n` +
+              `Lütfen misafiri manuel bulup alerji kaydını doğrulayın.`;
+            await tg.sendMessage({ chat_id: Number(avFailChatId), text: avFailText, disable_web_page_preview: true });
+            console.log(`[allergen-verify-gate] Max deneme — on buro uyarildi (room=${avRoom})`);
+          } else {
+            console.warn('[allergen-verify-gate] front_office chat_id yok — on buro uyarilamadi');
+          }
+        } catch (avFailNotifyErr) {
+          console.error('[allergen-verify-gate] on buro uyari HATASI:', avFailNotifyErr instanceof Error ? avFailNotifyErr.message : avFailNotifyErr);
+        }
+
         // Max deneme aşıldı → temizle, ön büroyu yönlendir
         await supa
           .from('conversations')
