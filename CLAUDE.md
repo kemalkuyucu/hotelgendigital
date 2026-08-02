@@ -6,17 +6,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- Bu dosya **21. oturum sonrasi** durumu yansitir; sohbet tarafindaki
-  **DEVIR + MASTER (v35)** ile hizalidir.
-- **SON PROD (21. oturum): `9e46fdf`** — misafir **isim eslesmesi TEK KAYNAK +
+- Bu dosya **23. oturum sonrasi** durumu yansitir; sohbet tarafindaki
+  **DEVIR + MASTER (v37)** ile hizalidir.
+- **SON PROD (23. oturum, SEVK B): `0bac2ad`** — alerjen dogrulamasinda **SESSIZ
+  YUTMA KAPANDI**: 3 basarisiz oda+isim denemesinden sonra state temizlenip
+  misafire "on buroya basvurun" deniyor ama **personel HIC haberdar edilmiyordu**
+  (bildirilen alerji kimseye ulasmadan kayboluyordu — §3 SESSIZ YUTMA YASAGI,
+  guvenlik-kritik). Artik state temizliginden ONCE on buro grubuna TR kart duser.
+  Deploy `dpl_2rqqDg6C9Uo7HLRX9MZACP8YJ24v` (target=production, READY; hem
+  deployment URL'i hem alias UZERINDEN `vercel inspect` AYNI dpl id'yi cozdu).
+  Saglik: `/` 200 · webhook GET 405 · webhook POST secret'siz 401.
+- **ONCEKI PROD (23. oturum, SEVK A): `1b529f2`** — isim-eslesme **SITE 7
+  `[allergen-verify-gate]`** tek kaynaga baglandi (alerjen kapisi kendi
+  `toLowerCase`'ini kullanip **yalniz SOYADA** bakiyor ve `find()` ile ilk adayi
+  aliyordu). Deploy `dpl_AevDr9o2s8CxiHFViqY5S8Ebi6WQ` (alias teyitli).
+- **ONCEKI PROD (22. oturum): `e36bf65`** — **backlog #6 KAPANDI**: isim-eslesmenin
+  kalan iki sitesi (site 5 `reception-approval` GUARD B + site 6 `route.ts`
+  re-verify) `match-guest-name.ts`e baglandi; modul 2 yeni SAF export kazandi
+  (`sameGuestByText`, `sameLastName`). Deploy `dpl_2G5Rwuh1q3WZQz7XNuBFkc7XKPQa`.
+- **ONCEKI PROD (21. oturum): `9e46fdf`** — misafir **isim eslesmesi TEK KAYNAK +
   TAM KELIME** (backlog #13): ad/soyad UC AYRI yerde inline ve SUBSTRING
-  karsilastiriliyordu (ismin bir PARCASI kimlik kaniti sayiliyordu); artik
-  `src/lib/verification/match-guest-name.ts` TEK karar verir.
-  Deploy `dpl_8bMJpYxVmY4gYn3EgacSWD9FAks7` (target=production, READY; alias
-  `hotelgen-v2.vercel.app` TEYITLI — hem deployment URL'i hem alias UZERINDEN
-  `vercel inspect` AYNI dpl id'yi cozdu). Push `9c4df63..9e46fdf` (uzak uc v34
-  doc commit'iydi -> fast-forward). Saglik: `/` 200 · webhook GET 405 ·
-  webhook POST secret'siz 401.
+  karsilastiriliyordu; artik `src/lib/verification/match-guest-name.ts` TEK karar
+  verir. Deploy `dpl_8bMJpYxVmY4gYn3EgacSWD9FAks7`.
 - **ONCEKI PROD (20. oturum): `92edccb`** — oda-prefix **TEK KAYNAK `ROOM_PREFIXES`**
   (backlog #5 **KOK**): ayni 8 prefix UC AYRI yerde elle yaziliydi; artik regex
   alternasyonu + strip regex + STOP_WORDS tek diziden URETILIR.
@@ -28,11 +39,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   -> `df3f6b5` (18. otu; deploy `dpl_JBrt8hqMoHx9ruxR4M3kXLsTgXL2`)
   -> `48ea1ea` (19. otu, backlog #5 **SEMPTOM**: AR prefixi strip listesine eklendi)
   -> `f5a56a7` + `92edccb` (20. otu, **KOK**)
-  -> `9e46fdf` (21. otu, backlog #13). Yedek tag: `pre-tier2-20260728`.
-- **DOKUMAN GECIKMESI (20. otu tespiti):** 19. oturum sevki (`48ea1ea`) bu dosyaya
-  DOKUNMADI — CLAUDE.md v32/18. oturumda kalmisti. Bu senkron 19+20'yi BIRLIKTE
-  tasir. Ders: kod sevki ile doc sevki ayri commit'ler; biri atlanirsa doc sessizce
-  bayatlar (kod dogru, harita yanlis).
+  -> `9e46fdf` (21. otu, backlog #13)
+  -> `e36bf65` (22. otu, backlog #6)
+  -> `1b529f2` (23.a, site 7) -> `0bac2ad` (23.b, sessiz yutma).
+  Yedek tag: `pre-tier2-20260728`.
+- **DOKUMAN GECIKMESI (20. otu tespiti, 23. otu TEKRARLANDI):** 19. oturum sevki
+  (`48ea1ea`) bu dosyaya DOKUNMADI — CLAUDE.md v32/18. oturumda kalmisti. AYNI SEY
+  22-23'te de oldu: `e36bf65` / `1b529f2` / `0bac2ad` sevk edildi, dosya v35'te
+  kaldi (backlog #6'yi ACIK, site 7'yi YOK gosteriyordu). Bu senkron 22+23'u
+  BIRLIKTE tasir. Ders: kod sevki ile doc sevki ayri commit'ler; biri atlanirsa
+  doc sessizce bayatlar (kod dogru, harita yanlis) — sevkten sonra doc senkronunu
+  AYNI oturumda kapat.
 
 ## 1. CALISMA PRENSIPLERI
 - **Reconnaissance-first:** Edit'ten once ilgili dosyalari OKU. Varsayimla kod yazma.
@@ -67,6 +84,8 @@ somutlastirir — koru:
 
 Telegram webhook retry'ini **webhook-girisinde** engeller (`update_id` dedup — 18. otu): ayni update'in tekrar teslimi hicbir dispatch dalina ulasmadan 200 ile kapanir.
 
+**Misafir KIMLIGI (ad/soyad) tek bir saf modulden karara baglanir** (`match-guest-name.ts` — 21/22/23. otu): kimligi olculen **YEDI** cagri yerinin (17.c oda eslesmesi, 17.7-B coklu aday, `verifyGuest` v2, reception-approval GUARD B, re-verify tetigi + re-send guard, alerjen dogrulama kapisi) hicbiri kendi karsilastirmasini yazmaz. Alerjen akisi bu kapinin hem eslesme hem **basarisizlik** tarafini kapatir: 3 denemede dogrulanamayan bir alerji bildirimi sessizce dusmez, on buro grubuna duser (23. otu).
+
 The codebase and all guest-facing strings are **Turkish**. Guests are served in TR/EN/DE/RU/AR (+FR/IT in some prompts). Work is organized into numbered "Modüller" (M1–M22); commit messages and code comments reference them.
 
 ### Komutlar (Commands) — package.json'dan dogrulandi
@@ -93,11 +112,13 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
-- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (21. oturum sonu **1872/1872**, **14 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)
-  -> 1872 (21. otu **YENI DOSYA** `is8-match-guest-name-test.ts`, **45 vaka**)) +
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (23. oturum sonu **1913/1913**, **14 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)
+  -> 1872 (21. otu **YENI DOSYA** `is8-match-guest-name-test.ts`, **45 vaka**)
+  -> 1898 (22. otu, YENI DOSYA YOK: `is8-match-guest-name` 45->71, §6 `sameGuestByText` 11 + §7 `sameLastName` 8 + §8 eski normalizer oracle'i 7)
+  -> 1913 (23. otu, YENI DOSYA YOK: `is8-match-guest-name` 71->**86**, §9 site-7 15 vaka)) +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip;
-  21. otu sonu **GEREKLI 45 / MEVCUT 46**, `migration-eksik: [yok]` — 18. otu ile AYNI,
-  20-21. oturumlar migration EKLEMEDIGI icin sema DEGISMEDI. Bir kosuda gecici
+  23. otu sonu **GEREKLI 45 / MEVCUT 46**, `migration-eksik: [yok]` — 18. otu ile AYNI,
+  20-23. oturumlar migration EKLEMEDIGI icin sema DEGISMEDI. Bir kosuda gecici
   `fetch failed` WARN'i gorulebilir; host ayakta olsa bile olur, TEKRAR KOS) +
   [D] sabit-marka taramasi (src/**, dosya-bazli allowlist). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
@@ -179,7 +200,7 @@ duzeltmek karti duzeltmez. Damgayi yazan yerler: 17.c oda eslesmesi ve dogrulama
 | Dosya | Sorumluluk |
 |---|---|
 | src/lib/verification/inhouse-link.ts | `isInhouseRowLinkable` (C1 bayat-link) + `planTelegramCarryOver` (C2 damga tasima) — saf, IO yok |
-| src/lib/verification/match-guest-name.ts | `matchesGuestName` + `matchesGuestNameFromText` — isim eslesmesinin TEK KAYNAGI (21. otu, asagidaki bolum); saf, IO yok |
+| src/lib/verification/match-guest-name.ts | `matchesGuestName` + `matchesGuestNameFromText` + `sameGuestByText` + `sameLastName` — isim eslesmesinin TEK KAYNAGI, **4 export / 7 cagri yeri** (21-23. otu, asagidaki bolum); saf, IO yok |
 
 **KIRILMA (canli, 2026-07-19):** import anahtari `room_number::check_in_date`. Ayni misafir
 yeni check-in ile yuklenince anahtar degisir → eski satir **arsivlenir**, YENI id acilir ve
@@ -204,7 +225,7 @@ yeni check-in ile yuklenince anahtar degisir → eski satir **arsivlenir**, YENI
   (pending misafirin inhouse kaydi olmadigindan konusma-isaretcisi tasima adimi YOK). Her iki yolda da
   WHERE'siz UPDATE YOK. Dogrulama: kart sorgusunun BIREBIR aynisini kosur.
 
-### Misafir ismi eslesmesi TEK KAYNAK — `match-guest-name.ts` (backlog #13) · sevk `9e46fdf` (21. otu)
+### Misafir ismi eslesmesi TEK KAYNAK — `match-guest-name.ts` (backlog #13 + #6 + site 7) · sevkler `9e46fdf` (21) + `e36bf65` (22) + `1b529f2` (23.a)
 
 **KOK SORUN:** ad/soyad karsilastirmasi UC AYRI yerde inline yaziliydi ve ucu de
 **SUBSTRING** calisiyordu — ismin bir PARCASI kimlik kaniti sayiliyordu. Somut
@@ -223,12 +244,14 @@ var/yok farki yaygin, gercek misafiri kilitler); substring ise cok gevsek.
 |---|---|---|
 | `matchesGuestName(dbName, firstName, lastName)` | `match-guest-name.ts` | PARSE EDILMIS giris; ad = ILK token, soyad = SON token; ikisi de DB adinin token'lari icinde TAM olmali |
 | `matchesGuestNameFromText(dbName, typedText)` | ayni dosya | HAM metin; **en az 2 kelime** tabani + ilk token = ad, son token = soyad |
+| `sameGuestByText(nameA, nameB)` (22. otu) | ayni dosya | IKI TAM ISIM ayni misafir mi? ilk token=ad, son token=soyad; bos taraf -> false. Site 5 |
+| `sameLastName(lastA, lastB)` (22. otu) | ayni dosya | IKI SOYAD ayni mi? son token — "Al Saleh"~"Saleh" gereksiz farkliligi onler. Site 6 |
 | `tokenize` (dahili, export DEGIL) | ayni dosya | `normalizeTr` + `\s+` bolme; **ikinci normalizer YOK** |
 
 - **TEK-ANLAMLILIK BU MODULDE DEGIL:** fonksiyonlar tek bir aday icin "esliyor mu?"
   sorusuna cevap verir. "Kac aday esledi?" karari CAGIRANA aittir — her uc cagri
   yerinde de damga YALNIZCA **tek** eslesmede atilir.
-- **Cagri yerleri (3 site):**
+- **Cagri yerleri (7 site — 23. otu itibariyle TAMAMI BAGLI, inline karsilastirma KALMADI):**
   - **SITE 1** — `route.ts` `[17c-rn]` (~:1527): `gn.includes(ad soyad) || gn.includes(soyad)`
     KALKTI (soyad TEK BASINA yetiyordu). `rnMatches.length === 1` korumasi AYNEN duruyor.
   - **SITE 2** — `route.ts` 17.7-B (~:1694): yerel `normalise` + substring + **`find()`**
@@ -238,16 +261,87 @@ var/yok farki yaygin, gercek misafiri kilitler); substring ise cok gevsek.
     isler (3 denemede on buro bildirimi). Bilincli: yanlis damga > fazladan soru.
   - **SITE 3** — `verify-guest.ts` v2 dali (~:311): AND sarti KORUNDU, degisen yalniz
     substring -> TAM KELIME ("Ak" artik "Akin" kaydina uymaz).
-- **is8 kilidi:** `is8-match-guest-name-test.ts` **45 vaka**. **CIFT-YONLU NEGATIF
-  KONTROL:** (1) teste ELLE yazilan `legacySubstringMatch` oracle — test edilen
-  modulden TURETILMEZ — ANA HEDEF vakada TRUE donerken gercek fonksiyon FALSE;
-  (2) modul gecici olarak eski semantige cevrilince `2a/2b/2c/5b/5d`, `t.length < 2`
-  tabani kaldirilinca `4a/4b` KIRMIZI dondu -> vakalar gercekten baglayici.
-- **HENUZ BAGLI DEGIL (backlog #6):** site 5 `reception-approval.ts` GUARD B ve
-  site 6 `route.ts` re-verify (`:3266`/`:3414`). Ikisi de yanlis-damga URETMEZ
-  (biri yalniz uyari uretir, digeri tam-dize esitsizligi) — ayrinti §7.
-- **CANLI BOT UAT'i BEKLIYOR:** kanit su an saf-karar seviyesinde; gercek Telegram
-  mesajiyla (yanlis-isim reddi + gercek misafirin baglanmasi) olculmedi.
+  - **SITE 4** — `inhouse-link.ts` (~:93): zaten TAM ESITLIK'ti, DOKUNULMADI.
+  - **SITE 5 (22. otu)** — `reception-approval.ts` GUARD B: kendi
+    `toLocaleLowerCase('tr')` normalizer'i + TAM-DIZE **esitsizligi** KALKTI ->
+    `!sameGuestByText(...)`. Mantik NEGASYON ("eslesmeyen kayit bul") oldugu icin
+    duz swap DEGILDI; davranis KORUNDU: yalniz `roomNameConflict` UYARISI uretir,
+    INSERT'i ENGELLEMEZ.
+  - **SITE 6a (22. otu)** — `route.ts` re-verify tetigi (~:3267): soyad tam-dize
+    esitsizligi -> `!sameLastName(...)`. "Al Saleh" yazan misafir "Saleh" kaydinda
+    artik gereksiz re-verify TETIKLEMEZ.
+  - **SITE 6b (22. otu)** — `route.ts` re-send guard (~:3423-3424): `sameLastName`
+    + **oda karsilastirmasi artik `normalizeTr`'den GECER** (eskiden ham `===` idi;
+    6a ile asimetrikti — ayni soru iki farkli gercek).
+  - **SITE 7 (23. otu, `1b529f2`)** — `route.ts` `[allergen-verify-gate]` (~:2259):
+    `toLowerCase` + **yalniz SOYAD** + `find()` **ilk-alma** KALKTI ->
+    `filter(matchesGuestName(row.guest_name, avParsed.firstName, avLastName))` +
+    `avCandidates.length === 1 ? [0] : undefined`. **KRITIK CAGRI-YERI GARANTISI:**
+    `parseVerificationInput` `firstName` ve `lastName`i **BIRLIKTE** doldurur
+    (`tokens.length >= 2` sarti) — format kapisi `!avRoom || !avLastName` ile
+    gectiyse `firstName` de GARANTI doludur, fallback GEREKSIZ.
+    **DAVRANIS DEGISTI (fail-safe):** 0 ya da >1 aday -> eslesme YOK; ayrica
+    tek-token PMS kaydi ("Akin") artik hic eslesmez. Yon bilincli: yanlis kisiye
+    alerji yazmaktansa eslesmeme (ve on buro uyarisi, bkz. asagidaki bolum).
+  - **Site 5/6/7 damga YAZMAZ** — uyari / tetik / skip uretirler; site 1/2/3
+    `telegram_id` damgalar. Ikisini karistirma: birincilerde risk "gereksiz soru",
+    ikincilerde "baskasinin odasi".
+- **is8 kilidi:** `is8-match-guest-name-test.ts` **86 vaka** (45 -> 71 -> 86).
+  **CIFT-YONLU NEGATIF KONTROL — her sitenin kendi ELLE yazilmis oracle'i var,
+  hicbiri test edilen modulden TURETILMEZ** (oz-dogrulama tuzagi):
+  §5 `legacySubstringMatch` (site 1) + `legacyFromTextMatch` (site 2) ·
+  §8 `legacySame` (site 5, `toLocaleLowerCase('tr')` tam-dize) ·
+  §9 `legacyAllergenMatch` (site 7, son-kelime + `toLowerCase`).
+  Her oracle "eski TRUE / yeni FALSE" **ve** "oracle KOR DEGIL" (gercek pozitifte
+  ikisi de TRUE) ciftiyle assert edilir.
+  **HARNESS-BITE OLCULDU (23. otu):** `9b` beklentisi gecici `true` yapilinca korpus
+  **1912/1913** + `13/14 dosya` + exit 1 KIRMIZI dondu, geri alininca 1913 YESIL —
+  yani vakalar dekoratif degil, gercekten assert ediliyor.
+- **is8 modulu kilitler, CAGRI YERINI KILITLEMEZ:** site 7'nin `filter` +
+  `length === 1` mantigi IO'lu webhook handler'i icinde oldugu icin hicbir testte
+  KOSMAZ — o taraf yalniz `tsc` + prod build ile dogrulandi.
+- **CANLI BOT UAT'i BEKLIYOR (uc sevkin de):** kanit saf-karar seviyesinde; gercek
+  Telegram mesajiyla olculmedi. Olculecekler: (i) "102 Mehmet Ak" -> damga
+  ATILMAMALI, (ii) gercek misafir normal baglanmali, (iii) 17.7-B'de belirsiz isim
+  3 denemede on buroya dusmeli, (iv) GUARD B uyarisi ayni odada FARKLI kiside
+  dusmeli / ayni kiside (orta isim/diyakritik farkiyla) DUSMEMELI, (v) "Al Saleh"
+  soyadli dogrulanmis misafir gereksiz re-verify'a dusmemeli, (vi) ayni odada iki
+  aile uyesi varken alerji YANLIS ada yazilmamali.
+
+### Alerjen dogrulama kapisi — max-denemede ON BURO UYARISI · sevk `0bac2ad` (23. otu, SEVK B)
+
+**KOK SORUN (sessiz yutma, guvenlik-kritik):** misafir alerji bildirir ama oda no
+bilinmiyorsa `allergen_verify_pending=true` kurulur ve bot oda+isim ister. 3 denemede
+dogrulanamazsa kapi state'i TEMIZLER ve misafire `allergen_verify_failed_max`
+("...on buromuza ulasabilirsiniz") gonderirdi — **personele HICBIR sey gitmezdi.**
+`guest_allergens` satiri `status='reported'` + `allergen_text` DOLU / `room_number`
+NULL kalir, `allergen_asked=true` oldugu icin akis bir daha TETIKLENMEZ ->
+**bildirilen alerji kimse gormeden kaybolurdu.** Normal dogrulama akisi ayni yerde
+`createReceptionApproval` ile on buroyu UYARIYORDU; alerjen akisi uyarmiyordu.
+
+**COZUM (`route.ts`, else/eslesmeme dali ~:2347, state temizliginden ONCE, +39/-0):**
+`guest_allergens` (`platform_user_id = String(userId)`, `is_active`) -> `allergen_text`
++ `departments` (`code='front_office'`) -> `telegram_chat_id`; ikisi de varsa
+`tg.sendMessage` ile **TR plain-text** kart: beyan edilen oda + ad-soyad
+(`avParsed.firstName` + `avLastName`) + bildirilen alerji + "manuel bulup dogrulayin".
+
+- **FAIL-SAFE:** blogun TAMAMI `try/catch` icinde. Bildirim hatasi ya da eksik
+  `chat_id` akisi KIRMAZ — misafir mesaji ve state temizligi AYNEN devam eder.
+  Loglar: `[allergen-verify-gate] Max deneme — on buro uyarildi (room=...)` ·
+  `front_office chat_id yok — on buro uyarilamadi` · `on buro uyari HATASI:`.
+- **`Number(avFailChatId)` COERCE SART:** `departments.telegram_chat_id` **bigint**;
+  supabase-js bunu **string** dondurur (canli mühür: `"-5366737876"`). Coerce
+  kozmetik degil, tip uyumunu o saglar (`allergen-notify.ts:143` ile ayni desen).
+- **Alerji metni bu kartta CEVRILMEZ.** `sendAllergenNotifications` mutfak/GR
+  kartinda `translateToTurkish` + "TURKCE:" satiri ekler; bu kart HAM metni basar
+  (RU/AR bildirimde personel okuyamayabilir — §7 acik borc).
+- **Butonsuz + `sla_events` YOK** — M4 spec'iyle tutarli (alerji yolunda SLA
+  takibi YASAK), ama "manuel kontrol edildi mi" de IZLENMEZ (§7 acik borc).
+- **MUHUR (salt-IO fix'in kaniti):** `tsc` 0 + `npm run doctor` YESIL + **tsql canli
+  SELECT** (`departments.code='front_office'` -> chat_id DOLU) + fail-safe okumasi.
+  **is8 vakasi EKLENMEDI** — blokta saf karar YOK, hepsi IO.
+- **`departments` lookup deseni 6 YERDE tekrarlaniyor** (bu blok dahil) — helper
+  YOK, bkz. §7.
 
 ### Oda-no parse disqualifier (backlog #1) · sevk `6c30f6f` + `3d9e593` (15. otu)
 
@@ -636,12 +730,18 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - **#3 DETERMINISTIK KAPI:** Sayisal/esik/yonlendirme kararlari KODDA.
   LLM'e uygun: dil tespiti, intent etiketi. LLM'e YASAK: forward karari,
   esikler, esya/adet, alerjen karari, onay, **update-kimlik-cikarimi
-  (`extractUpdateId`)**, **isim-eslesme (`matchesGuestName`)**.
+  (`extractUpdateId`)**, **isim/kimlik eslesmesi (`match-guest-name.ts` — 4 export;
+  MISAFIR KIMLIGI hicbir kosulda LLM'e sorulmaz)**.
 - **SESSIZ YUTMA YASAGI:** Bir talep herhangi bir kapida dusuruluyorsa
   (dedup/gate/filtre) personel veya misafir MUTLAKA haberdar edilir.
   Sessiz continue/return = kayip. **Bir SIKAYET'i bilgi cevabiyla kapatmak da
   sessiz yutmadir** — aksaklik bildiren misafire KB metni donup kimseye
   iletmemek yasak (IS 8 sikayet dali bunun icin var).
+  **DOGRULAMA BASARISIZLIGI DA BIR KAPIDIR (23. otu):** max-denemede state'i
+  temizleyip misafire "on buroya basvurun" DEMEK, personeli haberdar etmek
+  DEGILDIR — misafirin yuruyecegi varsayilamaz, kayit DB'de oksuz kalir.
+  Deneme sayaci biten her akis, kapanmadan ONCE ilgili gruba dusmek zorunda
+  (alerjen kapisi `0bac2ad` ile boyle kapandi).
   **FAIL-SAFE YONU (18. otu):** bir dedup kapisi KARAR VEREMIYORSA mesaji
   ISLER, atmaz. Kimlik okunamaz -> `[update-dedup] no update_id, dedup atlandi`;
   DB hatasi -> `[update-dedup] claim-error, devam`. Ikisi de akisi SURDURUR
@@ -693,11 +793,14 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     URETILIR; dorduncu bir kopya YAZILMAZ. Yeni prefix eklemek DAVRANIS
     degisikligidir (bkz. §7 acik borc), doc-only senkron degil.
   - **isim-eslesme (ad/soyad ayni kisi mi?)** -> `verify-guest.ts` DEGIL,
-    **`match-guest-name.ts`** `matchesGuestName` (parse edilmis ad/soyad) /
-    `matchesGuestNameFromText` (ham metin) — 21. otu. route.ts SITE 1 + SITE 2 ve
-    `verifyGuest` v2 dali AYNI ikiliyi cagirir; inline `includes` YAZILMAZ.
-    **Site 5 (`reception-approval.ts` GUARD B) ve site 6 (route.ts re-verify
-    :3266/:3414) HENUZ BAGLI DEGIL** — backlog #6, ikisi de yanlis-damga uretmez.
+    **`match-guest-name.ts`** — **4 export, 7 cagri yeri, TAMAMI BAGLI** (21-23. otu):
+    `matchesGuestName` (parse edilmis ad/soyad — site 1/2/3/7) ·
+    `matchesGuestNameFromText` (ham metin) · `sameGuestByText` (iki tam isim — site 5) ·
+    `sameLastName` (iki soyad — site 6a/6b). **Inline `includes` / `toLowerCase` /
+    `toLocaleLowerCase('tr')` karsilastirmasi YAZILMAZ**; ihtiyac duyulan varyant
+    yoksa modul'e **BESINCI export** eklenir, cagri yerine kopya YAZILMAZ.
+    **Tek-anlamlilik (0/1/>1 aday) modulde DEGIL, CAGIRANDA:** damga yalnizca TEK
+    eslesmede atilir (`length === 1`), `find()` ilk-alma YASAK.
   - **TR normalize** -> `normalize-tr.ts` `normalizeTr` (ikinci normalizer YASAK)
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
@@ -717,6 +820,24 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - **Testte kopya fonksiyon KULLANMA:** scratchpad'e kopyalanan bir fonksiyonu
   test etmek yanlis guven verir — kopya 49/49 YESIL donerken canli davranisla
   CELISEBILIR (bir kez yasandi). Test gercek modulu import etmeli.
+- **YESIL TEST TEK BASINA KANIT DEGIL — HARNESS-BITE OLC (23. otu):** yeni vakalar
+  eklendikten sonra **bir vakanin beklentisini gecici olarak TERS cevir** ve korpusun
+  gercekten KIRMIZI dondugunu gor (sayi dusmeli + `DUSEN: <dosya>` + exit 1), sonra
+  AYNEN geri al ve yesili teyit et. Yanlis import / yanlis dosya adi / yanlisikla
+  yorumlanmis blok yuzunden hic kosmayan bir korpus da "YESIL" doner. Geri alma
+  BYTE-TAM olmali: `git diff --stat` fix oncesiyle AYNI kalmali.
+- **CAGRI-YERI GARANTILERINI OKU, SAVUNMA KODU YAZMA (23. otu):** site 7'de
+  `avParsed.firstName` icin fallback yazmak GEREKSIZDI — `parseVerificationInput`
+  `firstName` ve `lastName`i **birlikte** doldurur (`tokens.length >= 2`), ustelik
+  ustteki format kapisi zaten `!avLastName` ile donuyor. Fonksiyonun sozlesmesini
+  OKUMADAN "her ihtimale karsi" `?? ''` zinciri eklemek gercek bir kosulu maskeler.
+- **`chat_id` tabloda VAR != bot oraya YAZABILIR (23. otu):** `departments.telegram_chat_id`
+  dolu olmasi teslimati KANITLAMAZ; gruptan atilmis/susturulmus bot da tabloda id
+  birakir. SELECT yalniz "config eksik degil" der; gercek kanit canli log satiri +
+  grupta gorunen karttir.
+- **`bigint` kolonlar JS'e STRING gelir:** supabase-js `telegram_chat_id`i
+  `"-5366737876"` olarak dondurur. Telegram API string kabul etse de tip
+  uyusmazligi tsc'de patlar -> `Number(...)` coerce SART (bkz. `allergen-notify.ts:143`).
 - **PowerShell:** && desteklemez, komutlar ayri satir.
   Select-String -Path src\**\*.ts subdirectory'e GIRMEZ.
   Dogru: Get-ChildItem -Path src -Recurse -Filter *.ts | Select-String "..."
@@ -760,7 +881,7 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - **Turkish normalization:** use the shared `normalizeTr()` (`src/lib/utils/normalize-tr.ts`) for any keyword/name matching — verification and interest-tag detection both depend on it. Don't roll a second normalizer (some older code inlines `.replace(/İ/g,'i')…` chains; prefer the shared util).
 - **Timezone:** all "now"/off-hours/SLA logic is **Europe/Istanbul** (`src/lib/date/turkeyTime.ts`, e.g. `getTurkeyToday`). Never use raw local server time for business hours.
 - **Guest table is `inhouse_guests_v2`** (TEXT `room_number`, single `guest_name`, `status='active'`, `check_out_date`). Legacy `inhouse_guests` exists only as a fallback in `verify-guest.ts`. New code should target v2.
-- **Allergen module (M4):** `ALERJEN_MODUL4_KURALLAR.md` is the **authoritative spec** — follow it exactly. Key invariants: the bot never gives medical/safety approval; "no response" is never recorded as "no allergy"; in-house allergy reports notify kitchen+GR flagged staff (`department_staff` flags `is_allergen_primary/backup/is_manager`) **always**, reception only off-hours (00:00–08:00 TR). Per recent commits, allergy notifications are **button-free and create no `sla_events`** — don't add SLA tracking to the allergy path. Notifications via `src/lib/telegram/allergen-notify.ts`.
+- **Allergen module (M4):** `ALERJEN_MODUL4_KURALLAR.md` is the **authoritative spec** — follow it exactly. Key invariants: the bot never gives medical/safety approval; "no response" is never recorded as "no allergy"; in-house allergy reports notify kitchen+GR flagged staff (`department_staff` flags `is_allergen_primary/backup/is_manager`) **always**, reception only off-hours (00:00–08:00 TR). Per recent commits, allergy notifications are **button-free and create no `sla_events`** — don't add SLA tracking to the allergy path. Notifications via `src/lib/telegram/allergen-notify.ts` (personel **DM**'i: `department_staff.telegram_user_id`; departman GRUBUNA yazmaz). 23. otu: dogrulama 3 denemede BASARISIZ olursa ayri bir **on buro GRUP karti** duser (`route.ts` alerjen kapisi) — o da butonsuz + `sla_events`siz, ayni invaryanti korur.
 - **Webhooks must return 200** and degrade gracefully; services return `{ success, error }` / log-and-continue rather than throwing across the message path.
 - **Markdown is stripped** from guest replies (Telegram) and the AI is instructed to emit plain text only.
 - Generated Supabase types: `src/types/database-central.ts`, `src/types/database-hotel.ts`.
@@ -844,8 +965,40 @@ Ayrinti: §2 *Misafir ismi eslesmesi TEK KAYNAK*.
 (i) "102 Mehmet Ak" -> damga ATILMAMALI, (ii) gercek misafir normal baglanmali,
 (iii) 17.7-B'de tam isim baglanmali / belirsiz isim 3 denemede on buroya dusmeli.
 
-**SIRADAKI ACIK IS:** verification-core kok nedeni (asagida) + backlog #6
-(isim-karsilastirma tam konsolidasyon).
+**22. oturumda KAPANDI:** **backlog #6 — isim-karsilastirma TAM KONSOLIDASYON**
+(`e36bf65`; deploy `dpl_2G5Rwuh1q3WZQz7XNuBFkc7XKPQa`). #13'ten kalan IKI site
+baglandi: **site 5** `reception-approval.ts` GUARD B (kendi `toLocaleLowerCase('tr')`
+normalizer'i + tam-dize esitsizligi -> `!sameGuestByText`) ve **site 6**
+`route.ts` re-verify (6a tetik `:3267` -> `!sameLastName`; 6b re-send guard
+`:3423-3424` -> `sameLastName` + odada `normalizeTr`, eskiden ham `===` idi).
+Modul 2 SAF export kazandi: `sameGuestByText`, `sameLastName`. Ucu de
+uyari/tetik/skip uretir — **damga YAZMAZ**, o yuzden risk "gereksiz soru",
+"baskasinin odasi" DEGIL. is8 45 -> 71 (§6 11 + §7 8 + §8 oracle 7),
+test:is8 1872 -> 1898. Ayrinti: §2 *Misafir ismi eslesmesi TEK KAYNAK*.
+
+**23. oturumda KAPANDI — IKI SEVK:**
+- **SEVK A — site 7 `[allergen-verify-gate]`** (`1b529f2`; deploy
+  `dpl_AevDr9o2s8CxiHFViqY5S8Ebi6WQ`). Alerjen dogrulama kapisi kendi
+  `toLowerCase`'ini kullaniyor, olcut olarak **yalniz SOYADIN son kelimesini**
+  aliyor (ad HIC bakilmiyor) ve adaylar arasinda `find()` ile **ilk sirayi**
+  seciyordu -> odada "Ayse Akin" ve "Mehmet Akin" varken alerji YANLIS misafire
+  yazilabilirdi. Artik `matchesGuestName` + `length === 1` tek-anlamlilik guard'i.
+  is8 71 -> **86** (§9: 9a-9g davranis + 9h-9o cift-yonlu `legacyAllergenMatch`
+  oracle), test:is8 1898 -> **1913**, **HARNESS-BITE olculdu** (9b ters cevrilince
+  1912/1913 + 13/14 dosya KIRMIZI).
+- **SEVK B — alerjen SESSIZ YUTMA** (`0bac2ad`; deploy
+  `dpl_2rqqDg6C9Uo7HLRX9MZACP8YJ24v` = **SON PROD**). 3 basarisiz denemede state
+  temizlenip misafire "on buroya basvurun" deniyor ama personele HICBIR sey
+  gitmiyordu; bildirilen alerji DB'de oksuz kaliyor ve akis bir daha
+  tetiklenmiyordu. Artik state temizliginden ONCE on buro grubuna TR kart duser
+  (+39/-0, fail-safe try/catch). **is8 EKLENMEDI** (blok salt IO). Muhur:
+  tsc + doctor + **tsql canli SELECT** (`front_office` chat_id DOLU). Ayrinti:
+  §2 *Alerjen dogrulama kapisi — max-denemede ON BURO UYARISI*.
+- **DOC SENKRONU:** bu dosya v35'te bayat kalmisti (22+23 sevkleri isaretlenmemis)
+  -> bu commit ile v37'ye tasindi.
+
+**SIRADAKI ACIK IS:** verification-core kok nedeni (asagida). Isim-eslesme
+konsolidasyonu **TAMAMEN KAPANDI** (7/7 site) — yeniden acmayin.
 
 - **verification parse yanlis-pozitifi (SIRADAKI IS — kok neden ACIK):** `ROOM_REGEX`
   (`verify-guest.ts:131`) prefix'i OPSIYONEL tuttugu icin serbest metindeki HER 2-4
@@ -854,24 +1007,32 @@ Ayrinti: §2 *Misafir ismi eslesmesi TEK KAYNAK*.
   kapatti (`disqualifiedAsRoom` 3 OR + prefixsiz-sayi sarti, TR/EN/DE + RU/AR);
   regex'in kendisi ve stop-word kalibi DUZELTILMEDI -> disqualifier'in gormedigi
   mesaj siniflarinda tuzak DURUYOR. **20. otu bunu KAPATMADI** — tek-kaynak refactoru
-  prefix LISTESINI birlestirdi, `(?:...)?` opsiyonelligine DOKUNMADI. Duzeltmek
+  prefix LISTESINI birlestirdi, `(?:...)?` opsiyonelligine DOKUNMADI; **21-23. otular
+  da DOKUNMADI** (onlar isim-eslesme tarafiydi, oda-no parse degil). Duzeltmek
   verification cekirdegine dokunmaktir, ayri korpus ister (`is8-verify-parse-test.ts`
   zemini hazir, **94 vaka**).
-- **#6 isim-karsilastirma TAM KONSOLIDASYON (21. otu, acik — orta/dusuk):** backlog #13
-  UC siteyi `match-guest-name.ts`e bagladi; IKI site DISARIDA kaldi. Ikisi de
-  **yanlis-damga URETMEZ** — o yuzden acik birakildi, sessiz risk degil:
-  - **site 5** `reception-approval.ts:226-229` GUARD B — kendi normalizer'i
-    (`toLocaleLowerCase('tr')`; §3 "ikinci normalizer YASAK" ihlali) + tam-dize
-    **esitsizligi**. Yalniz `roomNameConflict` UYARISI uretir, INSERT'i ENGELLEMEZ.
-    Duz swap DEGIL: mantik **NEGASYON** ("eslesmeyen bir kayit bul") ve karsilastirilan
-    `attempted_guest_name` HAM tek string -> `!matchesGuestNameFromText(...)` tek
-    kelimelik isimlerde HER ZAMAN "catisma" der.
-  - **site 6** `route.ts:3266-3267` / `:3414` re-verify — `normalizeTr` uzerinde
-    **oda + soyad tam-dize esitsizligi** (substring DEGIL, mevcut halinde daha SIKI).
-    Coklu-token soyadda ("Al Saleh" yazan misafir, kayit "Saleh") gereksiz re-verify
-    tetikleyebilir.
-  Ikisi de DAVRANIS-HASSASTIR: dokunmak dogrulama akisini degistirir, yeni is8 vakasi +
-  negatif kontrol sart.
+- **On buro alerji karti ALERJEN METNINI CEVIRMIYOR (23. otu, orta):** yeni
+  max-deneme karti `allergen_text`i HAM basar. `sendAllergenNotifications` ise
+  mutfak/GR kartinda `translateToTurkish` + "TURKCE:" satiri EKLER
+  (`allergen-notify.ts:247-252`). RU/AR bildiren misafirde on buro personeli metni
+  okuyamayabilir — yasamsal-guvenlik metni icin asimetri. Duzeltmek 1 satirlik
+  degil: `translateToTurkish` bir LLM cagrisidir, webhook yolunu uzatir.
+- **On buro alerji karti BUTONSUZ + `sla_events` YOK (23. otu, dusuk):** M4 spec'i
+  alerji yolunda SLA takibini YASAKLADIGI icin bilincli; ama "manuel kontrol
+  edildi mi" de IZLENMEZ. Alternatif desen `createReceptionApproval`dir (butonlu +
+  `pending_guest_matches` satiri) — kullanilmadi.
+- **`front_office` chat_id lookup 6 KOPYA -> helper YOK (23. otu, dusuk):** ayni
+  4 satir (`departments` -> `.eq('code','front_office')` -> `telegram_chat_id`)
+  `reception-approval.ts:109`, `route.ts` `:542` / `:1597` / `:1745` / `:3345` ve
+  yeni alerjen blogunda ELLE tekrarlaniyor. §3 "tekrarlanan karar tek kaynakta"
+  kapsaminda bir `getFrontOfficeChatId(supa)` helper'i ister. Bugun **hepsi ayni
+  davranisi** uretiyor (yoksa `console.warn` + skip), o yuzden sessiz risk DEGIL —
+  ama yedinci kopya yazilmadan once cekilmeli.
+- **`route.ts:850` `notifyFrontDeskUnverified` OLU KOD (23. otu kesfi, dusuk):**
+  tanimli, `intentLabel`de `allergy` girisi bile var, ama repo genelinde HICBIR
+  cagri yeri yok (canli yol `createReceptionApproval`). Silmek ayri bir karar
+  (§1 "pre-existing dead code silme, RAPORLA") — yeni bir on-buro bildirimi
+  yazarken hazir sablon olarak OKUNABILIR.
 - **Oda-prefix listesi GENISLETME (20. otu, acik):** `ROOM_PREFIXES` bugun **8** uye
   tasiyor. Eksik gorunen adaylar: RU `комната` (oda), AR `مقر`, ve belirlilik takisi
   `ال` ile gelen formlar. Eklemek **DAVRANIS DEGISIKLIGIDIR**, tek-kaynak senkronu
