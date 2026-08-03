@@ -6,9 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- Bu dosya **23. oturum sonrasi** durumu yansitir; sohbet tarafindaki
-  **DEVIR + MASTER (v37)** ile hizalidir.
-- **SON PROD (23. oturum, SEVK B): `0bac2ad`** — alerjen dogrulamasinda **SESSIZ
+- Bu dosya **24. oturum sonrasi** durumu yansitir; sohbet tarafindaki
+  **DEVIR + MASTER (v38)** ile hizalidir.
+- **HEAD (24. oturum): `df38583` — SEVK EDILDI, ama DEPLOY EDILMEDI.** `front_office`
+  chat_id lookup'i tek kaynaga baglandi (backlog #6): `getFrontOfficeChatId(supa)`
+  (`src/lib/telegram/front-office.ts`) — **HAM string** dondurur, `Number()` coerce
+  **CAGRI YERINDE** kalir. 6 canli site + olu `:865` bagli. Davranis-KORUYUCU saf
+  refactor oldugu icin deploy BILINCLE ertelendi -> **branch HEAD != prod**
+  (`df38583` vs `0bac2ad`); bir sonraki sevk deploy edilirken bu commit de gider.
+  Muhur: `npm run doctor` YESIL + diff-esdegerlik okumasi. **CANLI UAT YOK.**
+- **SON PROD (**hala** 23. oturum, SEVK B): `0bac2ad`** — alerjen dogrulamasinda **SESSIZ
   YUTMA KAPANDI**: 3 basarisiz oda+isim denemesinden sonra state temizlenip
   misafire "on buroya basvurun" deniyor ama **personel HIC haberdar edilmiyordu**
   (bildirilen alerji kimseye ulasmadan kayboluyordu — §3 SESSIZ YUTMA YASAGI,
@@ -41,7 +48,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   -> `f5a56a7` + `92edccb` (20. otu, **KOK**)
   -> `9e46fdf` (21. otu, backlog #13)
   -> `e36bf65` (22. otu, backlog #6)
-  -> `1b529f2` (23.a, site 7) -> `0bac2ad` (23.b, sessiz yutma).
+  -> `1b529f2` (23.a, site 7) -> `0bac2ad` (23.b, sessiz yutma — **PROD BURADA DURUYOR**)
+  -> `df38583` (24. otu, backlog #6 chat_id helper — **DEPLOY YOK**, branch-only).
   Yedek tag: `pre-tier2-20260728`.
 - **DOKUMAN GECIKMESI (20. otu tespiti, 23. otu TEKRARLANDI):** 19. oturum sevki
   (`48ea1ea`) bu dosyaya DOKUNMADI — CLAUDE.md v32/18. oturumda kalmisti. AYNI SEY
@@ -49,7 +57,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   kaldi (backlog #6'yi ACIK, site 7'yi YOK gosteriyordu). Bu senkron 22+23'u
   BIRLIKTE tasir. Ders: kod sevki ile doc sevki ayri commit'ler; biri atlanirsa
   doc sessizce bayatlar (kod dogru, harita yanlis) — sevkten sonra doc senkronunu
-  AYNI oturumda kapat.
+  AYNI oturumda kapat. **24. otu bunu UYGULADI:** `df38583` (kod) ve bu senkron
+  (doc) ayni oturumda, ayri commit'ler olarak kapatildi.
 
 ## 1. CALISMA PRENSIPLERI
 - **Reconnaissance-first:** Edit'ten once ilgili dosyalari OKU. Varsayimla kod yazma.
@@ -115,12 +124,17 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
 - **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (23. oturum sonu **1913/1913**, **14 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)
   -> 1872 (21. otu **YENI DOSYA** `is8-match-guest-name-test.ts`, **45 vaka**)
   -> 1898 (22. otu, YENI DOSYA YOK: `is8-match-guest-name` 45->71, §6 `sameGuestByText` 11 + §7 `sameLastName` 8 + §8 eski normalizer oracle'i 7)
-  -> 1913 (23. otu, YENI DOSYA YOK: `is8-match-guest-name` 71->**86**, §9 site-7 15 vaka)) +
+  -> 1913 (23. otu, YENI DOSYA YOK: `is8-match-guest-name` 71->**86**, §9 site-7 15 vaka)
+  -> **1913 (24. otu — DEGISMEDI, bilincli:** `getFrontOfficeChatId` salt IO, icinde saf
+  karar YOK; davranis-koruyucu bir IO refactorunun muhru is8 DEGIL, **doctor +
+  diff-esdegerlik okumasi**. is8'e vaka ZORLAMA — sahte kapsam uretir)) +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip;
   23. otu sonu **GEREKLI 45 / MEVCUT 46**, `migration-eksik: [yok]` — 18. otu ile AYNI,
   20-23. oturumlar migration EKLEMEDIGI icin sema DEGISMEDI. Bir kosuda gecici
   `fetch failed` WARN'i gorulebilir; host ayakta olsa bile olur, TEKRAR KOS) +
-  [D] sabit-marka taramasi (src/**, dosya-bazli allowlist). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
+  [D] sabit-marka taramasi (src/**, dosya-bazli allowlist; 24. otu sonu **13 allowlisted /
+  0 unexpected — DEGISMEDI**: yeni chat_id helper'i hicbir id'yi HARDCODE ETMEZ, her
+  cagrida `departments` tablosundan ceker). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
 - Kalan dogrulama yine `npm run type-check` + `npm run build` + manuel/UAT. Repo kokundeki
   `__*.js/.mjs`, `scratch_*.mjs`, `__run_*.ps1`, `__test_scenario_*.json` dosyalari tek
@@ -340,8 +354,48 @@ NULL kalir, `allergen_asked=true` oldugu icin akis bir daha TETIKLENMEZ ->
 - **MUHUR (salt-IO fix'in kaniti):** `tsc` 0 + `npm run doctor` YESIL + **tsql canli
   SELECT** (`departments.code='front_office'` -> chat_id DOLU) + fail-safe okumasi.
   **is8 vakasi EKLENMEDI** — blokta saf karar YOK, hepsi IO.
-- **`departments` lookup deseni 6 YERDE tekrarlaniyor** (bu blok dahil) — helper
-  YOK, bkz. §7.
+- **`departments` lookup deseni ARTIK HELPER'DA (24. otu, `df38583`):** bu blok
+  `getFrontOfficeChatId(supa)` cagirir; `Number(avFailChatId)` coerce'u YERINDE
+  kaldi (helper HAM string doner). Bkz. asagidaki *On buro chat_id TEK KAYNAK*.
+
+### On buro chat_id TEK KAYNAK — `getFrontOfficeChatId` (backlog #6) · sevk `df38583` (24. otu, **DEPLOY YOK**)
+
+**KOK SORUN:** ayni dort satir (`departments` -> `.eq('code','front_office')` ->
+`telegram_chat_id` -> null guard) ALTI ayri yerde ELLE tekrarlaniyordu. Kopyalarin
+hepsi AYNI davranisi uretiyordu (o yuzden sessiz risk DEGILDI), ama yedincisi
+yazildiginda biri sessizce kayardi — §3 *tekrarlanan karar tek kaynakta*.
+
+| Uretim | Yer | Not |
+|---|---|---|
+| `getFrontOfficeChatId(supa)` (**TEK KAYNAK**) | `src/lib/telegram/front-office.ts` (**YENI dosya**) | `Promise<string \| null>`; **HAM string** doner, coerce YAPMAZ |
+
+- **DONUS HAM STRING, coerce CAGRI YERINDE:** `telegram_chat_id` **bigint**,
+  supabase-js **string** dondurur. Cagri yerlerinin bir kismi Telegram'a
+  `Number(...)` ile gonderiyor, bir kismi ham degeri kullaniyor — donusumu cagirana
+  birakmak mevcut davranisi BIREBIR korur. Helper'a `Number()` koymak bir yerde
+  davranis kaydirirdi.
+- **FALSY KATLAMASI HELPER'DA:** `raw ? String(raw) : null`. Cagri yerlerinin tamami
+  zaten `if (!chatId)` ile dalleniyordu; `0` / `''` de null'a katlanir ki eski guard
+  ile sonuc AYNI kalsin. **`error` OKUNMAZ/LOGLANMAZ** ve **try/catch YOK** —
+  kopyalarin hicbiri okumuyordu; fazladan log ya da yutma DAVRANIS DEGISIKLIGI olurdu.
+- **BAGLI 6 CAGRI YERI:** `reception-approval.ts:109` (**ham kullanim**, coerce yok) ·
+  `route.ts` 17.7-C `:539` · 17.7 `:1594` · 17.7-B `:1742` ·
+  `[allergen-verify-gate]` `:2359` (dorduncu de `Number(...)` yapar) ·
+  olu `notifyFrontDeskUnverified` `:865` (desen birebir ayniydi, tutarlilik icin
+  baglandi; oradaki `as number` cast'i runtime **no-op**'tu — deger zaten string'di).
+- **HELPER DISI 3 CAGRI YERI (bilincli — backlog #20):** ayni satirdan **BASKA kolon
+  da** cekiyorlar, helper'a cevirmek TEK sorguyu IKIYE bolerdi:
+  `route.ts` `[reverify-forward]` `:3362` (`telegram_chat_id, sla_minutes`) ·
+  `sla/check-runner.ts:92` (`reception_sla_minutes`) ·
+  `sla/handle-callback.ts:183` (`display_name` + **`.eq('is_enabled', true)`**).
+- **SAYIM DUZELTMESI — envanter yaniltiyordu:** §7 bu borcu "**6 kopya**" diye
+  tasiyordu; canli tarama (`eq('code', 'front_office')`) **9** lookup buldu. Son iki
+  site (`check-runner`, `handle-callback`) listede HIC YOKTU. Ders §4'te.
+- **MUHUR:** `npm run doctor` YESIL — tsc 0 · **test:is8 1913/1913 DEGISMEDI** ·
+  sema 45/46 · marka 0 unexpected. **is8 vakasi EKLENMEDI** (saf karar yok).
+  Circular import YOK: dosya yalnizca `SupabaseClient` **type**'ini import eder —
+  ham non-ASCII de tasimaz (RTL riski YOK). **CANLI BOT UAT'i BEKLIYOR:** alti
+  bildirim yolunun hicbiri gercek Telegram mesajiyla olculmedi.
 
 ### Oda-no parse disqualifier (backlog #1) · sevk `6c30f6f` + `3d9e593` (15. otu)
 
@@ -741,7 +795,9 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   temizleyip misafire "on buroya basvurun" DEMEK, personeli haberdar etmek
   DEGILDIR — misafirin yuruyecegi varsayilamaz, kayit DB'de oksuz kalir.
   Deneme sayaci biten her akis, kapanmadan ONCE ilgili gruba dusmek zorunda
-  (alerjen kapisi `0bac2ad` ile boyle kapandi).
+  (alerjen kapisi `0bac2ad` ile boyle kapandi). **24. otu chat_id refactoru bu
+  korumalarin ICINE DOKUNMADI** — altisinin da null-guard'i (`warn` + skip / return)
+  ve dallanmasi AYNEN korundu; degisen yalniz lookup'in NEREDE yasadigi.
   **FAIL-SAFE YONU (18. otu):** bir dedup kapisi KARAR VEREMIYORSA mesaji
   ISLER, atmaz. Kimlik okunamaz -> `[update-dedup] no update_id, dedup atlandi`;
   DB hatasi -> `[update-dedup] claim-error, devam`. Ikisi de akisi SURDURUR
@@ -765,7 +821,9 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - **DEPLOY AYRI VE ACIK ONAYLIDIR:** talimatta **acikca `vercel --prod` YAZMIYORSA
   DEPLOY ETME.** Is bitince commit + rapor'da DUR; onayi bekle. "Kapat", "sevk et",
   "bitir" gibi ifadeler deploy izni SAYILMAZ. Commit ve push da ayni disiplinle
-  yalniz istendiginde yapilir.
+  yalniz istendiginde yapilir. **Saf/davranis-koruyucu bir refactor SEVK EDILIP
+  DEPLOY EDILMEDEN birakilabilir** (24. otu `df38583` boyle); o zaman branch HEAD
+  prod'un ONUNDEDIR — bir sonraki deploy ikisini BIRLIKTE tasir, bunu bilerek sevk et.
 - **MISAFIRE DONUK SABIT METIN TEK KAYNAKTA:** yeni bir misafir metni (mesaj, buton
   etiketi, kart etiketi, callback toast'i) `src/lib/i18n/guest-text.ts`'e 5 dille
   eklenir; dosya icine inline literal YAZILMAZ. Ikinci kopya = biri degisince
@@ -801,6 +859,13 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     yoksa modul'e **BESINCI export** eklenir, cagri yerine kopya YAZILMAZ.
     **Tek-anlamlilik (0/1/>1 aday) modulde DEGIL, CAGIRANDA:** damga yalnizca TEK
     eslesmede atilir (`length === 1`), `find()` ilk-alma YASAK.
+  - **on buro (`front_office`) grup chat_id'si** -> `src/lib/telegram/front-office.ts`
+    **`getFrontOfficeChatId(supa): Promise<string | null>`** (24. otu, `df38583`).
+    Inline `departments` + `.eq('code','front_office')` sorgusu YAZILMAZ. **HAM string**
+    doner (`raw ? String(raw) : null` — eski `if (!chatId)` falsy-guard'i ile BIREBIR);
+    **coerce CAGRI YERINDE** kalir (`Number(...)` kimi sitede var, kimisinde ham deger
+    gider — helper'a coerce KOYMA). **6 canli site + olu `:865` BAGLI**; ayni satirdan
+    BASKA kolon da ceken **3 site helper DISI** (tek sorguyu ikiye bolerdi — backlog #20).
   - **TR normalize** -> `normalize-tr.ts` `normalizeTr` (ikinci normalizer YASAK)
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
@@ -826,6 +891,19 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   AYNEN geri al ve yesili teyit et. Yanlis import / yanlis dosya adi / yanlisikla
   yorumlanmis blok yuzunden hic kosmayan bir korpus da "YESIL" doner. Geri alma
   BYTE-TAM olmali: `git diff --stat` fix oncesiyle AYNI kalmali.
+- **BACKLOG ENVANTERI != KOD GERCEGI — ISE BASLARKEN CANLI TARA (24. otu):** §7 bu
+  dosyada `front_office` chat_id borcunu "**6 kopya**" diye tasiyordu; tek satirlik
+  tarama (`Get-ChildItem -Path src -Recurse -Filter *.ts | Select-String
+  "eq\('code', 'front_office'\)"`) **9** lookup buldu — ikisi envanterde HIC YOKTU,
+  ucu de farkli `select` tasidigi icin helper'a BAGLANAMAZDI. Doc'taki sayiya
+  guvenip 6 siteyi cevirseydin "borc kapandi" denirdi ama iki kopya sessizce
+  yasardi. ONCE tara, SONRA planla — envanter bir ipucu, kanit DEGIL.
+- **DAVRANIS-KORUYUCU IO REFACTORUNUN MUHRU is8 DEGIL (24. otu):** cikarilan helper
+  salt IO ise (icinde saf karar YOK) korpusa vaka eklemek SAHTE kapsam uretir —
+  vaka ya ag ister ya da helper'i taklit eder (kopya-test tuzaginin ikizi). Dogru
+  muhur: **`npm run doctor` YESIL — is8 sayisi DEGISMEMELI** + diff'in satir satir
+  esdegerlik okumasi (guard yonu · coerce YERI · falsy davranisi). Saf KARAR
+  degistiyse kural terse doner: o zaman is8 vakasi SART.
 - **CAGRI-YERI GARANTILERINI OKU, SAVUNMA KODU YAZMA (23. otu):** site 7'de
   `avParsed.firstName` icin fallback yazmak GEREKSIZDI — `parseVerificationInput`
   `firstName` ve `lastName`i **birlikte** doldurur (`tokens.length >= 2`), ustelik
@@ -1004,8 +1082,21 @@ test:is8 1872 -> 1898. Ayrinti: §2 *Misafir ismi eslesmesi TEK KAYNAK*.
 - **DOC SENKRONU:** bu dosya v35'te bayat kalmisti (22+23 sevkleri isaretlenmemis)
   -> bu commit ile v37'ye tasindi.
 
+**24. oturumda KAPANDI:** **backlog #6 — `front_office` chat_id lookup TEK KAYNAK**
+(`df38583`; **DEPLOY EDILMEDI**, prod hala `0bac2ad`). Ayni dort satir alti yerde elle
+tekrarlaniyordu; artik `getFrontOfficeChatId(supa): Promise<string | null>`
+(`src/lib/telegram/front-office.ts`) TEK kaynak — **HAM string** doner, coerce CAGRI
+YERINDE kalir, falsy katlamasi eski `if (!chatId)` guard'iyla BIREBIR. 6 canli site +
+olu `:865` bagli. **SAYIM DUZELTMESI:** bu dosya borcu "6 kopya" diye tasiyordu, canli
+tarama **9** lookup buldu -> ucu farkli `select` tasidigi icin DISARIDA (yeni #20).
+Muhur: doctor YESIL, **test:is8 1913 DEGISMEDI** (salt IO — vaka EKLENMEDI),
+circular import yok. Ayrinti: §2 *On buro chat_id TEK KAYNAK*. **CANLI UAT YOK.**
+**DOC SENKRONU:** bu commit dosyayi v37 -> **v38**'e tasir (kod sevkiyle AYNI oturum).
+
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida). Isim-eslesme
-konsolidasyonu **TAMAMEN KAPANDI** (7/7 site) — yeniden acmayin.
+konsolidasyonu **TAMAMEN KAPANDI** (7/7 site) — yeniden acmayin; `front_office`
+chat_id konsolidasyonu da **6/6 baglanabilir site** icin KAPANDI (kalan 3 site
+kasitli disarida, bkz. #20).
 
 - **verification parse yanlis-pozitifi (SIRADAKI IS — kok neden ACIK):** `ROOM_REGEX`
   (`verify-guest.ts:131`) prefix'i OPSIYONEL tuttugu icin serbest metindeki HER 2-4
@@ -1028,18 +1119,24 @@ konsolidasyonu **TAMAMEN KAPANDI** (7/7 site) — yeniden acmayin.
   alerji yolunda SLA takibini YASAKLADIGI icin bilincli; ama "manuel kontrol
   edildi mi" de IZLENMEZ. Alternatif desen `createReceptionApproval`dir (butonlu +
   `pending_guest_matches` satiri) — kullanilmadi.
-- **`front_office` chat_id lookup 6 KOPYA -> helper YOK (23. otu, dusuk):** ayni
-  4 satir (`departments` -> `.eq('code','front_office')` -> `telegram_chat_id`)
-  `reception-approval.ts:109`, `route.ts` `:542` / `:1597` / `:1745` / `:3345` ve
-  yeni alerjen blogunda ELLE tekrarlaniyor. §3 "tekrarlanan karar tek kaynakta"
-  kapsaminda bir `getFrontOfficeChatId(supa)` helper'i ister. Bugun **hepsi ayni
-  davranisi** uretiyor (yoksa `console.warn` + skip), o yuzden sessiz risk DEGIL —
-  ama yedinci kopya yazilmadan once cekilmeli.
-- **`route.ts:850` `notifyFrontDeskUnverified` OLU KOD (23. otu kesfi, dusuk):**
+- **#20 — COK-KOLONLU `front_office` lookup'lari helper DISINDA (24. otu, dusuk):**
+  uc cagri yeri ayni satirdan **baska kolon da** cekiyor, bu yuzden
+  `getFrontOfficeChatId`e BAGLANMADI (helper'a cevirmek TEK sorguyu IKIYE bolerdi —
+  davranis + maliyet degisikligi): `route.ts` `[reverify-forward]` `:3362`
+  (`telegram_chat_id, sla_minutes`) · `sla/check-runner.ts:92`
+  (`reception_sla_minutes`) · `sla/handle-callback.ts:183` (`display_name` +
+  **`.eq('is_enabled', true)`** — bunun ek FILTRESI de var, yani `is_enabled=false`
+  bir departmanda digerlerinden FARKLI davranir). Gercek cozum tek satiri cok-kolon
+  donduren ikinci bir helper (`getFrontOfficeRow`) olabilir; bugun **hicbiri bozuk
+  degil**, yalniz tek-kaynak disinda. Elle dokunulursa dordu de gozden gecirilmeli.
+- **`route.ts` `notifyFrontDeskUnverified` OLU KOD (23. otu kesfi, dusuk):**
   tanimli, `intentLabel`de `allergy` girisi bile var, ama repo genelinde HICBIR
   cagri yeri yok (canli yol `createReceptionApproval`). Silmek ayri bir karar
   (§1 "pre-existing dead code silme, RAPORLA") — yeni bir on-buro bildirimi
-  yazarken hazir sablon olarak OKUNABILIR.
+  yazarken hazir sablon olarak OKUNABILIR. 24. otu'da chat_id lookup'i helper'a
+  baglandi (desen birebir ayniydi); ustundeki "select daraltildi" yorumu artik
+  helper'a tasinan bir select'e atifta bulunuyor — **yeri kaydi, kozmetik**,
+  yaniltici degil.
 - **Oda-prefix listesi GENISLETME (20. otu, acik):** `ROOM_PREFIXES` bugun **8** uye
   tasiyor. Eksik gorunen adaylar: RU `комната` (oda), AR `مقر`, ve belirlilik takisi
   `ال` ile gelen formlar. Eklemek **DAVRANIS DEGISIKLIGIDIR**, tek-kaynak senkronu
