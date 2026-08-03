@@ -926,6 +926,15 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   `vercel --prod`'u CIPLAK kos; ciktiyi suzmen gerekiyorsa AYRI satirda yap.
   Suphede `vercel ls` ile yeni Production kaydi olup olmadigini teyit et
   (23. otu: ilk deneme boyle dustu, cift-deploy olmadi).
+- **`git commit -m @'...'@` HERE-STRING'INE CIFT TIRNAK KOYMA (24. otu):** PowerShell
+  tek-tirnakli here-string'i native exe'ye TEK arguman olarak GECIRMEZ; icindeki `"`
+  karakterleri arguman siniri gibi islenir ve mesajin her parcasi ayri bir pathspec
+  olur -> `error: pathspec 'STOPS' did not match any file(s) known to git` yagmuru ve
+  **commit ATILMAZ** (dosyalar staged kalir — sessizce yarim is; `git status` ile
+  teyit et, "commit gecti" SAYMA). Ustteki `vercel --prod` tuzaginin KARDESI: ikisinde
+  de PowerShell'in native-exe arguman baglamasi tirnagi yutuyor. **COZUM: cok satirli
+  ya da tirnakli commit mesajini scratchpad'e `.txt` yaz, `git commit -F <dosya>` ile
+  ver** (bu dosya `04aa216`'da boyle commit'lendi). Tirnaksiz tek satirda `-m` sorunsuz.
 - **Commit mesaji ASCII only.** Turkce karakter YASAK.
 - **Misafire donuk metinler TAM Turkce karakterli.**
 - **JS `\b` ASCII-ONLY:** `\w` Kiril/Arap harfini SAYMAZ -> `\bчеловек` / `\bحفل`
