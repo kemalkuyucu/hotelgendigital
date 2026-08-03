@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sameGuestByText } from '@/lib/verification/match-guest-name';
+import { getFrontOfficeChatId } from '@/lib/telegram/front-office';
 
 const TG_API = (token: string, method: string) =>
   `https://api.telegram.org/bot${token}/${method}`;
@@ -106,12 +107,7 @@ export async function createReceptionApproval(args: {
   }
   const pendingId = inserted.id as string;
 
-  const { data: dept } = await supa
-    .from('departments')
-    .select('telegram_chat_id')
-    .eq('code', 'front_office')
-    .maybeSingle();
-  const chatId = dept?.telegram_chat_id;
+  const chatId = await getFrontOfficeChatId(supa);
   if (!chatId) {
     console.warn('[reception-approval] front_office chat_id yok, kart gonderilemedi');
     return { created: true };

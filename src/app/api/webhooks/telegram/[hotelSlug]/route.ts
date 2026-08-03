@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { TelegramClient } from '@/lib/telegram/client';
 import { verifyTelegramSecret } from '@/lib/telegram/verify';
 import { extractUpdateId, claimTelegramUpdate } from '@/lib/telegram/update-dedup';
+import { getFrontOfficeChatId } from '@/lib/telegram/front-office';
 import type { TelegramUpdate, TelegramMessage } from '@/lib/telegram/types';
 import { getHotelBySlug } from '@/lib/tenant/get-hotel-by-slug';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
@@ -536,14 +537,10 @@ export async function POST(
       // ── Modül 17.7-C: Bot kritik hata bildirimi ─────────────────────────────
       // Önbüro grubuna bildirim gönder — sessizce yut, webhook 200 dön.
       try {
-        const { data: foDept } = await supa
-          .from('departments')
-          .select('telegram_chat_id')
-          .eq('code', 'front_office')
-          .maybeSingle();
+        const foChatIdRaw = await getFrontOfficeChatId(supa);
 
-        if (foDept?.telegram_chat_id) {
-          const foChatId = Number(foDept.telegram_chat_id);
+        if (foChatIdRaw) {
+          const foChatId = Number(foChatIdRaw);
           const errorMessage = err instanceof Error ? err.message : 'Bilinmeyen hata';
           const alertText =
             `🔴 BOT HATASI\n\n` +
@@ -862,18 +859,12 @@ async function notifyFrontDeskUnverified(params: {
 }): Promise<void> {
   // 1) Demo_OnBuro chat_id'sini çek (AUDIT D2: 'name' kolonu yok, şemada 'display_name';
   //    burada sadece telegram_chat_id kullanılıyor → select daraltıldı)
-  const { data: dept } = await params.hotelSupabase
-    .from('departments')
-    .select('telegram_chat_id')
-    .eq('code', 'front_office')
-    .maybeSingle();
+  const frontOfficeChatId = await getFrontOfficeChatId(params.hotelSupabase);
 
-  if (!dept?.telegram_chat_id) {
+  if (!frontOfficeChatId) {
     console.warn('[unverified-notify] front_office grup chat_id yok');
     return;
   }
-
-  const frontOfficeChatId = dept.telegram_chat_id as number;
 
   // 2) HTML mesajı hazırla
   const intentLabel: Record<string, string> = {
@@ -1591,16 +1582,12 @@ async function handleMessage(args: {
           // void yerine await — Vercel Hobby'de void fire-and-forget response
           // sonrası kill edildiğinden bildirim gitmiyordu.
           try {
-            const { data: foDept } = await supa
-              .from('departments')
-              .select('telegram_chat_id')
-              .eq('code', 'front_office')
-              .maybeSingle();
+            const foChatIdRaw = await getFrontOfficeChatId(supa);
 
-            if (!foDept?.telegram_chat_id) {
+            if (!foChatIdRaw) {
               console.warn('[17.7] front_office telegram_chat_id bulunamadı, bildirim atlandı');
             } else {
-              const foChatId = Number(foDept.telegram_chat_id);
+              const foChatId = Number(foChatIdRaw);
               const now = new Date();
               const timeStr =
                 `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')} ` +
@@ -1739,16 +1726,12 @@ async function handleMessage(args: {
         if (newAttempts >= MAX_MULTI_MATCH_ATTEMPTS && !multiMatchNotified) {
           // ── Önbüro grubuna bildirim ────────────────────────────────────────
           try {
-            const { data: foDept } = await supa
-              .from('departments')
-              .select('telegram_chat_id')
-              .eq('code', 'front_office')
-              .maybeSingle();
+            const foChatIdRaw = await getFrontOfficeChatId(supa);
 
-            if (!foDept?.telegram_chat_id) {
+            if (!foChatIdRaw) {
               console.warn('[17.7-B] front_office telegram_chat_id bulunamadı, bildirim atlandı');
             } else {
-              const foChatId = Number(foDept.telegram_chat_id);
+              const foChatId = Number(foChatIdRaw);
 
               // Kaç misafir kayıtlı?
               const { count: guestCount } = await supa
@@ -2356,12 +2339,7 @@ async function handleMessage(args: {
             .eq('platform_user_id', String(userId))
             .eq('is_active', true)
             .maybeSingle();
-          const { data: avFailDept } = await supa
-            .from('departments')
-            .select('telegram_chat_id')
-            .eq('code', 'front_office')
-            .maybeSingle();
-          const avFailChatId = avFailDept?.telegram_chat_id;
+          const avFailChatId = await getFrontOfficeChatId(supa);
           if (avFailChatId) {
             const avFailAllergen = (avFailAllergenRow?.allergen_text as string)?.trim() || '(belirtilmemiş)';
             const avFailName = `${avParsed.firstName ?? ''} ${avLastName}`.trim();
