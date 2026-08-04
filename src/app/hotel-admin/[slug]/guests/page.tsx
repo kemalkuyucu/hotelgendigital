@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getHotelAdminFromCookie } from '@/lib/hotel-admin/auth'
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
+import { sanitizeOrFilterValue } from '@/lib/utils/postgrest-filter'
 import Link from 'next/link'
 
 const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager']
@@ -58,7 +59,9 @@ export default async function GuestsPage({
     .order('check_in_date', { ascending: false })
 
   if (status === 'active') query = query.eq('is_active', true)
-  if (search) query = query.or(`room_number.ilike.%${search}%,last_name.ilike.%${search}%`)
+  // PostgREST filtre injection'i: ayraclar (`,` `(` `)` `.`) temizlenir.
+  const safeSearch = sanitizeOrFilterValue(search)
+  if (safeSearch) query = query.or(`room_number.ilike.%${safeSearch}%,last_name.ilike.%${safeSearch}%`)
 
   const { data: guests } = await query
   const list = (guests ?? []) as Guest[]

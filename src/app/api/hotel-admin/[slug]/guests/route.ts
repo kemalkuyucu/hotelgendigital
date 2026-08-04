@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getHotelAdminFromCookie } from '@/lib/hotel-admin/auth';
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant';
+import { sanitizeOrFilterValue } from '@/lib/utils/postgrest-filter';
 
 const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager'];
 
@@ -38,7 +39,11 @@ export async function GET(
     }
 
     if (search) {
-      query = query.or(`room_number.ilike.%${search}%,last_name.ilike.%${search}%`);
+      // PostgREST filtre injection'i: ayraclar (`,` `(` `)` `.`) temizlenir.
+      const safeSearch = sanitizeOrFilterValue(search);
+      if (safeSearch) {
+        query = query.or(`room_number.ilike.%${safeSearch}%,last_name.ilike.%${safeSearch}%`);
+      }
     }
 
     const { data, error } = await query;

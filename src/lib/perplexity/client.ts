@@ -55,6 +55,9 @@ export async function queryPerplexity(
 
   const response = await fetch(PERPLEXITY_API_URL, {
     method: 'POST',
+    // Askida kalan bir istek Vercel fonksiyonunu 300s'e kadar mesgul eder
+    // (maliyet + zincirdeki cagrilarin kilitlenmesi). callAI'deki 30s ile ayni.
+    signal: AbortSignal.timeout(30_000),
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',

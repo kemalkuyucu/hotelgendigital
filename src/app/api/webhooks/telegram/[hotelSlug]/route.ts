@@ -1242,7 +1242,11 @@ async function handleMessage(args: {
     }
   }
 
-  const text = rawText;
+  // GIRDI UZUNLUK TAVANI (maliyet/DoS): Telegram metni zaten <=4096, caption <=1024
+  // — yani YAZILI yolda bu satir NO-OP'tur. Kapatilan yol WHISPER TRANSKRIPTI:
+  // 5 dakikalik ses sinirsiz uzunlukta metin uretebilir ve dogrudan LLM prompt'una
+  // girer. Kirpma, reddetmeye TERCIH EDILDI (§3 sessiz yutma yasagi: talep dusmez).
+  const text = rawText.length > 4096 ? rawText.slice(0, 4096) : rawText;
   // ============================================================
   // VOICE DETECTION SONU
   // ============================================================
@@ -2037,7 +2041,9 @@ async function handleMessage(args: {
       allergenText = text.trim(); // ham metin (küçük harfe çevirme yok)
       reportedAt = new Date().toISOString();
       // scReplyText oda no durumuna göre aşağıda belirleniyor
-      console.log(`[allergen-sc] Alerjen bildirildi → status=reported text="${allergenText}"`);
+      // Alerji metni SAGLIK VERISIDIR (GDPR ozel kategori) — log'a HAM yazilmaz.
+      // Teshis icin "kaydedildi mi + ne kadar" yeter; icerik guest_allergens'ta.
+      console.log(`[allergen-sc] Alerjen bildirildi → status=reported len=${allergenText.length}`);
     }
 
     // guest_allergens kaydını güncelle/oluştur

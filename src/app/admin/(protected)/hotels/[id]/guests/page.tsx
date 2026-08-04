@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getCentralSupabase } from '@/lib/supabase-client'
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant'
+import { sanitizeOrFilterValue } from '@/lib/utils/postgrest-filter'
 import Link from 'next/link'
 
 interface Hotel {
@@ -62,7 +63,9 @@ export default async function AdminHotelGuestsPage({
       .order('check_in_date', { ascending: false })
 
     if (status === 'active') query = query.eq('is_active', true)
-    if (search) query = query.or(`room_number.ilike.%${search}%,last_name.ilike.%${search}%`)
+    // PostgREST filtre injection'i: ayraclar (`,` `(` `)` `.`) temizlenir.
+    const safeSearch = sanitizeOrFilterValue(search)
+    if (safeSearch) query = query.or(`room_number.ilike.%${safeSearch}%,last_name.ilike.%${safeSearch}%`)
 
     const { data, error } = await query
     if (error) dbError = error.message
