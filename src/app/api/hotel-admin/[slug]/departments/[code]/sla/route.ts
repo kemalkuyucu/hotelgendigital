@@ -17,6 +17,15 @@ export async function PATCH(
   if (!admin) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
+  // TENANT IZOLASYONU: URL'deki slug SALDIRGAN GIRDISIDIR. Bu kontrol olmadan
+  // A otelinin admin'i `/api/hotel-admin/<B-oteli>/departments/.../sla` cagirip
+  // B'nin SLA ayarini YAZABILIYORDU (resolveTenantBySlug slug'a gore B'nin DB
+  // client'ini doner; service_role RLS'i bypass eder). middleware.ts bu yolu
+  // KORUMAZ — matcher'i `/hotel-admin/:slug/:path*`, yani `/api/...` disarida.
+  // Ayni kontrol diger tum [slug] route'larinda zaten mevcuttu.
+  if (slug !== admin.hotel_slug) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
 
   let body: { sla_minutes?: number; reception_sla_minutes?: number };
   try {
@@ -65,6 +74,10 @@ export async function GET(
   const admin = await getHotelAdminFromCookie();
   if (!admin) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  // TENANT IZOLASYONU — PATCH ile ayni gerekce (okuma tarafi).
+  if (slug !== admin.hotel_slug) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
   try {
