@@ -115,9 +115,28 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
   const requestText = structured ? formatOrderSummary(structured) : orderText;
 
   if (action === 'cancel') {
-    await params.supa.from('conversations')
+    // ── ATOMIK CLAIM (backlog #2) — confirm dalindaki M1 deseninin IKIZI ──────
+    // Ustteki `!conv.order_pending` kapisi yalniz SERI ikinci basimi keser; es
+    // zamanli iki iptal iki AYRI invocation'da kosar, ikisi de `true` OKUR ve
+    // kosulsuz UPDATE ikisini de gecirir -> misafire IKI iptal mesaji gider.
+    // Kosul UPDATE'in ICINE tasinir: satiri yalniz BIRI alir (0 satir = kaybetti).
+    // Kayit uretmedigi icin zarar M1'deki kadar agir DEGIL (cift kart yok), ama
+    // korumanin iki dalda ayni olmasi tercih edildi.
+    const { data: cancelClaimed, error: cancelClaimErr } = await params.supa
+      .from('conversations')
       .update({ order_pending: false, order_pending_text: null })
-      .eq('id', conversationId);
+      .eq('id', conversationId)
+      .eq('order_pending', true)
+      .select('id');
+    if (cancelClaimErr) {
+      // DB hatasi "baskasi aldi" DEMEK DEGILDIR (M1 ile ayni gerekce): burada
+      // cikmak iptali SESSIZCE YUTARDI -> eski davranis (devam et) korunur.
+      console.error('[order-cancel] claim UPDATE hatasi, akis devam ediyor:', cancelClaimErr.message);
+    } else if (!cancelClaimed || cancelClaimed.length === 0) {
+      console.log('[order-cb] RED atomik claim (cancel, baska invocation aldi)', { conversationId });
+      await replyAlreadyProcessed(params, lang);
+      return;
+    }
     await fetch(TG(params.botToken, 'sendMessage'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: guestChatId, text: guestText('order_cancelled_guest', lang) }),

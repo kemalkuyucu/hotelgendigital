@@ -160,7 +160,24 @@ const QUANTITY_UNITS_NONLATIN: readonly string[] = [
   'ночь', 'ночи', 'ночей', 'дней', 'взрослый', 'ребёнок', 'детей',
   // AR: sahs / eshas / dayf / duyuf / leyle / leyali / yevm / eyyam / balig /
   //     tifl / etfal
-  'شخص', 'أشخاص', 'ضيف', 'ضيوف', 'ليلة', 'ليالي', 'يوم', 'أيام', 'بالغ', 'طفل', 'أطفال',
+  //
+  // RTL KURALI (CLAUDE.md §2 "Misafir dili"): ham Arapca literal kaynak kodda
+  // diff/relay uzerinde TERS gorunur — goz karariyla duzenlemek uyeyi sessizce
+  // kaydirir. Bu yuzden codePoint'ten KURULUR (oda-prefix ile ayni desen).
+  // Cevirinin davranis-koruyucu oldugu OLCULDU, varsayilmadi: cevrim ONCESI ve
+  // SONRASI 23 uyeli kumenin codePoint dump SHA256 degeri BIREBIR AYNI ->
+  // 4adc9da4db2dbfcaeae95924e4e16c36d0b29f52178e91c96c9539023a832e53
+  String.fromCodePoint(0x0634, 0x062e, 0x0635),                    // sahs
+  String.fromCodePoint(0x0623, 0x0634, 0x062e, 0x0627, 0x0635),    // eshas
+  String.fromCodePoint(0x0636, 0x064a, 0x0641),                    // dayf
+  String.fromCodePoint(0x0636, 0x064a, 0x0648, 0x0641),            // duyuf
+  String.fromCodePoint(0x0644, 0x064a, 0x0644, 0x0629),            // leyle
+  String.fromCodePoint(0x0644, 0x064a, 0x0627, 0x0644, 0x064a),    // leyali
+  String.fromCodePoint(0x064a, 0x0648, 0x0645),                    // yevm
+  String.fromCodePoint(0x0623, 0x064a, 0x0627, 0x0645),            // eyyam
+  String.fromCodePoint(0x0628, 0x0627, 0x0644, 0x063a),            // balig
+  String.fromCodePoint(0x0637, 0x0641, 0x0644),                    // tifl
+  String.fromCodePoint(0x0623, 0x0637, 0x0641, 0x0627, 0x0644),    // etfal
 ];
 
 export function parseVerificationInput(text: string): ParsedVerification {
