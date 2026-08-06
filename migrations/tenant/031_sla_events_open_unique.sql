@@ -1,0 +1,43 @@
+-- =============================================================================
+-- 031_sla_events_open_unique.sql
+-- ACIK SLA kaydi icin DB-seviyesi cift-kayit backstop'u (backlog #3)
+--
+-- BUGUNKU KORUMA UYGULAMA SEVIYESINDE: F&B'de M1 atomik claim (conversations
+-- .order_pending uzerinde compare-and-swap) + M2 bulanik dedup (Jaccard >= 0.5,
+-- 3 dk, YALNIZ yapili siparis); housekeeping ve genel forward'da 10 dk'lik ayni
+-- bulanik kapi; [reverify-forward] yolunda ise HIC dedup YOK. Yani cift kart
+-- korumasi akis-basina ve BULANIK; yeni bir INSERT noktasi acilirsa garantiyi
+-- otomatik ALMAZ.
+--
+-- BU INDEX O BOSLUGU KAPATIR — ama DAR: yalnizca AYNI konusma + AYNI departman +
+-- AYNI metin ve kaydin HALA ACIK oldugu durumu bloklar.
+--
+-- NEDEN PARTIAL (WHERE responded_at IS NULL AND closed_at IS NULL):
+--   Kosulsuz UNIQUE, MESRU tekrari da bloklardi. Canli olcum (25.08.06, v5):
+--   62 fazla satirin 37'si 1 SAATTEN uzun aralikli, en uzunu 9 GUN — bunlar
+--   yarisan cift-kayit degil, misafirin gercekten yeniden istedigi seylerdir.
+--   Personel karta bastigi (responded_at) ya da kayit kapandigi (closed_at) anda
+--   satir index'ten DUSER, sonraki ayni talep serbestce yazilabilir.
+--
+-- NEDEN md5(request_text):
+--   request_text uzun olabilir; btree anahtar boyu sinirlidir (~2704 byte).
+--   md5 sabit 32 karakter -> uzun taleplerde index PATLAMAZ. Karar semantigi
+--   metin ESITLIGIDIR (md5 onun kisaltilmis anahtari).
+--
+-- UYGULAMADAN ONCE MUTLAKA: acik kayitlarda cakisma sayilmali. Olcum aninda
+--   (2026-08-06, v5 tenant) ACIK alt kumede cakisma 0 idi -> index kurulabilir.
+--   Baska bir tenant'ta 0 DEGILSE bu dosya PATLAR (bu ISTENEN davranistir:
+--   sessizce yarim uygulanmasindansa dusmeli ve veri once incelenmeli).
+--
+-- UYGULAMA-TARAFI HAZIRLIK: 23505 artik src/lib/sla/insert-sla-event.ts'te
+--   yakalanir (isUniqueViolation) -> cakisan ACIK kartin altina tekrar bildirimi
+--   duser. Bu dosya uygulanmadan da o kod kosar, dal yalnizca OLU durur; yani
+--   index'i uygulamak SESSIZ 23505 KAYBI uretmez (§3 SESSIZ YUTMA YASAGI).
+--
+-- Idempotent: CREATE UNIQUE INDEX IF NOT EXISTS
+-- Numara: 031
+-- =============================================================================
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sla_events_open_request
+  ON sla_events (conversation_id, department_code, md5(request_text))
+  WHERE responded_at IS NULL AND closed_at IS NULL;

@@ -3,6 +3,7 @@ import { sendForwardWithSlaButtons } from './send-forward-with-buttons';
 import { labelForHousekeepingCode, type HkItem } from '@/lib/ai/department-brains';
 import { isDuplicateRequest } from './duplicate-guard';
 import { notifyDuplicateRequest } from './notify-duplicate';
+import { insertSlaEvent, notifyOpenDuplicate } from './insert-sla-event';
 
 // Housekeeping COKLU esya forward'i. handle-housekeeping-callback.ts'in eski
 // 4-9. adimlari (DEDUP + sla_events INSERT + kart + rollback) buraya tasindi ve
@@ -114,9 +115,12 @@ export async function forwardHousekeepingItems(p: {
   // 7) deadline + sla_events INSERT
   const now = new Date();
   const deadline = new Date(now.getTime() + hkSlaMinutes * 60 * 1000);
-  const { data: slaEvent, error: slaErr } = await supa
-    .from('sla_events')
-    .insert({
+  // sla_events INSERT'i TEK KAYNAKTAN (insert-sla-event.ts) — payload AYNI.
+  // 23505 dali bugun OLU (031 uygulanmadi); canlandiginda 5. adimdaki bulanik
+  // dedup ile AYNI sonucu uretir: kart acilmaz, tekrar bildirimi duser.
+  const slaRes = await insertSlaEvent(
+    supa,
+    {
       conversation_id: convId,
       inhouse_guest_id: null, // FK drift — order-callback ile ayni: null gec
       department_code: 'housekeeping',
@@ -126,14 +130,19 @@ export async function forwardHousekeepingItems(p: {
       guest_full_name: guestName,
       forwarded_at: now.toISOString(),
       sla_deadline: deadline.toISOString(),
-    })
-    .select('id')
-    .single();
-  if (slaErr || !slaEvent) {
-    console.error('[hk-fwd] sla_events INSERT FAILED', slaErr);
+    },
+    notifyOpenDuplicate(p.botToken, hkChatId, requestText),
+  );
+  if (!slaRes.ok) {
+    if (slaRes.duplicate) {
+      console.log('[hk-fwd] 23505 dedup: kart acilmadi, tekrar bildirimi gonderildi');
+      return { ok: true, duplicate: true };
+    }
+    console.error('[hk-fwd] sla_events INSERT FAILED', slaRes.error);
     return { ok: false, duplicate: false };
   }
-  console.log('[hk-fwd] sla inserted', { slaEventId: slaEvent.id });
+  const slaEventId = slaRes.id;
+  console.log('[hk-fwd] sla inserted', { slaEventId });
 
   // 8) kart html — coklu esya ise madde listesi, tek esya ise mevcut tek satir
   const esc = (s: string) =>
@@ -161,7 +170,7 @@ export async function forwardHousekeepingItems(p: {
     botToken: p.botToken,
     chatId: hkChatId,
     html,
-    slaEventId: slaEvent.id as string,
+    slaEventId,
     variant: isOver ? 'overlimit' : 'normal',
   });
   console.log('[hk-fwd] card sent', { messageId, ok });
@@ -171,11 +180,11 @@ export async function forwardHousekeepingItems(p: {
     await supa
       .from('sla_events')
       .update({ department_message_id: messageId })
-      .eq('id', slaEvent.id as string);
-    console.log('[hk-fwd] DONE', { slaEventId: slaEvent.id, requestText });
+      .eq('id', slaEventId);
+    console.log('[hk-fwd] DONE', { slaEventId, requestText });
     return { ok: true, duplicate: false };
   }
   console.error('[hk-fwd] forward FAILED, rollback', { ok, messageId });
-  await supa.from('sla_events').delete().eq('id', slaEvent.id as string);
+  await supa.from('sla_events').delete().eq('id', slaEventId);
   return { ok: false, duplicate: false };
 }

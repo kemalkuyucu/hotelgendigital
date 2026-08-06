@@ -6,6 +6,7 @@ import { readPendingText, orderStampAccepts, formatOrderSummary, isStructuredOrd
 import { guestText, readPreferredLang, resolvePreferredLang, type GuestLang } from '@/lib/i18n/guest-text';
 import { isDuplicateRequest } from './duplicate-guard';
 import { notifyDuplicateRequest } from './notify-duplicate';
+import { insertSlaEvent, notifyOpenDuplicate } from './insert-sla-event';
 
 const TG = (token: string, m: string) => `https://api.telegram.org/bot${token}/${m}`;
 
@@ -302,9 +303,12 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
     const now = new Date();
     const deadline = new Date(now.getTime() + fbSlaMinutes * 60 * 1000); // departments.sla_minutes
 
-    const { data: slaEvent, error: slaErr } = await params.supa
-      .from('sla_events')
-      .insert({
+    // sla_events INSERT'i TEK KAYNAKTAN (insert-sla-event.ts) — payload AYNI.
+    // Helper 23505 (UNIQUE) backstop'unu tasir; index (031) UYGULANMADIGI icin
+    // bugun o dal OLU KOD, davranis bu gecisten ONCEKIYLE BIREBIR ayni.
+    const slaRes = await insertSlaEvent(
+      params.supa,
+      {
         conversation_id: conversationId,
         inhouse_guest_id: null,
         department_code: 'fb',
@@ -314,31 +318,62 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
         guest_full_name: guestName,
         forwarded_at: now.toISOString(),
         sla_deadline: deadline.toISOString(),
-      })
-      .select('id')
-      .single();
+      },
+      notifyOpenDuplicate(params.botToken, fbChatId, requestText),
+    );
 
-    if (slaErr || !slaEvent) {
-      console.error('[order-confirm] sla_events INSERT FAILED', slaErr);
+    if (!slaRes.ok) {
+      if (slaRes.duplicate) {
+        // M2'nin bulanik kapisi kacirdi, DB son sozu soyledi. Personel bildirimi
+        // helper'da dustu; misafire/karta verilen cevap M2 dup dalinin AYNISI —
+        // ayni olayin iki dalda farkli anlatilmasi engellenir. INSERT'ler ATLANIR.
+        await fetch(TG(params.botToken, 'sendMessage'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: guestChatId, text: guestText('order_duplicate_recent', lang) }),
+        }).catch(() => {});
+        await editCard(params.botToken, params.callbackChatId, params.callbackMessageId, guestText('cb_lbl_processed', lang));
+        await answer(params.botToken, params.callbackQueryId, guestText('order_already_processed', lang));
+        return;
+      }
+      console.error('[order-confirm] sla_events INSERT FAILED', slaRes.error);
       await answer(params.botToken, params.callbackQueryId, guestText('cb_generic_error', lang));
       return;
     }
+    const slaEventId = slaRes.id;
 
     // Kod bazli siparis: siparis kalemlerini + tutari kaydet (kayit IKINCIL — hata
     // akisi kesmez, kart yine de gider). Serbest metinde kalem yok => yazma.
+    // rsoId: kart gonderilemezse (asagidaki rollback dali) bu invocation'in yazdigi
+    // satiri GERI ALMAK icin tutulur. Once yalniz `error` okunuyordu -> sla_events
+    // rollback edilirken room_service_orders satiri OKSUZ 'confirmed' olarak kaliyordu.
+    let rsoId: string | null = null;
     if (structured) {
-      const { error: orderErr } = await params.supa.from('room_service_orders').insert({
-        conversation_id: conversationId,
-        room_number: roomNumber,
-        guest_name: guestName,
-        platform: 'telegram',
-        platform_user_id: String(guestChatId),
-        items: structured.lines,
-        total_amount: structured.total,
-        currency: structured.currency,
-        status: 'confirmed',
-      });
-      if (orderErr) console.error('[order-confirm] room_service_orders INSERT hatasi:', orderErr.message);
+      const { data: rsoRow, error: orderErr } = await params.supa
+        .from('room_service_orders')
+        .insert({
+          conversation_id: conversationId,
+          room_number: roomNumber,
+          guest_name: guestName,
+          platform: 'telegram',
+          platform_user_id: String(guestChatId),
+          items: structured.lines,
+          total_amount: structured.total,
+          currency: structured.currency,
+          status: 'confirmed',
+        })
+        .select('id')
+        .single();
+      // Kayit IKINCIL: karti BLOKLAMAZ (misafir servisi kesilmez), ama sessiz
+      // kalmaz — net marker + kod ile loglanir.
+      if (orderErr || !rsoRow) {
+        console.error('[order-confirm] RSO INSERT FAILED', {
+          code: orderErr?.code ?? null,
+          msg: orderErr?.message ?? null,
+          conversationId,
+        });
+      } else {
+        rsoId = rsoRow.id as string;
+      }
     }
 
     const esc = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -372,18 +407,31 @@ export async function handleOrderCallback(params: OrderCallbackParams): Promise<
       botToken: params.botToken,
       chatId: fbChatId,
       html,
-      slaEventId: slaEvent.id as string,
+      slaEventId: slaEventId,
       variant: 'normal',
     });
 
     if (ok && messageId) {
       await params.supa.from('sla_events')
         .update({ department_message_id: messageId })
-        .eq('id', slaEvent.id as string);
+        .eq('id', slaEventId);
     } else {
       // ROLLBACK — forward basarisiz, orphan sla_event birak
       console.error('[order-confirm] forward FAILED, rollback', { ok, messageId });
-      await params.supa.from('sla_events').delete().eq('id', slaEvent.id as string);
+      await params.supa.from('sla_events').delete().eq('id', slaEventId);
+      // AYNI dalda room_service_orders satiri da geri alinir: kart hicbir yere
+      // gitmediyse 'confirmed' bir siparis kaydi kalmamali (sla_events ile
+      // ASIMETRIK rollback = raporda gorunen ama personelin bilmedigi siparis).
+      if (rsoId) {
+        const { error: rsoRbErr } = await params.supa.from('room_service_orders').delete().eq('id', rsoId);
+        if (rsoRbErr) {
+          console.error('[order-confirm] RSO ROLLBACK FAILED — oksuz siparis kaydi kalabilir', {
+            id: rsoId, msg: rsoRbErr.message,
+          });
+        } else {
+          console.log('[order-confirm] RSO ROLLBACK OK', { id: rsoId });
+        }
+      }
       await answer(params.botToken, params.callbackQueryId, guestText('order_forward_failed', lang));
       return;
     }

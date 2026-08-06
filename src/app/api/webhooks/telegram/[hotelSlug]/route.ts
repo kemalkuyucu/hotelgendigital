@@ -60,6 +60,7 @@ import { handleNoteCallback } from '@/lib/sla/handle-note-callback';
 import { handleMenuOfferCallback } from '@/lib/sla/handle-menu-offer-callback';
 import { handleHousekeepingCallback, advanceHousekeeping, askHousekeepingComplaintConfirm } from '@/lib/sla/handle-housekeeping-callback';
 import { notifyDuplicateRequest } from '@/lib/sla/notify-duplicate';
+import { insertSlaEvent, notifyOpenDuplicate } from '@/lib/sla/insert-sla-event';
 import { parseOrder, extractOrderNote } from '@/lib/menu/parse-order';
 import { bumpPendingOrder } from '@/lib/menu/pending-order';
 import { handleReceptionReply } from '@/lib/sla/handle-reception-reply';
@@ -3434,9 +3435,13 @@ async function handleMessage(args: {
             const foSlaMin = foDept?.sla_minutes ?? 1;
             const nowFwd = new Date();
             const guestFullFwd = `${currentVerifiedGuest.first_name ?? ''} ${currentVerifiedGuest.last_name ?? ''}`.trim().toUpperCase();
-            const { data: foSla, error: foSlaErr } = await supa
-              .from('sla_events')
-              .insert({
+            // sla_events INSERT'i TEK KAYNAKTAN (insert-sla-event.ts) — payload AYNI.
+            // Bu yolda BULANIK dedup HIC YOKTU: ayni kimlik mesaji tekrarlandiginda
+            // her seferinde yeni kart aciliyordu. 23505 backstop'u (031 uygulaninca)
+            // bunu da kapsar; bugun dal OLU, davranis oncekiyle BIREBIR ayni.
+            const foRes = await insertSlaEvent(
+              supa,
+              {
                 conversation_id: conversationId,
                 inhouse_guest_id: null,
                 department_code: 'front_office',
@@ -3446,11 +3451,15 @@ async function handleMessage(args: {
                 guest_full_name: guestFullFwd,
                 forwarded_at: nowFwd.toISOString(),
                 sla_deadline: new Date(nowFwd.getTime() + foSlaMin * 60 * 1000).toISOString(),
-              })
-              .select('id')
-              .single();
-            if (foSlaErr || !foSla) {
-              console.error('[reverify-forward] sla_events INSERT FAILED', { code: foSlaErr?.code, msg: foSlaErr?.message });
+              },
+              notifyOpenDuplicate(botToken, foChatId, text),
+            );
+            if (!foRes.ok) {
+              if (foRes.duplicate) {
+                console.log('[reverify-forward] 23505: acik ayni bildirim var, ikinci kart acilmadi');
+              } else {
+                console.error('[reverify-forward] sla_events INSERT FAILED', { code: foRes.error?.code, msg: foRes.error?.message });
+              }
             } else {
               // Kimlik uyusmazligi kartidir, TALEP degil: translateToTurkish CAGRILMAZ
               // (kimlik metni cevirisi anlamsiz). Kayitli oda/misafir = currentVerifiedGuest;
@@ -3472,19 +3481,20 @@ async function handleMessage(args: {
                 `❗ Bu bilgi in-house listesinde eşleşmedi.\n\n` +
                 `Lütfen misafirle iletişime geçip doğrulayın.\n` +
                 `🕐 <b>Saat:</b> ${escF(trDateF)}`;
+              const foSlaId = foRes.id;
               const { messageId: foMsgId, ok: foOk } = await sendForwardWithSlaButtons({
                 botToken,
                 chatId: foChatId,
                 html: cardHtml,
                 variant: 'overlimit',
-                slaEventId: foSla.id as string,
+                slaEventId: foSlaId,
               });
               if (foOk && foMsgId) {
-                await supa.from('sla_events').update({ department_message_id: foMsgId }).eq('id', foSla.id as string);
-                console.log('[reverify-forward] front_office SLA karti dustu', { slaEventId: foSla.id, msgId: foMsgId });
+                await supa.from('sla_events').update({ department_message_id: foMsgId }).eq('id', foSlaId);
+                console.log('[reverify-forward] front_office SLA karti dustu', { slaEventId: foSlaId, msgId: foMsgId });
               } else {
-                await supa.from('sla_events').delete().eq('id', foSla.id as string);
-                console.error('[reverify-forward] kart gonderilemedi → oksuz sla_events geri alindi', { slaEventId: foSla.id });
+                await supa.from('sla_events').delete().eq('id', foSlaId);
+                console.error('[reverify-forward] kart gonderilemedi → oksuz sla_events geri alindi', { slaEventId: foSlaId });
               }
             }
           }
@@ -4345,9 +4355,12 @@ async function handleMessage(args: {
             }
           }
 
-          const { data: slaEvent, error: slaErr } = await supa
-            .from('sla_events')
-            .insert({
+          // sla_events INSERT'i TEK KAYNAKTAN (insert-sla-event.ts) — payload AYNI.
+          // 23505 dali bugun OLU (031 uygulanmadi); canlandiginda YUKARIDAKI
+          // bulanik dedup ile ayni sonucu uretir: kart acilmaz, `continue`.
+          const slaRes = await insertSlaEvent(
+            supa,
+            {
               conversation_id: conversationId,
               // FK FIX: sla_events.inhouse_guest_id legacy inhouse_guests'e FK'li (canlı drift).
               // persistentVerifiedGuest.id artık v2 id (Part-C) → legacy'de yok → 23503 FK ihlali
@@ -4361,21 +4374,26 @@ async function handleMessage(args: {
               guest_full_name: guestFullNameForSla,
               forwarded_at: nowSla.toISOString(),
               sla_deadline: slaDedline.toISOString(),
-            })
-            .select('id')
-            .single();
+            },
+            notifyOpenDuplicate(botToken, deptChatIdForSla, fwdItem.requestText),
+          );
 
-          if (slaErr || !slaEvent) {
+          if (!slaRes.ok) {
+            if (slaRes.duplicate) {
+              console.log(`[dedup] 23505: acik ayni talep var, ikinci kart atlandi, tekrar bildirimi gonderildi [item: ${targetDept}]`);
+              continue;
+            }
             console.error(`[sla-forward] sla_events INSERT FAILED [item: ${targetDept}]`, {
-              errorCode: slaErr?.code,
-              errorMsg: slaErr?.message,
-              errorDetails: slaErr?.details,
-              errorHint: slaErr?.hint,
-              slaEventNull: !slaEvent,
+              errorCode: slaRes.error?.code,
+              errorMsg: slaRes.error?.message,
+              errorDetails: slaRes.error?.details,
+              errorHint: slaRes.error?.hint,
+              slaEventNull: true,
             });
           } else {
-            console.log(`[sla-forward] inserted [item: ${targetDept}]`, { slaEventId: slaEvent.id });
+            console.log(`[sla-forward] inserted [item: ${targetDept}]`, { slaEventId: slaRes.id });
           }
+          const slaEventId = slaRes.ok ? slaRes.id : null;
 
           // ── Grup mesajı metnini formatla ──
           const trDateStr = (() => {
@@ -4430,13 +4448,13 @@ async function handleMessage(args: {
           const finalGroupHtml = aiResult?.overLimit ? overlimitHtml : groupMsgHtml;
 
           // ── Modül 11: Departman grubuna SLA butonlu mesaj gönder ──
-          if (slaEvent) {
+          if (slaEventId) {
             const { messageId: slaMsgId, ok: slaOk } = await sendForwardWithSlaButtons({
               botToken,
               chatId: deptChatIdForSla,
               html: finalGroupHtml,
               variant: aiResult?.overLimit ? 'overlimit' : 'normal',
-              slaEventId: slaEvent.id as string,
+              slaEventId,
             });
             console.log(`[sla-forward] sent [item: ${targetDept}]`, { messageId: slaMsgId, ok: slaOk, deptChatIdForSla });
 
@@ -4444,7 +4462,7 @@ async function handleMessage(args: {
               await supa
                 .from('sla_events')
                 .update({ department_message_id: slaMsgId })
-                .eq('id', slaEvent.id as string);
+                .eq('id', slaEventId);
               console.log(`[sla] department message sent with buttons [item: ${targetDept}]. msgId=${slaMsgId}`);
             } else {
               console.error(`[sla-forward] sendForwardWithSlaButtons FAILED or no messageId [item: ${targetDept}]`, { slaOk, slaMsgId });
@@ -4454,11 +4472,11 @@ async function handleMessage(args: {
               const { error: rollbackErr } = await supa
                 .from('sla_events')
                 .delete()
-                .eq('id', slaEvent.id as string);
+                .eq('id', slaEventId);
               if (rollbackErr) {
-                console.error(`[sla-forward] ROLLBACK FAILED [item: ${targetDept}] — oksuz SLA acik kalabilir`, { id: slaEvent.id, msg: rollbackErr.message });
+                console.error(`[sla-forward] ROLLBACK FAILED [item: ${targetDept}] — oksuz SLA acik kalabilir`, { id: slaEventId, msg: rollbackErr.message });
               } else {
-                console.log(`[sla-forward] ROLLBACK OK — oksuz sla_events silindi [item: ${targetDept}] id=${slaEvent.id}`);
+                console.log(`[sla-forward] ROLLBACK OK — oksuz sla_events silindi [item: ${targetDept}] id=${slaEventId}`);
               }
               // Gecersiz chat_id (chat not found) → yapilandirilabilir ALERT_CHAT_ID'ye uyari.
               // tg.sendMessage OBJE alir (chat_id: number|string); env string'i dogrudan gecilir.
