@@ -6,26 +6,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- Bu dosya **25. oturum sonrasi** durumu yansitir; sohbet tarafindaki
-  **DEVIR + MASTER (v39)** ile hizalidir.
-- **25. OTURUM — GUVENLIK KAPANISI (ozet).** Tam bir guvenlik denetimi kosuldu,
-  bulgular kapatildi, sevk **DEPLOY EDILDI** ve git gecmisine sizmis
-  `service_role` anahtarlari **ROTE EDILDI**. En agir bulgu **CROSS-TENANT
-  YAZMA** idi: `/api/hotel-admin/[slug]/departments/[code]/sla` URL'deki slug'i
-  oturumdaki otelle KARSILASTIRMIYORDU -> A otelinin admin'i B otelinin SLA
-  esigini YAZABILIYORDU (`resolveTenantBySlug` service_role client doner,
-  RLS tamamen BYPASS; middleware bu yolu kapsamaz, matcher'i `/api/...` disinda).
-  Slug kapisi `8cf4e95`, rol kapisi `1da42a9` ile kapandi. Tam liste §7'de.
-- **HEAD = PROD = `1da42a9` (25. oturum) — SEVK EDILDI ve DEPLOY EDILDI.**
-  Guvenlik kapanis batch'i: SLA **rol** kapisi · istemciye donen `error.message`
-  sizintilari (**125 site**) · xlsx CVE (SheetJS resmi CDN 0.20.3) · **KALICI
-  rate-limit** (denial-of-wallet, migration 030) · log PII maskeleme ·
-  backlog #4/#9/#10/#20. Muhur: `npm run doctor` YESIL (tsc 0 · test:is8
-  **1997/1997, 17 dosya** · sema 46/47 · marka 0 unexpected) + `npm run build`
-  exit 0. **CANLI UAT YOK** (bkz. §7).
-  **DIKKAT — bu deploy IKI commit tasidi:** 24. oturumdan branch'te bekleyen
+- Bu dosya **26. oturum sonrasi** durumu yansitir; sohbet tarafindaki
+  **DEVIR + MASTER (v40)** ile hizalidir.
+- **26. OTURUM — #3 DAR-GUVENLI BACKSTOP (ozet).** `sla_events` cift-kayit icin
+  **DAR-GUVENLI 23505 backstop** kuruldu + prod deploy (`9dcf48a`) +
+  **migration 031 partial-unique CANLI** (v5). Naive "temizle + dogal-anahtar
+  UNIQUE" **REDDEDILDI**: DB UNIQUE = **tam esitlik**, app dedup = **bulanik**
+  (Jaccard 0.5, 3 dk, acik kayit) -> constraint dedup'i **taklit EDEMEZ**, ancak
+  onun **dar alt kumesi** olabilir. Canli olcum: 62 + 20 fazla satirin **~%60'i
+  MESRU tekrar** (1 saat - 9 gun araliklarla) -> silmek **imha**, kor bloklamak
+  **23505 sessiz kaybi** olurdu. Cozum: **acik-kayit partial unique** (o alt
+  kumede dup **0** -> SIFIR temizlik) + `insertSlaEvent` **tek-kaynak** (4 site) +
+  **23505 -> `notifyDuplicateRequest`**. `room_service_orders`'a guvenli bir
+  statik constraint YOK -> onun yerine **2 defekt duzeltildi**. Tam liste §7'de.
+- **HEAD = PROD = `9dcf48a` (26. oturum) — SEVK EDILDI, DEPLOY EDILDI,
+  migration 031 CANLI.**
+  Deploy `dpl_GDKd8CqbR6nUBVi5gAr6TjBnqXP2` (target=production, READY; alias
+  `hotelgen-v2.vercel.app` uzerinden `vercel inspect` AYNI dpl id'yi cozdu).
+  Saglik: `/` 200 · webhook GET 405 · webhook POST secret'siz 401.
+  Muhur: `npm run doctor` YESIL (tsc 0 · test:is8 **2031/2031, 18 dosya** ·
+  sema 46/47 · marka 0 unexpected) + `npm run build` exit 0. **CANLI BOT UAT YOK**
+  (bkz. §7) — 23505 dalinin gercekten tetiklendigi bir vaka HENUZ gorulmedi.
+- **ONCEKI PROD (25. oturum): `1da42a9` — GUVENLIK KAPANISI.** Tam bir guvenlik
+  denetimi kosuldu, bulgular kapatildi ve git gecmisine sizmis `service_role`
+  anahtarlari **ROTE EDILDI**. En agir bulgu **CROSS-TENANT YAZMA** idi:
+  `/api/hotel-admin/[slug]/departments/[code]/sla` URL'deki slug'i oturumdaki
+  otelle KARSILASTIRMIYORDU -> A otelinin admin'i B otelinin SLA esigini
+  YAZABILIYORDU (`resolveTenantBySlug` service_role client doner, RLS tamamen
+  BYPASS; middleware bu yolu kapsamaz, matcher'i `/api/...` disinda). Slug kapisi
+  `8cf4e95`, rol kapisi `1da42a9`. Batch'in geri kalani: istemciye donen
+  `error.message` sizintilari (**125 site**) · xlsx CVE (SheetJS resmi CDN
+  0.20.3) · **KALICI rate-limit** (denial-of-wallet, migration 030) · log PII
+  maskeleme · backlog #4/#9/#10/#20. Tam liste §7'de.
+  **DIKKAT — o deploy IKI commit tasidi:** 24. oturumdan branch'te bekleyen
   `df38583` ile `1da42a9` prod'a BIRLIKTE gitti. (`dpl_` deployment id'si bu
-  dosyaya ISLENMEDI — onceki oturumlarin aksine kayit altina alinmadi, bkz. §7.)
+  dosyaya ISLENMEDI — bkz. §7.)
 - **ONCEKI PROD (24. oturum): `df38583`** — `front_office` chat_id lookup'i tek
   kaynaga baglandi (backlog #6): `getFrontOfficeChatId(supa)`
   (`src/lib/telegram/front-office.ts`) — **HAM string** dondurur, `Number()` coerce
@@ -70,8 +85,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   -> `4114d07` + `8cf4e95` + `cf961d0` + `6778749` (25. otu guvenlik on-hazirligi:
      next/ws CVE · **cross-tenant SLA slug kapisi** · postgrest filtre + header +
      timeout + PII + prompt guard · AR codePoint + cancel claim)
-  -> `1da42a9` (25. otu, guvenlik kapanisi — **PROD BURADA DURUYOR**,
-     `df38583` ile BIRLIKTE deploy edildi).
+  -> `1da42a9` (25. otu, guvenlik kapanisi; `df38583` ile BIRLIKTE deploy edildi)
+  -> `9dcf48a` (26. otu, backlog **#3 dar-guvenli 23505 backstop** — **PROD BURADA
+     DURUYOR**; deploy `dpl_GDKd8CqbR6nUBVi5gAr6TjBnqXP2`, migration **031** ayri
+     adimda CANLIYA uygulandi).
   Yedek tag: `pre-tier2-20260728`.
 - **DOKUMAN GECIKMESI (20. otu tespiti, 23. otu TEKRARLANDI):** 19. oturum sevki
   (`48ea1ea`) bu dosyaya DOKUNMADI — CLAUDE.md v32/18. oturumda kalmisti. AYNI SEY
@@ -81,7 +98,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   doc sessizce bayatlar (kod dogru, harita yanlis) — sevkten sonra doc senkronunu
   AYNI oturumda kapat. **24. otu bunu UYGULADI:** `df38583` (kod) ve o senkron
   (doc) ayni oturumda, ayri commit'ler olarak kapatildi. **25. otu da UYGULADI:**
-  `1da42a9` (kod) ve bu senkron (doc) ayri commit'ler.
+  `1da42a9` (kod) ve o senkron (doc) ayri commit'ler. **26. otu da UYGULADI:**
+  `9dcf48a` (kod) ve bu senkron (doc) ayri commit'ler.
 
 ## 1. CALISMA PRENSIPLERI
 - **Reconnaissance-first:** Edit'ten once ilgili dosyalari OKU. Varsayimla kod yazma.
@@ -144,7 +162,7 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
-- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (25. oturum sonu **1997/1997**, **17 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (26. oturum sonu **2031/2031**, **18 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)
   -> 1872 (21. otu **YENI DOSYA** `is8-match-guest-name-test.ts`, **45 vaka**)
   -> 1898 (22. otu, YENI DOSYA YOK: `is8-match-guest-name` 45->71, §6 `sameGuestByText` 11 + §7 `sameLastName` 8 + §8 eski normalizer oracle'i 7)
   -> 1913 (23. otu, YENI DOSYA YOK: `is8-match-guest-name` 71->**86**, §9 site-7 15 vaka)
@@ -157,14 +175,24 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   `is8-nonlatin-word-test.ts` (**37** — gercek cagri yerlerinden, eski-substring
   oracle'i CIFT YONLU). 25. oturumun geri kalani (SLA rol kapisi, error.message
   sizintilari, xlsx, rate-limit, #10, #20) korpusa vaka EKLEMEDI: hepsi IO ya da
-  yapilandirma, saf karar iceren yalniz bu uc modul) +
+  yapilandirma, saf karar iceren yalniz bu uc modul)
+  -> **2031 (26. otu, YENI DOSYA `is8-pg-error-test.ts`, 34 vaka):**
+  `isUniqueViolation` — vaka listesi SABIT ve ELLE yazili (kaynaktan TURETILMEZ,
+  yoksa test kendini dogrular) + §3 elle yazilmis `legacyInlineCheck` ikizi ile
+  cift-yonlu karsilastirma + "oracle KOR DEGIL" sayaci. **HARNESS-BITE olculdu:**
+  `1a` ters cevrilince **33/34** + `17/18 dosya` + `DUSEN: is8-pg-error-test.ts` +
+  exit 1 KIRMIZI dondu, geri alininca YESIL. `insertSlaEvent`'in kendisi korpusa
+  vaka EKLEMEDI (salt IO — §4 "davranis-koruyucu IO refactorunun muhru is8 DEGIL";
+  onun muhru doctor + payload SHA256 esdegerligi + sahte-client probe'u oldu) +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip;
-  25. otu sonu **GEREKLI 46 / MEVCUT 47**, `migration-eksik: [yok]` — 45/46'dan
-  migration **030** ile cikti (rate_limit_counters). Bir kosuda gecici
+  26. otu sonu **GEREKLI 46 / MEVCUT 47 — DEGISMEDI**: migration **031** yalnizca
+  bir INDEX yaratir, `CREATE TABLE` icermez, bu yuzden [C]'nin "GEREKLI" sayisi
+  ARTMAZ. **[C] index'leri HIC gormez** — 031'in canliya uygulandigi
+  `pg_indexes` ile AYRI dogrulanir. Bir kosuda gecici
   `fetch failed` WARN'i gorulebilir; host ayakta olsa bile olur, TEKRAR KOS) +
-  [D] sabit-marka taramasi (src/**, dosya-bazli allowlist; 25. otu sonu **13 allowlisted /
-  0 unexpected — DEGISMEDI**: yeni moduller (rate-limit, mask-pii, nonlatin-word)
-  hicbir id/marka HARDCODE ETMEZ). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
+  [D] sabit-marka taramasi (src/**, dosya-bazli allowlist; 26. otu sonu **13 allowlisted /
+  0 unexpected — DEGISMEDI**: yeni moduller (pg-error, insert-sla-event) hicbir
+  id/marka HARDCODE ETMEZ). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
 - Kalan dogrulama yine `npm run type-check` + `npm run build` + manuel/UAT. Repo kokundeki
   `__*.js/.mjs`, `scratch_*.mjs`, `__run_*.ps1`, `__test_scenario_*.json` dosyalari tek
@@ -192,9 +220,14 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   ile TEYIT EDILDI). Ortamda gorulen **`qltydigital-hub`** bir KOPYADIR ve prod'u
   BESLEMEZ — oraya push etmek canliya hicbir sey tasimaz. Deploy oncesi hedefi
   varsayma, Settings -> Git'ten dogrula.
-- **GIT PUSH KIMLIGI — PAT (25. otu):** makinedeki varsayilan credential yardimcisi
-  yanlis hesabi (403) tasiyabiliyor. Calisan yol, yardimciyi DEVRE DISI birakip
-  PAT ile push etmektir:
+- **GIT PUSH KIMLIGI — ONCE `git remote -v` TEYIT ET (26. otu guncellemesi):**
+  ilk is hedefi dogrulamaktir; **`origin` DOGRU repoyu gosteriyorsa PAT GEREKMEZ.**
+  26. oturumda olculdu: `origin = kemalkuyucu/hotelgendigital` idi ve duz
+  `git push <url> hotelgen-v4` **exit 0** dondu — credential yardimcisi dogru
+  kimligi tasiyordu. Komutu **`GIT_TERMINAL_PROMPT=0`** ile kos: yardimci
+  basarisizsa asili kalmaz, ANINDA hata verir (bu ortamda interaktif prompt'a
+  cevap YAZILAMAZ).
+  **PAT yolu YEDEKTIR** (25. otu): yardimci yanlis hesabi (403) tasirsa
   `git -c credential.helper= push https://github.com/kemalkuyucu/hotelgendigital.git hotelgen-v4`
   — sorulunca **username = `kemalkuyucu`**, **password = PAT**. PAT'i komut satirina
   ya da URL'e GOMME (shell gecmisine ve log'a duser); prompt'a yaz.
@@ -621,8 +654,10 @@ dusuyordu. 19. otu (`48ea1ea`) SEMPTOMU kapatti (AR'i strip listesine ekledi);
 |---|---|
 | src/lib/menu/parse-order.ts | parseOrder regex kod+adet, extractOrderNote (DIKKAT: src/lib/ai/ ALTINDA DEGIL) |
 | src/lib/menu/pending-order.ts | `order_pending_text` ZARFI: `buildPendingText` / `readPendingText` (matematik self-heal) / `orderStampAccepts` / `formatOrderSummary` / **`isStructuredOrder`** (M2 kapisi) / `bumpPendingOrder` (TEK yazma yolu) |
-| src/lib/sla/handle-order-callback.ts | damga kapisi -> **M1 atomik claim** -> **M2 dedup (yalniz yapili siparis)** -> sla_events + room_service_orders INSERT -> kart |
+| src/lib/sla/handle-order-callback.ts | damga kapisi -> **M1 atomik claim** -> **M2 dedup (yalniz yapili siparis)** -> **`insertSlaEvent`** + room_service_orders INSERT (**id tutulur**) -> kart; kart basarisizsa **IKISI DE rollback** |
 | src/lib/sla/duplicate-guard.ts | **SAF** `isDuplicateRequest` — normalize + Jaccard; pencere/aday/bildirim YOK (cagirana ait) |
+| src/lib/sla/insert-sla-event.ts (26. otu) | `sla_events` INSERT'inin **TEK KAYNAGI** + **23505 backstop**: `insertSlaEvent` / `notifyOpenDuplicate` (**FACTORY**) / `findOpenConflict` (dahili) |
+| src/lib/utils/pg-error.ts (26. otu) | **SAF** `isUniqueViolation(error)` — SQLSTATE `23505`; cagri yerinde `err.code === '23505'` YAZILMAZ |
 
 (`parsePendingOrder` KALKTI — yerini `readPendingText` aldi; zarf ici `raw` sayesinde
 personel kartina ham JSON blob sizmaz.)
@@ -712,12 +747,95 @@ invocation) · `[order-confirm] DEDUP: INSERT atlandi, yeni kart acilmadi` (M2 t
 INSERT'e devam etti) · `[dup-notify] gonderildi` (personel reply'i dustu).
 
 **KAPSAM DISI (bilincli):** `cancel` dali claim ALMAZ (cift iptal zararsiz);
-`sla_events`/`room_service_orders` uzerinde DB UNIQUE constraint YOK (M1 uygulama
-seviyesi korumadir); **serbest metinde bulanik dedup YOK** — ayni cumle 2 kez
-onaylanirsa 2 kart acilir (fazladan kart, kayip talepten iyidir; bkz. §7).
+**serbest metinde bulanik dedup YOK** — ayni cumle 2 kez onaylanirsa 2 kart acilir
+(fazladan kart, kayip talepten iyidir; bkz. §7).
 (GUNCELLEME 18. otu: "webhook seviyesinde `update_id` dedup'i YOK" kaydi ARTIK
 GECERSIZ — giriste gate var, bkz. §2 *Webhook-girisi update_id dedup*. M1 yine de
 gerekli: gate retry'i keser, M1 cift-tik'i.)
+(**GUNCELLEME 26. otu:** "`sla_events`/`room_service_orders` uzerinde DB UNIQUE
+constraint YOK" kaydi **KISMEN GECERSIZ** — `sla_events`'te artik **ACIK KAYIT**
+partial unique VAR (`031`, bkz. asagidaki bolum). `room_service_orders`'ta hala
+YOK ve BILINCLI olarak yok. M1 yine de gerekli: constraint yalniz **tam metin
+esitligini** yakalar, M1 ise ayni kartin es zamanli iki callback'ini.)
+
+### sla_events cift-kayit DAR-GUVENLI BACKSTOP (backlog #3 — UNIQUE) · sevk `9dcf48a` (26. otu) — **PROD + migration 031 CANLI**
+
+**NUMARA CAKISMASI — DIKKAT:** bu "#3", 18. oturumun "#3 update_id dedup"undan
+**AYRI** bir borctur (o KAPANDI, bkz. asagidaki bolum). Buradaki #3 = §7'nin
+"B) VERI BUTUNLUGU — UNIQUE constraint" maddesi.
+
+**KOK SORUN:** `sla_events` INSERT'i **DORT ayri yerde** elle yaziliydi ve cift-kayit
+korumasi **akis-basina + BULANIK**ti: F&B'de M1 claim + M2 Jaccard (3 dk, yalniz
+yapili), HK ve genel forward'da 10 dk'lik ayni bulanik kapi, `[reverify-forward]`
+yolunda ise **HIC dedup YOK**. Yeni bir INSERT noktasi acilirsa garantiyi otomatik
+ALMIYORDU; repoda `sla_events` yolunda **hicbir 23505 yakalama** da yoktu.
+
+**NEDEN NAIVE COZUM REDDEDILDI (karar gerekcesi — tekrar acilmasin):**
+- **DB UNIQUE = TAM ESITLIK; app dedup = BULANIK.** Constraint, Jaccard 0.5'i
+  taklit EDEMEZ. En fazla onun **dar bir alt kumesi** olabilir.
+- **Zaman penceresi index'te IFADE EDILEMEZ.** `created_at >= now() - 3 dk` bir
+  UNIQUE index'e yazilamaz; pencerenin index karsiligi **"kayit hala ACIK mi"**
+  yaklasimidir (personel karta bastiginda satir index'ten DUSER).
+- **Canli veri naive anahtari TUTMUYOR (25+26. otu olcumu):** `sla_events`
+  (conversation_id, department_code, request_text) uzerinde **21 grup / 62 fazla
+  satir**, en buyuk grup **14**; `room_service_orders` (conversation_id, items)
+  **7 grup / 20 fazla satir**. Fazla satirlarin **~%60'i (37/62) 1 SAATTEN uzun**
+  arali, en uzunu **9 gun** -> bunlar yaris DEGIL, **misafirin gercekten yeniden
+  istedigi seyler**. "Temizle sonra UNIQUE kur" = **veri imhasi**; kosulsuz UNIQUE
+  = mesru ikinci talebin **sessiz 23505 kaybi**.
+- **Ölçüm ayrimi:** ≤3 dk'lik 4 tekrarin **hepsi** M1/M2 sevkinden (`73d92ae`,
+  2026-07-31) ONCE olusmus; sonrasinda kisa-arali tekrar YOK.
+
+**COZUM — UC PARCA:**
+
+| Parca | Yer | Not |
+|---|---|---|
+| `isUniqueViolation(error)` | `src/lib/utils/pg-error.ts` (**YENI**, SAF) | `error?.code === '23505'`. **Mesaj metni OLCUT DEGIL** (surum/lokalizasyon ile degisir); tip KATI (sayi `23505` -> false) |
+| `insertSlaEvent(supa, row, onDuplicate?)` | `src/lib/sla/insert-sla-event.ts` (**YENI**) | happy-path `.insert(row).select('id').single()` — eski 4 sitedeki zincirin **BIREBIR aynisi**. Donus: `{ok:true,id}` / `{ok:false,duplicate:true}` / `{ok:false,duplicate:false,error}` |
+| `031_sla_events_open_unique.sql` | `migrations/tenant/` | **partial** UNIQUE: `(conversation_id, department_code, md5(request_text))` WHERE `responded_at IS NULL AND closed_at IS NULL` |
+
+- **`notifyOpenDuplicate` bir FACTORY'dir — CAGRI ANINDA IS YAPMAZ.** Senkron
+  fonksiyondur (`async` DEGIL), tek `return async (existing) => {...}` tasir;
+  cagri yerinde `insertSlaEvent(supa, row, notifyOpenDuplicate(botToken, chatId,
+  text))` yazmak yalnizca closure uretir. **OLCULDU** (sahte-fetch probe'u):
+  factory cagrisinda fetch **0**, donen fn cagrilinca fetch **1**. Amaci 23505
+  bildirimini TEK KAYNAKTA tutmak — 4 sitede `notifyDuplicateRequest` cagrisi
+  kopyalanmaz, her site yalniz kendi baglamini (botToken + **kendi fallback chat
+  id'si** + tekrarlanan metin) verir.
+- **`md5()` NEDEN:** `request_text` uzun olabilir, btree anahtar boyu sinirlidir
+  (~2704 byte). Karar semantigi metin ESITLIGIDIR; md5 onun kisaltilmis anahtari.
+  `findOpenConflict` ise PostgREST filtrede fonksiyon cagiramadigi icin **tam metin
+  esitligi** kullanir — AYNI satir kumesini secer.
+- **CAGRI YERI DAVRANISI KORUNDU (4 site, her biri KENDI dedup dalini tekrarlar):**
+  F&B -> M2 dup dalinin AYNISI (misafire `order_duplicate_recent` + kart etiketi +
+  toast) · HK -> `{ok:true, duplicate:true}` · genel forward -> `continue` ·
+  `[reverify-forward]` -> log-only (o yolda bulanik dedup zaten YOKTU).
+- **DAVRANIS-KORUYUCU OLDUGU OLCULDU, varsayilmadi:** dort payload blogu ONCE/SONRA
+  cikarilip **SHA256** alindi -> `01acaad816ff1546` · `53faa48fb1974484` ·
+  `d7a975c22646d07f` · `47b1e438d20203e0`, **4/4 AYNI, 0 fark**. Ayrica sahte-client
+  probe'u: happy-path izi tam olarak `from('sla_events').insert(row).select('id')
+  .single()` — **EK DB CAGRISI YOK**, `onDuplicate` cagrilmaz, Telegram'a gidilmez.
+- **`room_service_orders` — 2 DEFEKT duzeltildi (constraint YERINE):**
+  (a) **oksuz satir**: kart gonderilemedigi dalda `sla_events` siliniyor ama rso
+  satiri KALIYORDU -> artik INSERT `.select('id').single()` ile id tutar ve AYNI
+  dalda o da silinir. (b) **sessiz hata**: rso INSERT hatasi yalnizca duz bir
+  `console.error`di -> artik `[order-confirm] RSO INSERT FAILED` markeri + `code`.
+  **Kart BLOKLANMAZ** (misafir servisi kesilmez) — kayit IKINCILDIR.
+- **LOG SATIRLARI (canli UAT olcutu):** `[sla-insert] 23505 UNIQUE — yeni kart
+  acilmadi` (backstop tuttu; `conversationId` + `dept` + `openConflictId`) ·
+  `[sla-insert] cakisan acik kart sorgusu hatasi:` · `[sla-insert] onDuplicate
+  hatasi:` · `[order-confirm] RSO INSERT FAILED` · `[order-confirm] RSO ROLLBACK
+  OK` / `RSO ROLLBACK FAILED — oksuz siparis kaydi kalabilir` · `[dup-notify]
+  gonderildi` (personel reply'i dustu).
+- **SIRA BAGLAYICIYDI: ONCE kod (olu dal) deploy, SONRA constraint.** `9dcf48a`
+  deploy edildiginde 031 henuz uygulanmamisti -> `isUniqueViolation` asla true
+  donmuyordu, davranis gecis oncesiyle BIREBIR ayniydi. Index ayri bir adimda,
+  **fail-safe gate** (acik alt kumede cakisma sorgusu -> **BOS**) gecildikten sonra
+  uygulandi. Ters sira, 23505'i YAKALAYAN kod prod'a cikmadan once sessiz kayip
+  penceresi acardi.
+- **CANLI BOT UAT'i BEKLIYOR:** index'in VARLIGI `pg_indexes` ile kanitli, ama
+  "ikinci INSERT gercekten reddediliyor ve personele reply dusuyor" zinciri
+  UCTAN UCA olculmedi. `[sla-insert] 23505 UNIQUE` satiri prod'da HENUZ gorulmedi.
 
 ### Webhook-girisi update_id dedup (backlog #3) · sevk `df3f6b5` (18. otu)
 
@@ -840,11 +958,12 @@ Onceki "16 dosya" kaydi EKSIKTI; asagidaki 4'u tasimiyordu (hepsi SAF/yardimci):
 |---|---|
 | lead-capture.ts | IS 18 etkinlik lead akisi (SAF): `startLeadCapture` / `advanceLead` / `isLeadAbandon` / `decideLeadNotify` / `buildLeadFinalCard` + `conversations.metadata.lead_capture` state okuma-yazma (`readLeadCapture` / `withLeadCapture` / `clearLeadCapture`) |
 
-### src/lib/sla/ tam dosya listesi (16. oturumda canli dizinle TEYIT EDILDI — 11 dosya, eksik yok)
+### src/lib/sla/ tam dosya listesi (16. oturumda canli dizinle TEYIT EDILDI — 12 dosya, eksik yok)
 `handle-reception-reply.ts`, `check-runner.ts`, `handle-callback.ts`,
 `handle-menu-offer-callback.ts`, `send-forward-with-buttons.ts`, `handle-order-callback.ts`,
 `handle-note-callback.ts`, `handle-housekeeping-callback.ts`, `housekeeping-forward.ts`,
-`notify-duplicate.ts`, **`duplicate-guard.ts`** (16. otu — IS 2)
+`notify-duplicate.ts`, **`duplicate-guard.ts`** (16. otu — IS 2),
+**`insert-sla-event.ts`** (26. otu — backlog #3 backstop)
 
 ### Multi-tenant architecture (the core mental model)
 
@@ -905,7 +1024,7 @@ Two Vercel Cron jobs, both daily at 00:00 (`vercel.json`), authed by `Authorizat
 ### Migrations (`src/lib/migrations/`, `migrations/`)
 
 Versioned, idempotent SQL applied **per hotel DB at runtime** — not a CLI step.
-- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (25. otu): `030_rate_limit_counters.sql`** — yeni tablo + `rate_limit_hit()` fonksiyonu, ADDITIVE ve GUVENLI (mevcut kolon/veriye dokunmaz). Dollar-quote etiketi BILINCLI olarak `$rate_limit_hit$`: dosya runner tarafindan `exec_sql(sql text)` icine PARAMETRE olarak gecer ve `exec_sql`in kendi govdesi `$$` kullanir. Onceki: `029_processed_telegram_updates.sql` (18. otu). **IKISI DE YALNIZ v5 tenant'a uygulandi**; her YENI tenant'ta calistirilmasi gerekir. Kosulmazsa iki koruma da fail-safe/fail-open yonde SESSIZCE devre disi kalir: `claimTelegramUpdate` `true` doner (dedup yok), `claimRateLimit` `allowed=true, degraded=true` doner (limit yok). Davranis eskisiyle ayni, bozulma yok — ama koruma da yok. (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil. Onceki kayit "027" idi, 028 zaten mevcuttu — duzeltildi.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
+- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (26. otu): `031_sla_events_open_unique.sql`** — `sla_events` uzerinde **partial UNIQUE index** (`conversation_id, department_code, md5(request_text)` WHERE `responded_at IS NULL AND closed_at IS NULL`). Tablo/kolon YARATMAZ, veri DEGISTIRMEZ; **v5 tenant'a UYGULANDI** ve `pg_indexes` ile teyit edildi. **DIKKAT — `schema_migrations`'a DUSMEDI:** `exec_sql` RPC'si DOGRUDAN cagrildi (runMigrations akisi degil), o yuzden kayit satiri yazilmadi. Bu YENI bir tutarsizlik DEGIL: canli tabloda en yuksek kayit **"020"** (toplam 19 satir) — 021..031 arasi HICBIRI kayitli degil, 029/030 da ayni yoldan uygulanmisti. Pratik etki: panelden migration kosulursa 031 "uygulanmamis" gorunup TEKRAR kosar; `CREATE UNIQUE INDEX IF NOT EXISTS` sayesinde **no-op**, zararsiz. Onceki: **`030_rate_limit_counters.sql`** (25. otu) — yeni tablo + `rate_limit_hit()` fonksiyonu, ADDITIVE ve GUVENLI (mevcut kolon/veriye dokunmaz). Dollar-quote etiketi BILINCLI olarak `$rate_limit_hit$`: dosya runner tarafindan `exec_sql(sql text)` icine PARAMETRE olarak gecer ve `exec_sql`in kendi govdesi `$$` kullanir. Onceki: `029_processed_telegram_updates.sql` (18. otu). **IKISI DE YALNIZ v5 tenant'a uygulandi**; her YENI tenant'ta calistirilmasi gerekir. Kosulmazsa iki koruma da fail-safe/fail-open yonde SESSIZCE devre disi kalir: `claimTelegramUpdate` `true` doner (dedup yok), `claimRateLimit` `allowed=true, degraded=true` doner (limit yok). Davranis eskisiyle ayni, bozulma yok — ama koruma da yok. (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil. Onceki kayit "027" idi, 028 zaten mevcuttu — duzeltildi.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
 - `runMigrations({ hotelSlug })` (`runMigrations.ts`) decrypts the hotel bridge, builds a tenant client, ensures `schema_migrations`, and runs unapplied files via the **`exec_sql` RPC** (SQL executed through a Postgres function, not the JS query builder).
 - Triggered from admin UI / API: `/api/admin/migrations` (tenant), `/api/admin/central-migrations`, `/api/admin/hotels/[id]/run-migrations`, with a `migrations` admin page. Also `seedBaseline` / `runBootstrap`.
 - **Single source of truth for tenant schema = `migrations/tenant/*`.** The legacy `sql/0x` hotel-side files (`05_hotel_schema` … `12_*`) are DEPRECATED/archive only — pre-migration manual "Supabase SQL Editor" bootstrap; never re-run them. (A15/AUDIT D7, resolved 2026-06-01: a read-only probe of both live tenants — demo-hotel + green-park-test — confirmed **no schema drift**; both are pure 001-chain. Only live difference: `match_documents()` RPC present on demo, absent on green-park → a Phase-C/RAG follow-up, not a schema conflict.)
@@ -1028,7 +1147,43 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   - **alerjen ceviri satiri gerekli mi** -> `allergen-notify.ts`
     `needsTurkishLine` (SAF) / `resolveAllergenTurkish` (IO) — mutfak/GR karti da
     on buro karti da AYNI karari cagirir, bicimi kendi yazar
+  - **UNIQUE ihlali (SQLSTATE 23505) karari** -> `src/lib/utils/pg-error.ts`
+    `isUniqueViolation` (26. otu). Cagri yerinde `err.code === '23505'` YAZILMAZ;
+    `error.message` metnine BAKILMAZ (surum/lokalizasyon ile degisir, kod degismez).
+  - **`sla_events` INSERT'i + 23505 backstop'u** -> `src/lib/sla/insert-sla-event.ts`
+    `insertSlaEvent` (26. otu, `9dcf48a`). Inline `.from('sla_events').insert(...)`
+    YAZILMAZ — **4/4 site bagli** (F&B onay · HK forward · genel forward ·
+    `[reverify-forward]`). Duplicate bildirimi `notifyOpenDuplicate` **FACTORY**'si
+    ile verilir (cagri aninda is YAPMAZ); `notifyDuplicateRequest` cagrisi cagri
+    yerine KOPYALANMAZ. "Dup olunca ne yapilacagi" (misafire ne denecek, `continue`
+    mi return mi) CAGIRANA aittir — helper onu genellestirmez.
   - **TR normalize** -> `normalize-tr.ts` `normalizeTr` (ikinci normalizer YASAK)
+- **26. OTURUM VERI-BUTUNLUGU KARARLARI (IHLAL EDILEMEZ):**
+  - **(a) DB UNIQUE, BULANIK dedup'i TAKLIT EDEMEZ.** Constraint tam esitliktir;
+    app dedup'i Jaccard 0.5'tir. Bir constraint ancak dedup'in **DAR ALT KUMESI**
+    olabilir — "app dedup'ini DB'ye tasiyalim" diye baslama.
+  - **(b) ZAMAN PENCERESI INDEX'TE IFADE EDILEMEZ.** `created_at >= now() - 3 dk`
+    bir UNIQUE index'e yazilamaz. Pencerenin index karsiligi **"kayit hala ACIK
+    mi"**dir (`responded_at IS NULL AND closed_at IS NULL`); personel karta
+    bastiginda satir index'ten DUSER ve sonraki ayni talep serbestce yazilir.
+  - **(c) NAIVE "temizle + dogal-anahtar UNIQUE" REDDEDILDI.** Mevcut fazla
+    satirlarin ~%60'i mesru tekrardir (1 saat - 9 gun) -> silmek **imha**;
+    kosulsuz UNIQUE ise mesru ikinci talebi **sessiz 23505 kaybina** cevirir.
+  - **(d) UNIQUE'DEN ONCE CANLI ACIK-DUP OLC — FAIL-LOUD birak.** Uygulamadan
+    hemen once acik alt kumede `GROUP BY ... HAVING count(*)>1` kosulur; **BOS
+    donmeli**. Satir donerse DUR ve cakismayi incele. Migration `IF NOT EXISTS`
+    tasir ama cakismada PG **PATLAR** — bu ISTENEN davranistir (sessizce yarim
+    uygulanmasindansa dusmeli).
+  - **(e) SIRA: ONCE kod (olu dal) deploy -> SONRA constraint.** 23505'i YAKALAYAN
+    kod prod'da OLMADAN index uygulanirsa sessiz kayip penceresi acilir. Ters
+    sirada kod, constraint yokken zaten olu kod olarak kosar (zararsiz).
+  - **(f) 23505 SESSIZ YUTULMAZ** -> `notifyDuplicateRequest` ile cakisan ACIK
+    kartin altina reply duser (§3 SESSIZ YUTMA YASAGI'nin DB tarafi).
+  - **(g) `sla_events` INSERT'i TEK KAYNAKTAN** (ustteki tek-kaynak maddesi).
+  - **(h) `room_service_orders`'a GUVENLI bir statik constraint YOKTUR.** Dogal
+    anahtar (conversation_id, items) mesru tekrar siparisi bloklar; `status` ayirt
+    etmez (canlida 33/33 satir `'confirmed'`, iptal DB'ye HIC yazilmaz). Bu yuzden
+    constraint yerine **2 defekt** duzeltildi (oksuz-satir rollback + hata markeri).
 - **25. OTURUM GUVENLIK KARARLARI (IHLAL EDILEMEZ):**
   - **URL'DEKI `slug` SALDIRGAN GIRDISIDIR.** `[slug]` tasiyan HER admin/API
     route'u, is yapmadan ONCE `slug !== admin.hotel_slug -> 403` kontrolunu
@@ -1053,7 +1208,11 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     eklemek geriye donuk bir iddiadir; mevcut veri onu tutmuyorsa migration
     PATLAR, tutuyorsa da ileride mesru bir tekrar **sessiz 23505 kaybina** doner.
     Once say, sonra karar ver (25. otu: `sla_events` 62 / `room_service_orders`
-    20 fazla satir -> constraint EKLENMEDI).
+    20 fazla satir -> **dogal anahtarda** constraint EKLENMEDI).
+    **26. otu COZUMU:** anahtar daraltildi — **ACIK KAYIT** alt kumesinde dup
+    **0** oldugu icin partial unique (`031`) SIFIR temizlikle kuruldu; naive
+    dogal-anahtar UNIQUE ise REDDEDILDI. Ayrinti ve gerekce: asagidaki
+    *26. OTURUM VERI-BUTUNLUGU KARARLARI* (a-h).
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
 ## 4. TUZAKLAR (defalarca saat kaybettirdi)
@@ -1344,12 +1503,39 @@ circular import yok. Ayrinti: §2 *On buro chat_id TEK KAYNAK*. **CANLI UAT YOK.
 - **SIZAN `service_role` ROTE EDILDI.** Git gecmisindeki token demo-hotel
   projesinin `service_role`u idi (`scripts/check-table-counts.mjs`, `a2061a0`
   hardcode etti / `9ecf2c9` env'e cevirdi).
-- **DOC SENKRONU:** bu commit dosyayi v38 -> **v39**'a tasir (kod sevkiyle AYNI
+- **DOC SENKRONU:** o commit dosyayi v38 -> **v39**'a tasidi (kod sevkiyle AYNI
+  oturum, AYRI commit).
+
+**26. oturumda KAPANDI — backlog #3 (UNIQUE constraint) DAR-GUVENLI COZUMLE**
+(`9dcf48a`; deploy `dpl_GDKd8CqbR6nUBVi5gAr6TjBnqXP2`; migration **031 CANLI**):
+- **NAIVE COZUM REDDEDILDI, gerekcesi §3 (a-h)'de KALICI KARAR olarak yazili.**
+  DB UNIQUE = tam esitlik, app dedup = bulanik (Jaccard 0.5 / 3 dk / acik kayit)
+  -> taklit edemez. Canli fazla satirlarin **~%60'i mesru tekrar** (1 saat - 9 gun,
+  en uzunu 9 gun) -> "temizle sonra kur" **veri imhasi** olurdu.
+- **KURULAN:** `031_sla_events_open_unique.sql` — partial unique
+  `(conversation_id, department_code, md5(request_text))` WHERE `responded_at IS
+  NULL AND closed_at IS NULL`. **ACIK alt kumede dup 0** oldugu icin **SIFIR
+  temizlikle** kuruldu (fail-safe gate uygulamadan hemen once TAZE kosuldu -> BOS).
+- **KOD (once deploy, olu dal):** `pg-error.ts` `isUniqueViolation` (SAF) +
+  `insert-sla-event.ts` `insertSlaEvent` — `sla_events` INSERT'inin **4/4 sitesi**
+  tek kaynaga baglandi; 23505 -> cakisan ACIK kartin altina `notifyDuplicateRequest`.
+- **`room_service_orders`: constraint YOK (bilincli, §3-h)** -> yerine 2 defekt:
+  kart-fail'de **oksuz satir rollback'i** + `[order-confirm] RSO INSERT FAILED`
+  markeri.
+- **MUHUR:** `npm run doctor` YESIL (tsc 0 · **is8 1997 -> 2031**, 17 -> **18
+  dosya** · sema 46/47 DEGISMEDI · marka 0 unexpected) + `npm run build` exit 0 +
+  **payload SHA256 esdegerligi 4/4** + sahte-client probe'u (happy-path'te ek DB
+  cagrisi YOK) + **harness-bite** (33/34 KIRMIZI) + `pg_indexes` teyidi.
+- **CANLI BOT UAT YOK:** 23505 dalinin gercekten tetiklendigi bir vaka gorulmedi;
+  `[sla-insert] 23505 UNIQUE` satiri prod'da HENUZ dusmedi. Ayrinti: §2
+  *sla_events cift-kayit DAR-GUVENLI BACKSTOP*.
+- **DOC SENKRONU:** bu commit dosyayi v39 -> **v40**'a tasir (kod sevkiyle AYNI
   oturum, AYRI commit).
 
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida). Isim-eslesme
-konsolidasyonu **TAMAMEN KAPANDI** (7/7 site) ve `front_office` konsolidasyonu da
-**9/9 site** ile KAPANDI (#6 + #20) — ikisini de yeniden acmayin.
+konsolidasyonu **TAMAMEN KAPANDI** (7/7 site), `front_office` konsolidasyonu
+**9/9 site** ile KAPANDI (#6 + #20) ve `sla_events` INSERT konsolidasyonu **4/4
+site** ile KAPANDI (#3) — ucunu de yeniden acmayin.
 
 - **verification parse yanlis-pozitifi (SIRADAKI IS — kok neden ACIK):** `ROOM_REGEX`
   (`verify-guest.ts:131`) prefix'i OPSIYONEL tuttugu icin serbest metindeki HER 2-4
@@ -1405,10 +1591,13 @@ konsolidasyonu **TAMAMEN KAPANDI** (7/7 site) ve `front_office` konsolidasyonu d
   serbest metne geri acmak KOK NEDENI geri getirir, YAPMA.
 - **`cancel` dali atomik claim ALMAZ** (yalniz `confirm`). Es zamanli iki iptal
   misafire iki mesaj gonderebilir — kozmetik, kayit uretmez.
-- **`sla_events` / `room_service_orders` uzerinde UNIQUE constraint YOK**
-  (`003_sla_events.sql`, `023_menu_catalog.sql`: yalniz PK + normal index). M1
-  uygulama seviyesi bir korumadir; ileride BASKA bir INSERT noktasi acilirsa ayni
-  garantiyi otomatik ALMAZ. DB-seviyesi garanti yeni migration ister.
+- ~~**`sla_events` / `room_service_orders` uzerinde UNIQUE constraint YOK**~~ —
+  **26. otu KISMEN KAPANDI** (`9dcf48a` + migration `031`). `sla_events`'te artik
+  **ACIK KAYIT** partial unique VAR ve INSERT'ler tek kaynaktan gectigi icin yeni
+  bir INSERT noktasi garantiyi **otomatik ALIR**. **`room_service_orders`'ta hala
+  YOK ve BILINCLI olarak yok** (§3-h: dogal anahtar mesru tekrar siparisi bloklar,
+  `status` ayirt etmez). M1 atomik claim YERINDE DURUYOR — constraint yalniz tam
+  metin esitligini yakalar, M1 ise ayni kartin es zamanli iki callback'ini.
 - **029 migration'inin COK-TENANT yayilimi (18. otu, dusuk):** `029_processed_telegram_updates`
   yalniz **v5** tenant'a uygulandi. Migration'i kosmamis bir otelde `claimTelegramUpdate`
   fail-safe `true` doner -> dedup SESSIZCE devre disi (davranis eskisiyle ayni, bozulma
@@ -1467,19 +1656,22 @@ konsolidasyonu **TAMAMEN KAPANDI** (7/7 site) ve `front_office` konsolidasyonu d
   aksine bu dosyada `1da42a9` deploy'unun id'si YOK; sonradan "hangi deploy neyi
   tasidi" sorusu `vercel ls` ile elle cozulmek zorunda kalir.
 
-**B) VERI BUTUNLUGU — backlog #3 (UNIQUE constraint) ACIK, BILINCLI:**
-- **Canlida DUPLICATE VAR (25. otu OLCUMU):** `sla_events` (conversation_id,
-  department_code, request_text) uzerinde **21 grup / 62 fazla satir**, en buyuk
-  grup **14**; `room_service_orders` (conversation_id, items) uzerinde **7 grup /
-  20 fazla satir**. Bu haliyle dogal anahtarlarda UNIQUE **KURULAMAZ**.
-- **"Acik kayit" partial variant da KANIT DEGIL:** olcum aninda acik (`responded_at`
-  ve `closed_at` NULL) kayit sayisi **0** idi, yani o alt kume vakumen dup'suz
-  gorunur — kurulmasi hicbir sey ISPATLAMAZ.
-- **Ve eklemek TEHLIKELI olabilir:** M2'nin serbest-metinde KAPALI birakilmasi
-  bilincli bir karardir ("fazladan kart, kayip talepten iyidir"). UNIQUE, mesru bir
-  ikinci talebi **sessiz 23505 kaybina** cevirir — 23505 yakalama + personele
-  bildirim eklenmeden bu bir DAVRANIS DEGISIKLIGIDIR, additive migration degil.
-  Once mevcut fazla satirlarin nereden geldigi anlasilmali (SILME YOK).
+**B) VERI BUTUNLUGU — backlog #3 (UNIQUE constraint): 26. otu'da KAPANDI:**
+- Cozum ve gerekce yukarida (*26. oturumda KAPANDI*) + §3 (a-h) + §2
+  *sla_events cift-kayit DAR-GUVENLI BACKSTOP*.
+- **25. oturumun "eklemek TEHLIKELI olabilir" uyarisi HALA GECERLI ve COZUMUN
+  ICINDE:** UNIQUE mesru bir ikinci talebi sessiz 23505 kaybina cevirebilirdi —
+  bu yuzden (i) anahtar **acik kayit** alt kumesine daraltildi, (ii) 23505'i
+  YAKALAYAN kod **once** prod'a alindi, (iii) yakalandiginda personele
+  `notifyDuplicateRequest` reply'i duser. Bu uc sart olmadan constraint EKLENMEZ.
+- **HISTORIK KAPALI DUPLICATE'LER YERINDE DURUYOR — BILINCLI, YENIDEN TEMIZLEME
+  GIRISIMI YAPMA.** `sla_events`'te 21 grup / 62 fazla satir, `room_service_orders`
+  'ta 7 grup / 20 fazla satir; hepsi **KAPALI** (yanitlanmis/kapanmis) kayitlar ve
+  ~%60'i **mesru tekrar** (1 saat - 9 gun arali, en uzunu 9 gun). Partial index
+  yalnizca ACIK kayitlari kapsadigi icin bu satirlar constraint'i **TETIKLEMEZ**;
+  varliklari bir bozukluk DEGIL, gecmis trafiginin kaydidir. Silmek **veri
+  imhasidir** ve hicbir sey kazandirmaz. `room_service_orders` icin de ayni:
+  temizlik degil, §3-h geregi constraint EKLENMEMESI karari gecerlidir.
 
 **C) OPSIYONEL ZIRH (bugun bozuk bir sey YOK — kapsam ve sure tahmini):**
 - **Tenant DB'lerde RLS (~2-3 gun).** Bugun izolasyonun TEK katmani uygulama
@@ -1497,8 +1689,11 @@ konsolidasyonu **TAMAMEN KAPANDI** (7/7 site) ve `front_office` konsolidasyonu d
   `forward-to-department.ts`). Misafir adlari maskelendi; personel adi talimat
   kapsami disindaydi. Ayni `maskName` ile kapatilabilir — ama teslimat teshisinde
   "kime gitti" okunakliligini dusurur, once karar gerekir.
-- **`migrations/tenant/030` YALNIZ v5 tenant'ta.** Diger otellerde rate-limit
-  FAIL-OPEN calisir (limit YOK, bozulma da yok). Yeni tenant acilisinda kosulmali.
+- **`migrations/tenant/030` ve `031` YALNIZ v5 tenant'ta.** 030 yoksa rate-limit
+  FAIL-OPEN calisir (limit YOK, bozulma da yok); **031 yoksa 23505 backstop'u OLU
+  KOD olarak kosar** (`isUniqueViolation` asla true donmez — davranis eskisiyle
+  ayni, koruma da YOK). Yeni tenant acilisinda ikisi de kosulmali; **031'den once
+  o tenant'ta acik-dup gate'i TAZE olculmeli** (§3-d).
 - **Otel rate-limit tavani (600/dk) OLCUME DEGIL TAHMINE dayanir.** Dusurmeden
   once gercek zirve trafigi olculmeli.
 - **Build artik `cdn.sheetjs.com`a bagli** — CDN kesintisi build'i dusurur.
