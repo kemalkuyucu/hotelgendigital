@@ -16,7 +16,10 @@ export async function GET(): Promise<NextResponse> {
     .order('priority', { ascending: true })
     .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[admin-safety-rules]', error);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
+  }
   return NextResponse.json({ rules: data ?? [] });
 }
 
@@ -87,7 +90,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ rule: data }, { status: 201 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[admin-safety-rules]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

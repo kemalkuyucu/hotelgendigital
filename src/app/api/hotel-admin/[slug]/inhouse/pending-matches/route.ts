@@ -45,8 +45,8 @@ export async function GET(
 
     return NextResponse.json({ items: data ?? [], count: (data ?? []).length });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[pending-matches]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -137,7 +137,6 @@ export async function PATCH(
     console.log(`[pending-matches] Resolved id=${body.id} by userId=${admin.sub}`);
     return NextResponse.json({ ok: true, id: body.id });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

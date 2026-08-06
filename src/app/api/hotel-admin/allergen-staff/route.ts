@@ -43,14 +43,14 @@ export async function GET(): Promise<NextResponse> {
 
     if (error) {
       console.error('[allergen-staff/GET] DB error:', error)
-      return NextResponse.json({ error: 'Personel listesi alınamadı.', detail: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Personel listesi alınamadı.' }, { status: 500 })
     }
 
     return NextResponse.json({ staff: data ?? [] })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Sunucu hatası.'
     console.error('[allergen-staff/GET]', msg)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }
 
@@ -125,7 +125,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
 
     if (updateError) {
       console.error('[allergen-staff/PATCH] DB error:', updateError)
-      return NextResponse.json({ error: 'Güncelleme başarısız.', detail: updateError.message }, { status: 500 })
+      return NextResponse.json({ error: 'Güncelleme başarısız.' }, { status: 500 })
     }
 
     // KURAL: is_allergen_primary işaretliyse ve telegram_user_id yoksa uyar (engelleme yok)
@@ -146,6 +146,6 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Sunucu hatası.'
     console.error('[allergen-staff/PATCH]', msg)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }

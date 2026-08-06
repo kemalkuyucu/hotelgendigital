@@ -99,13 +99,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     }
 
     const { error: delError } = await supa.from('room_rates').delete().not('id', 'is', null);
-    if (delError) return NextResponse.json({ error: 'Eski liste silinemedi: ' + delError.message }, { status: 500 });
+    if (delError) {
+      console.error('[fiyat-import]', delError);
+      return NextResponse.json({ error: 'Eski liste silinemedi' }, { status: 500 });
+    }
 
     const { error: insError } = await supa.from('room_rates').insert(rateRows);
-    if (insError) return NextResponse.json({ error: 'Yeni liste yazilamadi: ' + insError.message }, { status: 500 });
+    if (insError) {
+      console.error('[fiyat-import]', insError);
+      return NextResponse.json({ error: 'Yeni liste yazilamadi' }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, count: rateRows.length });
   } catch (err) {
-    return NextResponse.json({ error: 'Beklenmeyen hata: ' + (err as Error).message }, { status: 500 });
+    console.error('[fiyat-import]', err);
+    return NextResponse.json({ error: 'Beklenmeyen hata' }, { status: 500 });
   }
 }

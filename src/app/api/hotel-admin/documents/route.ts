@@ -55,8 +55,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const docs = await listDocuments(tenant.hotelSupabase, department ?? undefined);
     return NextResponse.json({ documents: docs });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotel-admin-documents]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ document_id: doc.id, status: 'pending' }, { status: 201 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotel-admin-documents]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

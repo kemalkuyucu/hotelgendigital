@@ -53,8 +53,8 @@ export async function PATCH(
 
     return NextResponse.json({ staff });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotel-admin-staff]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -98,7 +98,7 @@ export async function DELETE(
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotel-admin-staff]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

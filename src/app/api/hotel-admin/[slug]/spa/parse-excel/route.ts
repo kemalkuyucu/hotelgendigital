@@ -32,6 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
     return NextResponse.json({ headers, sample_rows: sampleRows, total_rows: rows.length });
   } catch (err) {
-    return NextResponse.json({ error: 'Parse hatasi: ' + (err as Error).message }, { status: 500 });
+    console.error('[spa-parse-excel]', err);
+    return NextResponse.json({ error: 'Parse hatasi' }, { status: 500 });
   }
 }

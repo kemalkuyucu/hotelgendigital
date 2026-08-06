@@ -43,7 +43,10 @@ export async function DELETE(
     .eq('id', id)
     .maybeSingle();
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (fetchError) {
+    console.error('[manager-documents]', fetchError);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
+  }
   if (!doc) return NextResponse.json({ error: 'Belge bulunamadı' }, { status: 404 });
 
   // Storage'dan sil (varsa)
@@ -60,7 +63,10 @@ export async function DELETE(
     .delete()
     .eq('id', id);
 
-  if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  if (deleteError) {
+    console.error('[manager-documents]', deleteError);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
+  }
   return NextResponse.json({ success: true });
 }
 
@@ -90,7 +96,10 @@ export async function PATCH(
       .eq('id', id)
       .maybeSingle();
 
-    if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    if (fetchError) {
+      console.error('[manager-documents]', fetchError);
+      return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
+    }
     if (!existing) return NextResponse.json({ error: 'Belge bulunamadı' }, { status: 404 });
 
     // ── JSON parse ──
@@ -203,7 +212,10 @@ export async function PATCH(
       .select()
       .single();
 
-    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (updateError) {
+      console.error('[manager-documents]', updateError);
+      return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
+    }
     return NextResponse.json({ document: data });
 
   } catch (err) {

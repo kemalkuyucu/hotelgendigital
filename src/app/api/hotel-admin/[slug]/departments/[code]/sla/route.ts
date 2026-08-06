@@ -7,6 +7,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getHotelAdminFromCookie } from '@/lib/hotel-admin/auth';
 import { resolveTenantBySlug } from '@/lib/hotel-admin/tenant';
 
+// ROL KONTROLU: slug esitligi (8cf4e95) yalniz "hangi OTEL" sorusunu kapatir,
+// "hangi ROL" sorusunu KAPATMAZ — o sevkten sonra da otelin HERHANGI bir departman
+// muduru (housekeeping_manager, spa_manager...) kendi otelinin TUM departmanlarinin
+// SLA esigini yazabiliyordu. SLA esigi eskalasyon zincirini belirler; 60'a cekmek
+// gecikmeleri gorunmez kilar. Desen `api/manager/reservation-links/route.ts`ten
+// BIREBIR kopyalandi (orada GET de ayni kapiyi tasir).
+const ALLOWED_ROLES = ['hotel_owner', 'front_office_manager'] as const;
+type AllowedRole = (typeof ALLOWED_ROLES)[number];
+
+function isAllowed(role: string): role is AllowedRole {
+  return (ALLOWED_ROLES as readonly string[]).includes(role);
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string; code: string }> }
@@ -24,6 +37,9 @@ export async function PATCH(
   // KORUMAZ — matcher'i `/hotel-admin/:slug/:path*`, yani `/api/...` disarida.
   // Ayni kontrol diger tum [slug] route'larinda zaten mevcuttu.
   if (slug !== admin.hotel_slug) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+  if (!isAllowed(admin.role)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -54,7 +70,7 @@ export async function PATCH(
 
     if (error) {
       console.error('[sla-api] update error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'server error' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, updated: updates });
@@ -77,6 +93,9 @@ export async function GET(
   }
   // TENANT IZOLASYONU — PATCH ile ayni gerekce (okuma tarafi).
   if (slug !== admin.hotel_slug) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+  if (!isAllowed(admin.role)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

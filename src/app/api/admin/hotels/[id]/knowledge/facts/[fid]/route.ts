@@ -65,7 +65,7 @@ export async function PATCH(
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error';
     console.error('[knowledge/facts/[fid] PATCH]', msg);
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    return NextResponse.json({ ok: false, error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -98,6 +98,6 @@ export async function DELETE(
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error';
     console.error('[knowledge/facts/[fid] DELETE]', msg);
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    return NextResponse.json({ ok: false, error: 'Sunucu hatası' }, { status: 500 });
   }
 }

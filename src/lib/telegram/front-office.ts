@@ -21,19 +21,42 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * supabase-js hatada `data: null` doner, o da null'a duser. Fazladan log ya da
  * try/catch eklemek DAVRANIS DEGISIKLIGI olurdu (bu sevk salt konsolidasyon).
  *
- * KAPSAM DISI (bilincli): ayni satirdan BASKA kolon da ceken cagri yerleri bu
- * helper'i KULLANMAZ — tek sorguyu ikiye bolerdi:
- *   · route.ts [reverify-forward] -> `telegram_chat_id, sla_minutes`
- *   · sla/check-runner.ts         -> `telegram_chat_id, reception_sla_minutes`
- *   · sla/handle-callback.ts      -> `telegram_chat_id, display_name` + `.eq('is_enabled', true)`
+ * COK-KOLONLU cagri yerleri icin `getFrontOfficeRow` (asagida) vardir — onlari
+ * bu fonksiyona baglamak TEK sorguyu IKIYE bolerdi (backlog #20).
  */
 export async function getFrontOfficeChatId(supa: SupabaseClient): Promise<string | null> {
-  const { data } = await supa
-    .from('departments')
-    .select('telegram_chat_id')
-    .eq('code', 'front_office')
-    .maybeSingle();
-
-  const raw = (data as { telegram_chat_id?: string | number | null } | null)?.telegram_chat_id;
+  const row = await getFrontOfficeRow<{ telegram_chat_id?: string | number | null }>(
+    supa,
+    'telegram_chat_id',
+  );
+  const raw = row?.telegram_chat_id;
   return raw ? String(raw) : null;
+}
+
+/**
+ * ON BURO SATIRI, ISTENEN KOLONLARLA — cok-kolonlu cagri yerleri icin (backlog #20).
+ *
+ * KOK SORUN: `getFrontOfficeChatId` (yukarisi) yalniz chat_id ceker; ayni satirdan
+ * BASKA kolon da isteyen uc cagri yeri (asagida) ona BAGLANAMIYOR ve "departments +
+ * code='front_office'" desenini ELLE tekrarliyordu. Bu fonksiyon lookup'in SEKLINI
+ * (tablo · filtre · maybeSingle · error'u okumama) tek kaynakta toplar; SECILEN
+ * KOLONLARI cagirana birakir, boylece tek sorgu TEK KALIR.
+ *
+ * `enabledOnly` — BILINCLI olarak opsiyonel ve VARSAYILANI false: uc cagri yerinden
+ * yalniz `sla/handle-callback.ts` `.eq('is_enabled', true)` filtresini tasir, yani
+ * `is_enabled=false` bir on buroda O cagri yeri digerlerinden FARKLI davranir.
+ * Bu fark BUGUNKU CANLI DAVRANISTIR; helper'a tasinirken KORUNDU (varsayilan true
+ * yapmak sessiz bir davranis degisikligi olurdu).
+ *
+ * `error` OKUNMAZ — cagri yerlerinin hicbiri okumuyordu; supabase-js hatada
+ * `data: null` doner ve hepsi zaten null-guard'a dalleniyor.
+ */
+export async function getFrontOfficeRow<T>(
+  supa: SupabaseClient,
+  columns: string,
+  opts: { enabledOnly?: boolean } = {},
+): Promise<T | null> {
+  const base = supa.from('departments').select(columns).eq('code', 'front_office');
+  const { data } = await (opts.enabledOnly ? base.eq('is_enabled', true) : base).maybeSingle();
+  return (data as T | null) ?? null;
 }

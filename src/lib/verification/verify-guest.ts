@@ -3,6 +3,7 @@ import { VERIFICATION_TTL_HOURS } from '@/lib/ai/verification-intents';
 import { normalizeTr } from '@/lib/utils/normalize-tr';
 import { matchesGuestName } from '@/lib/verification/match-guest-name';
 import { hasEventKeyword } from '@/lib/ai/event-contact-gate';
+import { matchesAnyNonLatinWord } from '@/lib/utils/nonlatin-word';
 
 export interface VerifyResult {
   matched: boolean;
@@ -154,8 +155,9 @@ const QUANTITY_UNIT_RE =
 const QUANTITY_UNITS_NONLATIN: readonly string[] = [
   // RU: kisi(2 hal) / insanlar / misafir(2 hal) / gece(3 hal) / gun(cogul) /
   //     yetiskin / cocuk(tekil-cogul)
-  //     (IS 1b: "den"=gun TEKIL CIKARILDI — "dengi"=para ICINDE substring
-  //      yanlis-pozitifi veriyordu; cogul "dney" KALDI)
+  //     ("den"=gun TEKIL BU LISTEDE DEGIL — "dengi"=para ICINDE substring
+  //      yanlis-pozitifi veriyordu; kelime siniriyla QUANTITY_UNITS_NONLATIN_WORD'e
+  //      geri eklendi, bkz. asagisi. Cogul "dney" burada kalmaya devam eder.)
   'человек', 'человека', 'людей', 'гость', 'гостей',
   'ночь', 'ночи', 'ночей', 'дней', 'взрослый', 'ребёнок', 'детей',
   // AR: sahs / eshas / dayf / duyuf / leyle / leyali / yevm / eyyam / balig /
@@ -180,6 +182,20 @@ const QUANTITY_UNITS_NONLATIN: readonly string[] = [
   String.fromCodePoint(0x0623, 0x0637, 0x0641, 0x0627, 0x0644),    // etfal
 ];
 
+/**
+ * TAM-KELIME aranan non-latin miktar birimleri (backlog #9).
+ *
+ * 'день' (gun, tekil) ustteki SUBSTRING listesine giremez: "деньги" (para)
+ * kelimesinin ICINDE gecer — "у меня нет денег" gibi bir cumle miktar baglami
+ * sanilirdi. `matchesNonLatinWord` sondaki harf sartiyla "деньги/деньгами"yi eler,
+ * yalin "день"i yakalar. Cogul "дней" zaten substring listesinde.
+ *
+ * 'дня' / 'дню' (tamlayan/yonelme halleri) BILINCLI olarak EKLENMEDI: backlog
+ * maddesi yalniz tekil yalin hali isaret ediyor ve her yeni uye yanlis-pozitif
+ * yuzeyini buyutur.
+ */
+const QUANTITY_UNITS_NONLATIN_WORD: readonly string[] = ['день'];
+
 export function parseVerificationInput(text: string): ParsedVerification {
   const result: ParsedVerification = {
     roomNumber: null,
@@ -199,7 +215,8 @@ export function parseVerificationInput(text: string): ParsedVerification {
   const disqualifiedAsRoom =
     hasEventKeyword(norm) ||
     QUANTITY_UNIT_RE.test(norm) ||
-    QUANTITY_UNITS_NONLATIN.some((u) => norm.includes(u));
+    QUANTITY_UNITS_NONLATIN.some((u) => norm.includes(u)) ||
+    matchesAnyNonLatinWord(norm, QUANTITY_UNITS_NONLATIN_WORD);
   const roomMatch = cleaned.match(ROOM_REGEX);
   if (roomMatch) {
     const before = roomMatch[0].slice(0, roomMatch[0].indexOf(roomMatch[1]));

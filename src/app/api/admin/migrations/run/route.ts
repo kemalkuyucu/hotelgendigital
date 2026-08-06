@@ -48,8 +48,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       result,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Sunucu hatası.';
     console.error('[migrations/run] Hata:', err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

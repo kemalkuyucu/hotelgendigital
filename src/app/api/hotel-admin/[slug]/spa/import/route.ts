@@ -108,7 +108,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
     const { error: delError } = await supa.from('spa_services').delete().not('id', 'is', null);
     if (delError) {
-      return NextResponse.json({ error: 'Eski liste silinemedi: ' + delError.message }, { status: 500 });
+      console.error('[spa-import]', delError);
+      return NextResponse.json({ error: 'Eski liste silinemedi' }, { status: 500 });
     }
 
     const { error: insError } = await supa.from('spa_services').insert(
@@ -125,11 +126,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       })),
     );
     if (insError) {
-      return NextResponse.json({ error: 'Yeni liste yazilamadi: ' + insError.message }, { status: 500 });
+      console.error('[spa-import]', insError);
+      return NextResponse.json({ error: 'Yeni liste yazilamadi' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, count: spaRows.length });
   } catch (err) {
-    return NextResponse.json({ error: 'Beklenmeyen hata: ' + (err as Error).message }, { status: 500 });
+    console.error('[spa-import]', err);
+    return NextResponse.json({ error: 'Beklenmeyen hata' }, { status: 500 });
   }
 }

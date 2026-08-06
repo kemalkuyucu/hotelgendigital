@@ -61,14 +61,15 @@ export async function GET(
       .order('created_at', { ascending: true });
 
     if (error) {
-      return NextResponse.json({ error: 'query_failed', detail: error.message }, { status: 500 });
+      console.error('[hotel-admin-report-recipients]', error);
+      return NextResponse.json({ error: 'query_failed' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, data: data ?? [] });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown_error';
     console.error('[report-recipients GET]', msg);
-    return NextResponse.json({ error: 'server_error', detail: msg }, { status: 500 });
+    return NextResponse.json({ error: 'server_error' }, { status: 500 });
   }
 }
 
@@ -133,14 +134,15 @@ export async function POST(
           { status: 409 }
         );
       }
-      return NextResponse.json({ error: 'insert_failed', detail: error.message }, { status: 500 });
+      console.error('[hotel-admin-report-recipients]', error);
+      return NextResponse.json({ error: 'insert_failed' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, data }, { status: 201 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown_error';
     console.error('[report-recipients POST]', msg);
-    return NextResponse.json({ error: 'server_error', detail: msg }, { status: 500 });
+    return NextResponse.json({ error: 'server_error' }, { status: 500 });
   }
 }
 
@@ -182,7 +184,8 @@ export async function DELETE(
       .select('id');
 
     if (error) {
-      return NextResponse.json({ error: 'delete_failed', detail: error.message }, { status: 500 });
+      console.error('[hotel-admin-report-recipients]', error);
+      return NextResponse.json({ error: 'delete_failed' }, { status: 500 });
     }
     if (!data || data.length === 0) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
@@ -192,6 +195,6 @@ export async function DELETE(
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown_error';
     console.error('[report-recipients DELETE]', msg);
-    return NextResponse.json({ error: 'server_error', detail: msg }, { status: 500 });
+    return NextResponse.json({ error: 'server_error' }, { status: 500 });
   }
 }

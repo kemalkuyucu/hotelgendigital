@@ -34,7 +34,10 @@ export async function GET() {
     .select('*')
     .order('uploaded_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[manager-documents]', error);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
+  }
   return NextResponse.json({ documents: data ?? [] });
 }
 
@@ -138,7 +141,8 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[manager-documents]', error);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 
   return NextResponse.json({ document: data });

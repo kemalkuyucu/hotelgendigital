@@ -64,8 +64,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ statuses });
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Sunucu hatası.';
     console.error('[migrations/status] Hata:', err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

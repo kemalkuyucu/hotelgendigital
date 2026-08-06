@@ -49,13 +49,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       .select('menu_image_urls')
       .maybeSingle();
     if (error) {
-      return NextResponse.json({ error: 'Menu gorseli alinamadi: ' + error.message }, { status: 500 });
+      console.error('[menu-image]', error);
+      return NextResponse.json({ error: 'Menu gorseli alinamadi' }, { status: 500 });
     }
 
     const urls = Array.isArray(data?.menu_image_urls) ? data.menu_image_urls : [];
     return NextResponse.json({ menu_image_urls: urls });
   } catch (err) {
-    return NextResponse.json({ error: 'Beklenmeyen hata: ' + (err as Error).message }, { status: 500 });
+    console.error('[menu-image]', err);
+    return NextResponse.json({ error: 'Beklenmeyen hata' }, { status: 500 });
   }
 }
 
@@ -90,7 +92,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
       .select('id')
       .maybeSingle();
     if (selErr) {
-      return NextResponse.json({ error: 'Ayar kaydi okunamadi: ' + selErr.message }, { status: 500 });
+      console.error('[menu-image]', selErr);
+      return NextResponse.json({ error: 'Ayar kaydi okunamadi' }, { status: 500 });
     }
     if (!existing?.id) {
       // hotel_name NOT NULL — bos tabloya buradan INSERT etmek dogru degil.
@@ -102,7 +105,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
       .update({ menu_image_urls: urls })
       .eq('id', existing.id);
     if (updErr) {
-      return NextResponse.json({ error: 'Menu gorseli kaydedilemedi: ' + updErr.message }, { status: 500 });
+      console.error('[menu-image]', updErr);
+      return NextResponse.json({ error: 'Menu gorseli kaydedilemedi' }, { status: 500 });
     }
 
     // Bot bayat bilgi servis etmesin (menu/items route'undaki ile ayni)
@@ -110,6 +114,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
 
     return NextResponse.json({ ok: true, menu_image_urls: urls });
   } catch (err) {
-    return NextResponse.json({ error: 'Beklenmeyen hata: ' + (err as Error).message }, { status: 500 });
+    console.error('[menu-image]', err);
+    return NextResponse.json({ error: 'Beklenmeyen hata' }, { status: 500 });
   }
 }

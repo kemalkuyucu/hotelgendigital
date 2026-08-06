@@ -32,8 +32,8 @@ export async function GET(
     if (error || !data) return NextResponse.json({ error: 'Bulunamadı.' }, { status: 404 });
     return NextResponse.json({ guest: data });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotel-admin-guests]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -86,8 +86,8 @@ export async function PATCH(
     if (error || !data) return NextResponse.json({ error: 'Güncelleme başarısız.' }, { status: 400 });
     return NextResponse.json({ ok: true });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotel-admin-guests]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -114,7 +114,7 @@ export async function DELETE(
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotel-admin-guests]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

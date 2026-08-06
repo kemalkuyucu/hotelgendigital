@@ -39,13 +39,12 @@ export async function PATCH(
 
     if (error) {
       console.error('[hotel-users status] update error:', error);
-      return NextResponse.json({ error: 'Durum güncellenemedi: ' + error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Durum güncellenemedi' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
     console.error('[hotel-users status] bridge error:', err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

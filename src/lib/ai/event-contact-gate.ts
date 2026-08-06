@@ -16,6 +16,7 @@
 //      hic gelmezse veya false gelirse TR yol eskisi gibi calisir -> regresyon yok).
 
 import { normalizeTr } from '@/lib/utils/normalize-tr';
+import { matchesAnyNonLatinWord } from '@/lib/utils/nonlatin-word';
 
 /**
  * Etkinlik konusu kokleri. Cogu SUBSTRING (TR ekleri serbest kalsin: "dugunumuz",
@@ -62,13 +63,30 @@ export const EVENT_KEYWORD_RES: readonly RegExp[] = [
 export const EVENT_KEYWORDS_NONLATIN: readonly string[] = [
   // RU: dugun(2 hal) / organizasyon / etkinlik / banket / konferans / gorusme /
   //     istisare / seminer / toren / jubile / kurumsal
-  //     (IS 1b: "zal"=salon CIKARILDI — "skazal/vokzal/pokazal" ICINDE substring
-  //      yanlis-pozitifi veriyordu; geri EKLEME, kelime siniri gerekir)
+  //     ("zal"=salon BU LISTEDE DEGIL — substring'de yanlis-pozitif veriyordu;
+  //      kelime siniriyla EVENT_KEYWORDS_NONLATIN_WORD'e geri eklendi, bkz. asagisi)
   'свадьба', 'свадьбу', 'организация', 'мероприятие', 'банкет', 'конференция',
   'встреча', 'совещание', 'семинар', 'торжество', 'юбилей', 'корпоратив',
   // AR: zifaf / urs / hafl / hafla / mu'temer / ictima / munasebe / tanzim /
   //     velime / nedve / kaa(salon)
   'زفاف', 'عرس', 'حفل', 'حفلة', 'مؤتمر', 'اجتماع', 'مناسبة', 'تنظيم', 'وليمة', 'ندوة', 'قاعة',
+];
+
+/**
+ * TAM-KELIME aranan non-latin etkinlik kokleri (backlog #9).
+ *
+ * 'зал' (salon) ustteki SUBSTRING listesine giremez: "сказал" (soyledi),
+ * "вокзал" (gar), "показал" (gosterdi) kelimelerinin ICINDE gecer ve her birini
+ * etkinlik mesaji sanardi. `matchesNonLatinWord` iki yanina da harf-yok sarti
+ * koydugu icin bunlarin UCU DE elenir, "конференц-зал" ise ESLESIR (tire harf degil).
+ *
+ * CEKIM EKLERI ELDE SAYILIR: tam-kelime sarti "зала/зале/залы"yi otomatik
+ * kapsamaz, o yuzden gercekten kullanilan haller ACIKCA yazilir. Bilincli olarak
+ * DAR tutuldu — "залив" (koy), "залог" (depozito) gibi yalniz basta benzeyen
+ * kelimeler listeye ALINMADIGI icin yanlis-pozitif uretemez.
+ */
+export const EVENT_KEYWORDS_NONLATIN_WORD: readonly string[] = [
+  'зал', 'зала', 'залу', 'зале', 'залом', 'залы', 'залов',
 ];
 
 /** Etkinligi TALEBE ceviren sinyaller (bilgi sorusundan ayirir). */
@@ -90,7 +108,8 @@ export const PROMISE_SIGNALS: readonly string[] = [
 export function hasEventKeyword(normalizedMsg: string): boolean {
   return (
     EVENT_KEYWORD_RES.some((re) => re.test(normalizedMsg)) ||
-    EVENT_KEYWORDS_NONLATIN.some((k) => normalizedMsg.includes(k))
+    EVENT_KEYWORDS_NONLATIN.some((k) => normalizedMsg.includes(k)) ||
+    matchesAnyNonLatinWord(normalizedMsg, EVENT_KEYWORDS_NONLATIN_WORD)
   );
 }
 

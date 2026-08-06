@@ -212,6 +212,6 @@ export async function POST(
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Sunucu hatası';
     console.error('[send-checkout-notif] fatal:', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

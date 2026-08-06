@@ -53,14 +53,14 @@ export async function GET() {
 
     if (error) {
       console.error('[reservation-links] GET error:', error)
-      return NextResponse.json({ error: 'Linkler getirilemedi', detail: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Linkler getirilemedi' }, { status: 500 })
     }
 
     return NextResponse.json({ links: data ?? [] }, { status: 200 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[reservation-links] GET unexpected:', msg)
-    return NextResponse.json({ error: 'Sunucu hatası', detail: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }
 
@@ -109,14 +109,14 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error('[reservation-links] POST error:', error)
-      return NextResponse.json({ error: 'Link eklenemedi', detail: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Link eklenemedi' }, { status: 500 })
     }
 
     return NextResponse.json({ link: data }, { status: 201 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[reservation-links] POST unexpected:', msg)
-    return NextResponse.json({ error: 'Sunucu hatası', detail: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }
 
@@ -173,14 +173,14 @@ export async function PATCH(req: NextRequest) {
 
     if (error) {
       console.error('[reservation-links] PATCH error:', error)
-      return NextResponse.json({ error: 'Link güncellenemedi', detail: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Link güncellenemedi' }, { status: 500 })
     }
 
     return NextResponse.json({ link: data }, { status: 200 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[reservation-links] PATCH unexpected:', msg)
-    return NextResponse.json({ error: 'Sunucu hatası', detail: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }
 
@@ -215,13 +215,13 @@ export async function DELETE(req: NextRequest) {
 
     if (error) {
       console.error('[reservation-links] DELETE(archive) error:', error)
-      return NextResponse.json({ error: 'Link arşivlenemedi', detail: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Link arşivlenemedi' }, { status: 500 })
     }
 
     return NextResponse.json({ archived: data }, { status: 200 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[reservation-links] DELETE unexpected:', msg)
-    return NextResponse.json({ error: 'Sunucu hatası', detail: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }

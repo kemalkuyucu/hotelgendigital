@@ -51,7 +51,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     if (error) {
       console.error('[hotel-users GET] tenant query error:', error);
-      return NextResponse.json({ error: 'Kullanıcılar alınırken hata: ' + error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Kullanıcılar alınırken hata' }, { status: 500 });
     }
 
     return NextResponse.json({
@@ -59,9 +59,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       users: data ?? [],
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
     console.error('[hotel-users GET] bridge error:', err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -112,14 +111,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ error: 'Bu kullanıcı adı zaten kullanılıyor.' }, { status: 409 });
       }
       console.error('[hotel-users POST] insert error:', error);
-      return NextResponse.json({ error: 'Kullanıcı oluşturulamadı: ' + error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Kullanıcı oluşturulamadı' }, { status: 500 });
     }
 
     return NextResponse.json({ user: data }, { status: 201 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
     console.error('[hotel-users POST] bridge error:', err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 

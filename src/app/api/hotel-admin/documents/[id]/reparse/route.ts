@@ -27,8 +27,8 @@ export async function POST(
   try {
     tenant = await resolveTenantBySlug(admin.hotel_slug);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Tenant hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[documents/reparse]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 
   const doc = await getDocument(tenant.hotelSupabase, id);
@@ -93,6 +93,6 @@ export async function POST(
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[documents/reparse] id=${id} hata:`, msg);
     await setParseStatus(tenant.hotelSupabase, id, 'failed', { parseError: msg.slice(0, 1000) }).catch(() => {});
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

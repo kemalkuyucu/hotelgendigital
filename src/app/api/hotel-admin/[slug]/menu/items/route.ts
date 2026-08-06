@@ -53,12 +53,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       .order('category', { ascending: true })
       .order('display_order', { ascending: true });
     if (error) {
-      return NextResponse.json({ error: 'Liste alinamadi: ' + error.message }, { status: 500 });
+      console.error('[menu-items]', error);
+      return NextResponse.json({ error: 'Liste alinamadi' }, { status: 500 });
     }
 
     return NextResponse.json({ items: data ?? [] });
   } catch (err) {
-    return NextResponse.json({ error: 'Beklenmeyen hata: ' + (err as Error).message }, { status: 500 });
+    console.error('[menu-items]', err);
+    return NextResponse.json({ error: 'Beklenmeyen hata' }, { status: 500 });
   }
 }
 
@@ -114,13 +116,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       .select('*')
       .single();
     if (error) {
-      return NextResponse.json({ error: 'Urun eklenemedi: ' + error.message }, { status: 500 });
+      console.error('[menu-items]', error);
+      return NextResponse.json({ error: 'Urun eklenemedi' }, { status: 500 });
     }
 
     invalidateSummary(hotelId);
     return NextResponse.json({ item: data });
   } catch (err) {
-    return NextResponse.json({ error: 'Beklenmeyen hata: ' + (err as Error).message }, { status: 500 });
+    console.error('[menu-items]', err);
+    return NextResponse.json({ error: 'Beklenmeyen hata' }, { status: 500 });
   }
 }
 
@@ -175,13 +179,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
       .select('*')
       .single();
     if (error) {
-      return NextResponse.json({ error: 'Guncellenemedi: ' + error.message }, { status: 500 });
+      console.error('[menu-items]', error);
+      return NextResponse.json({ error: 'Guncellenemedi' }, { status: 500 });
     }
 
     invalidateSummary(hotelId);
     return NextResponse.json({ item: data });
   } catch (err) {
-    return NextResponse.json({ error: 'Beklenmeyen hata: ' + (err as Error).message }, { status: 500 });
+    console.error('[menu-items]', err);
+    return NextResponse.json({ error: 'Beklenmeyen hata' }, { status: 500 });
   }
 }
 
@@ -208,7 +214,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
         .eq('id', id)
         .maybeSingle();
       if (fetchErr) {
-        return NextResponse.json({ error: 'Kayit okunamadi: ' + fetchErr.message }, { status: 500 });
+        console.error('[menu-items]', fetchErr);
+        return NextResponse.json({ error: 'Kayit okunamadi' }, { status: 500 });
       }
       if (!existing) {
         return NextResponse.json({ error: 'Kayit bulunamadi' }, { status: 404 });
@@ -218,7 +225,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
       }
       const { error: delErr } = await supa.from('menu_items').delete().eq('id', id);
       if (delErr) {
-        return NextResponse.json({ error: 'Kalici silinemedi: ' + delErr.message }, { status: 500 });
+        console.error('[menu-items]', delErr);
+        return NextResponse.json({ error: 'Kalici silinemedi' }, { status: 500 });
       }
       invalidateSummary(hotelId);
       return NextResponse.json({ ok: true, hard: true });
@@ -229,12 +237,14 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
       .update({ is_active: false })
       .eq('id', id);
     if (error) {
-      return NextResponse.json({ error: 'Silinemedi: ' + error.message }, { status: 500 });
+      console.error('[menu-items]', error);
+      return NextResponse.json({ error: 'Silinemedi' }, { status: 500 });
     }
 
     invalidateSummary(hotelId);
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return NextResponse.json({ error: 'Beklenmeyen hata: ' + (err as Error).message }, { status: 500 });
+    console.error('[menu-items]', err);
+    return NextResponse.json({ error: 'Beklenmeyen hata' }, { status: 500 });
   }
 }

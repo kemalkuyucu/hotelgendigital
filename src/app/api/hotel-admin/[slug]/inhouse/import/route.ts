@@ -529,6 +529,7 @@ export async function POST(
       })
     } catch { /* ignore */ }
 
-    return NextResponse.json({ error: msg }, { status: 500 })
+    console.error('[import]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }

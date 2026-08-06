@@ -80,6 +80,47 @@ function isGrOffHours(): boolean {
 
 // ─── Yardımcı: HTML kaçış ────────────────────────────────────────────────────
 
+/**
+ * ALERJEN METNI TURKCE SATIRI — KARARIN TEK KAYNAGI (backlog #4).
+ *
+ * Misafir alerjisini kendi dilinde bildirir (RU/AR/DE...); personel o dili bilmek
+ * ZORUNDA DEGILDIR. "Ceviri satiri gerekli mi?" karari IKI ayri kartta lazim:
+ *   1) mutfak/GR bildirimi (bu dosya)      -> HTML kart
+ *   2) on buro max-deneme uyarisi (route)  -> plain-text kart
+ * Karar AYNI, BICIM FARKLI. Bu yuzden tek kaynaga cikan sey KARARDIR; formatlamayi
+ * her cagri yeri kendi kartinin diline gore yapar (§3: ikinci kopya = sessiz kayma).
+ *
+ * `turkish === null` = ceviri satiri EKLENMEZ. Uc durumu birlestirir:
+ * metin zaten Turkce · ceviri bos dondu · ceviri BASARISIZ oldu. Ucunde de
+ * dogru davranis aynidir: HAM metni tek basina goster (raw-fallback).
+ * `translateToTurkish` kendi icinde try/catch tasir ve ASLA throw ETMEZ.
+ *
+ * MALIYET: bir LLM cagrisidir; cagri yeri BIR KEZ cagirmali (alici dongusunun
+ * ICINDE degil).
+ */
+export async function resolveAllergenTurkish(
+  text: string,
+): Promise<{ original: string; turkish: string | null }> {
+  const original = text ?? '';
+  const tr = await translateToTurkish(original);
+  return { original, turkish: needsTurkishLine(original, tr) ? tr : null };
+}
+
+/**
+ * "Ceviri satiri gerekli mi?" — SAF karar (IO/LLM YOK), is8 ile kilitlenir.
+ *
+ * Ceviri cagrisindan AYRI durur cunku is8 korpusu ag/LLM cagirmaz: kararin
+ * kendisini test edilebilir birakmak, IO'yu taklit eden sahte bir vaka yazmaktan
+ * iyidir (bkz. CLAUDE.md §4 "salt IO refactorunun muhru is8 DEGIL").
+ *
+ * false doner: ceviri bos · yalniz bosluk · orijinalle AYNI (metin zaten Turkce
+ * ya da translateToTurkish hatada orijinali geri verdi). Karsilastirma TRIM'li:
+ * yalniz bosluk farkiyla ayni olan metin icin ikinci satir basmak gurultudur.
+ */
+export function needsTurkishLine(original: string, translated: string): boolean {
+  return !!translated.trim() && translated.trim() !== original.trim();
+}
+
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -244,10 +285,11 @@ export async function sendAllergenNotifications(
   // SLA kart deseninin birebir aynısı: çevir, eşitse (zaten Türkçe) satır ekleme.
   // BİR KEZ hesaplanır (döngü içinde DEĞİL) — alıcı sayısı kadar AI çağrısı olmasın.
   // translateToTurkish asla throw etmez (iç try/catch) → en kötü ihtimalle orijinal.
-  const allergenTr = await translateToTurkish(allergenText);
-  const needsAllergenTr =
-    !!allergenTr.trim() && allergenTr.trim() !== allergenText.trim();
-  const allergenLine = needsAllergenTr
+  // Karar `resolveAllergenTurkish`te (TEK KAYNAK, bkz. yukarisi); burada yalniz
+  // HTML bicimlendirme kalir. Davranis DEGISMEDI: turkish!==null, eski
+  // `needsAllergenTr` ile BIREBIR ayni kosuldur.
+  const { turkish: allergenTr } = await resolveAllergenTurkish(allergenText);
+  const allergenLine = allergenTr
     ? `🤧 <b>Alerji:</b> ${escHtml(allergenText)}\n🇹🇷 <b>TÜRKÇE:</b> <b>${escHtml(allergenTr)}</b>`
     : `🤧 <b>Alerji:</b> ${escHtml(allergenText)}`;
 

@@ -12,6 +12,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { getFrontOfficeRow } from '@/lib/telegram/front-office';
 
 interface CallbackParams {
   hotelSupabase: SupabaseClient;
@@ -180,12 +181,12 @@ interface ReceptionInfoParams {
 async function sendReceptionInfoMessage(p: ReceptionInfoParams): Promise<void> {
   try {
     // front_office chat_id'sini DB'den çek
-    const { data: foRow } = await p.hotelSupabase
-      .from('departments')
-      .select('telegram_chat_id, display_name')
-      .eq('code', 'front_office')
-      .eq('is_enabled', true)
-      .maybeSingle();
+    // enabledOnly: BU cagri yerine OZGU filtre (`is_enabled=true`) — diger iki
+    // front_office lookup'inda YOK, bilincli olarak KORUNDU (backlog #20).
+    const foRow = await getFrontOfficeRow<{
+      telegram_chat_id?: number | null;
+      display_name?: string | null;
+    }>(p.hotelSupabase, 'telegram_chat_id, display_name', { enabledOnly: true });
 
     if (!foRow?.telegram_chat_id) {
       console.log('[sla-callback] front_office chat_id yok — resepsiyon bildirimi atlandı');

@@ -120,6 +120,25 @@ export async function GET(req: NextRequest) {
     } catch (e) {
       console.warn('[update-dedup] TTL piggyback skipped', e)
     }
+
+    // rate_limit_counters TTL temizligi (migration 030) — 24 saatten eski pencere
+    // satirlari silinir. Pencere 60 sn oldugu icin 24 saatten eski her satir
+    // tanimi geregi OLUDUR; birakilirsa tablo sinirsiz buyur. Ayri try/catch:
+    // migration'i kosmamis tenant'ta hata ustteki temizligi de SLA'yi da ETKILEMEZ.
+    try {
+      const rlcCutoff = new Date(Date.now() - 86400000).toISOString()
+      for (const h of hotelEntries) {
+        const hsupa = await getHotelSupabase(h.id)
+        if (!hsupa) continue
+        const { error: rlcErr } = await hsupa
+          .from('rate_limit_counters')
+          .delete()
+          .lt('window_start', rlcCutoff)
+        if (rlcErr) console.warn(`[rate-limit] TTL temizligi atlandi slug=${h.slug}:`, rlcErr.message)
+      }
+    } catch (e) {
+      console.warn('[rate-limit] TTL piggyback skipped', e)
+    }
   } catch (slaErr) {
     console.error('[health-check] SLA check error:', slaErr)
   }

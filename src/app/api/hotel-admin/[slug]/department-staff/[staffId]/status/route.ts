@@ -89,12 +89,13 @@ export async function PATCH(
       .single();
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      console.error('[department-staff-status]', updateError);
+      return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
     }
 
     return NextResponse.json({ staff: updated });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[department-staff-status]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

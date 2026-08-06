@@ -99,7 +99,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     // MIMARI: eski menuyu sil + yeni bas (diff yok)
     const { error: delError } = await supa.from('menu_items').delete().not('id', 'is', null);
     if (delError) {
-      return NextResponse.json({ error: 'Eski menu silinemedi: ' + delError.message }, { status: 500 });
+      console.error('[menu-import]', delError);
+      return NextResponse.json({ error: 'Eski menu silinemedi' }, { status: 500 });
     }
 
     const { error: insError } = await supa.from('menu_items').insert(
@@ -114,11 +115,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       })),
     );
     if (insError) {
-      return NextResponse.json({ error: 'Yeni menu yazilamadi: ' + insError.message }, { status: 500 });
+      console.error('[menu-import]', insError);
+      return NextResponse.json({ error: 'Yeni menu yazilamadi' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, count: menuRows.length });
   } catch (err) {
-    return NextResponse.json({ error: 'Beklenmeyen hata: ' + (err as Error).message }, { status: 500 });
+    console.error('[menu-import]', err);
+    return NextResponse.json({ error: 'Beklenmeyen hata' }, { status: 500 });
   }
 }

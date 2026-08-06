@@ -46,7 +46,7 @@ export async function POST(
 
   if (updateError) {
     console.error('[hotel-delete] update error:', updateError)
-    return NextResponse.json({ error: 'Silme işlemi başarısız: ' + updateError.message }, { status: 500 })
+    return NextResponse.json({ error: 'Silme işlemi başarısız' }, { status: 500 })
   }
 
   // ── Audit log ─────────────────────────────────────────────

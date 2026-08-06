@@ -74,13 +74,14 @@ export async function GET(
     const { data, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('[hotel-admin-department-staff]', error);
+      return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
     }
 
     return NextResponse.json({ staff: data as DepartmentStaffRow[] });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotel-admin-department-staff]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -163,12 +164,13 @@ export async function POST(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('[hotel-admin-department-staff]', error);
+      return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
     }
 
     return NextResponse.json({ staff: data as DepartmentStaffRow }, { status: 201 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotel-admin-department-staff]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

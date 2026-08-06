@@ -9,6 +9,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getDecryptedBridge } from '@/lib/tenant/decrypt-credentials';
+import { getFrontOfficeRow } from '@/lib/telegram/front-office';
 
 interface HotelEntry {
   id: string;
@@ -89,23 +90,20 @@ export async function runSlaCheck(
 
     for (const ev of overdueDept ?? []) {
       // front_office departmanını bul
-      const { data: frontOffice } = await hotelSupabase
-        .from('departments')
-        .select('telegram_chat_id, reception_sla_minutes')
-        .eq('code', 'front_office')
-        .maybeSingle();
+      const frontOffice = await getFrontOfficeRow<{
+        telegram_chat_id?: number | null;
+        reception_sla_minutes?: number | null;
+      }>(hotelSupabase, 'telegram_chat_id, reception_sla_minutes');
 
       // telegram_chat_id kullan
-      const foChatId =
-        (frontOffice as { telegram_chat_id?: number | null } | null)?.telegram_chat_id?.toString() ??
-        null;
+      const foChatId = frontOffice?.telegram_chat_id?.toString() ?? null;
 
       if (!foChatId) {
         console.warn('[sla-check] front_office chat_id yok, escalation atlandı:', ev.id);
         continue;
       }
 
-      const receptionSlaMinutes = (frontOffice as { reception_sla_minutes?: number | null } | null)?.reception_sla_minutes ?? 20;
+      const receptionSlaMinutes = frontOffice?.reception_sla_minutes ?? 20;
       const receptionDeadline = new Date(
         now.getTime() + receptionSlaMinutes * 60 * 1000
       );

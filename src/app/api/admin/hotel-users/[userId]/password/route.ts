@@ -46,13 +46,12 @@ export async function PATCH(
 
     if (error) {
       console.error('[hotel-users password] update error:', error);
-      return NextResponse.json({ error: 'Şifre güncellenemedi: ' + error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Şifre güncellenemedi' }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
     console.error('[hotel-users password] bridge error:', err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

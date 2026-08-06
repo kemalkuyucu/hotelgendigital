@@ -3,7 +3,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { TelegramClient } from '@/lib/telegram/client';
 import { verifyTelegramSecret } from '@/lib/telegram/verify';
 import { extractUpdateId, claimTelegramUpdate } from '@/lib/telegram/update-dedup';
-import { getFrontOfficeChatId } from '@/lib/telegram/front-office';
+import { claimRateLimit } from '@/lib/telegram/rate-limit';
+import { getFrontOfficeChatId, getFrontOfficeRow } from '@/lib/telegram/front-office';
+import { maskName } from '@/lib/utils/mask-pii';
 import type { TelegramUpdate, TelegramMessage } from '@/lib/telegram/types';
 import { getHotelBySlug } from '@/lib/tenant/get-hotel-by-slug';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
@@ -71,7 +73,7 @@ import {
   findRelevantAutoFileDocument,
 } from '@/lib/telegram/send-document';
 // Modül 4: Alerjen bildirim yönlendirme
-import { sendAllergenNotifications } from '@/lib/telegram/allergen-notify';
+import { sendAllergenNotifications, resolveAllergenTurkish } from '@/lib/telegram/allergen-notify';
 import Anthropic from '@anthropic-ai/sdk';
 // Modül 16.b (refactor): meeting_rooms artık hotel-context.ts içinde HOTEL CONTEXT'e gömülü gelir.
 // detectMeetingRoomIntent / formatMeetingRoomsBlock gate'i kaldırıldı.
@@ -416,15 +418,43 @@ export async function POST(
 
       // order: F&B siparis teyit butonlari
       if (cq.data === 'order:noop') {
+        // BACKLOG #10 — DIL ARTIK BAGLI (eski 'tr' HARDCODE KALKTI).
+        // `order:noop` callback_data'si convId TASIMAZ (64-byte siniri) ve bu dalda
+        // conversation YUKLU DEGIL; bu yuzden toast IS 10'un tek bilincli istisnasiydi
+        // ve RU/AR misafir pasif butona bastiginda TURKCE toast goruyordu. Kalici dil
+        // artik telegram_chat_id ile TEK sorguda okunuyor — konusma isaretcisi
+        // `upsert-conv` ile AYNI desen (created_at ASC + limit(1), PGRST116 tuzagi §4).
+        // MALIYET: yol nadir (zaten pasiflestirilmis butona ikinci basim) — kabul.
+        // FAIL-SAFE: kayit yok / metadata bos / sorgu hatasi -> 'tr'. Bu ESKI
+        // davranistir, yani degisiklik hicbir kosulda toast'i KAYBETTIRMEZ.
+        let noopLang: GuestLang = 'tr';
+        try {
+          const noopChatId = cq.message?.chat?.id;
+          if (noopChatId !== undefined) {
+            const { data: noopConv } = await supa
+              .from('conversations')
+              .select('metadata')
+              .eq('telegram_chat_id', noopChatId)
+              .order('created_at', { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            noopLang = resolvePreferredLang({
+              stored: readPreferredLang(noopConv?.metadata),
+              interfaceLang: 'tr',
+            });
+          }
+        } catch (noopLangErr) {
+          console.log(
+            '[order-noop] kalici dil okunamadi, tr fallback:',
+            noopLangErr instanceof Error ? noopLangErr.message : 'bilinmeyen',
+          );
+        }
+
         await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // DIL 'tr' SABIT — BILINCLI (IS 10 istisnasi): `order:noop` callback_data'si
-          // convId TASIMAZ (64-byte siniri), bu dalda conversation da YUKLU DEGIL ->
-          // kalici dil ancak telegram_chat_id ile EK bir sorgu acilarak okunabilirdi.
-          // Yol nadir (zaten pasiflestirilmis butona ikinci basim) ve tek satirlik bir
-          // toast icin her basimda DB okumaya degmez. Metin yine guest-text.ts'te.
-          body: JSON.stringify({ callback_query_id: cq.id, text: guestText('order_already_processed', 'tr') }),
+          // Metin yine guest-text.ts'te (misafire donuk sabit metin TEK KAYNAK).
+          body: JSON.stringify({ callback_query_id: cq.id, text: guestText('order_already_processed', noopLang) }),
         });
         return NextResponse.json({ ok: true });
       }
@@ -1016,7 +1046,7 @@ async function handleVerificationFlow(args: {
     } else {
       // Daha önce sorduk ama kullanıcı eksik bilgi gönderdi (sadece oda no veya sadece soyad)
       // attempts artırma — bu bir format hatası, yanlış girişim sayılmaz
-      console.log(`[verification] Eksik format — pending_intent=${conversation.verification_pending_intent}, roomNumber=${roomNumber}, lastName=${lastName}`);
+      console.log(`[verification] Eksik format — pending_intent=${conversation.verification_pending_intent}, roomNumber=${roomNumber}, lastName=${maskName(lastName)}`);
       const incompleteMsg = getIncompleteFormatMsg(language);
       return {
         shouldShortCircuit: true,
@@ -1028,7 +1058,7 @@ async function handleVerificationFlow(args: {
   }
 
   // 4. Doğrulama bilgisi var — verifyGuest çağır
-  console.log(`[verification] Deneniyor: room=${roomNumber} firstName=${firstName} lastName=${lastName} hasEmbeddedRequest=${hasEmbeddedRequest}`);
+  console.log(`[verification] Deneniyor: room=${roomNumber} firstName=${maskName(firstName)} lastName=${maskName(lastName)} hasEmbeddedRequest=${hasEmbeddedRequest}`);
   const result = await verifyGuest(supa, roomNumber!, firstName!, lastName!);
 
   // AUDIT H3 (A8): await + error check — void fire-and-forget Vercel Hobby'de response
@@ -1187,6 +1217,22 @@ async function handleMessage(args: {
     if (!checkRateLimit(userId)) {
       console.log(`[rate-limit] dropped user=${userId}`);
       return; // HTTP 200 dönecek (sessizce, spammer anlamasın)
+    }
+
+    // KATMAN 1b — KALICI RATE LIMIT (migration 030).
+    // Ustteki in-memory gate MODUL-SEVIYESI bir Map'tir: Vercel'de her invocation
+    // ayri instance olabilir, sayac cold start'ta sifirlanir ve instance'lar
+    // birbirini GORMEZ -> yeterli paralellikte sinir yok sayilir. Ayrica yalniz
+    // chat basinadir; N sahte hesap otelin AI butcesini tuketebilirdi (otel
+    // capinda tavan YOKTU). Bu kapi sayaci tenant DB'ye tasir + otel tavani ekler.
+    // FAIL-OPEN: sayac okunamazsa (migration kosulmamis / DB hatasi) istek GECER.
+    const rl = await claimRateLimit(supa, hotelSlug, String(userId));
+    if (!rl.allowed) {
+      // Sessiz drop — ustteki gate ile AYNI gerekce (spammer geri bildirim almasin).
+      console.warn(
+        `[rate-limit] persistent drop scope=${rl.scope} hits=${rl.hits} slug=${hotelSlug} user=${userId}`,
+      );
+      return; // HTTP 200 — Telegram retry etmesin
     }
   }
   // ── RATE LIMIT GATE SONU ─────────────────────────────────────────────────
@@ -2226,7 +2272,7 @@ async function handleMessage(args: {
 
     if (!avRoom || !avLastName) {
       // Format eksik → tekrar sor (deneme sayılmaz)
-      console.log(`[allergen-verify-gate] Eksik format: room=${avRoom} lastName=${avLastName}`);
+      console.log(`[allergen-verify-gate] Eksik format: room=${avRoom} lastName=${maskName(avLastName)}`);
       const incompleteMsg = guestText('allergen_verify_format', persistedLang);
 
       await supa.from('bot_messages').insert({ conversation_id: conversationId, direction: 'outbound', text: incompleteMsg, message_type: 'text' });
@@ -2263,7 +2309,7 @@ async function handleMessage(args: {
       const verifiedRoom = avMatched.room_number as string;
       const verifiedFullName = guestNameFull.trim();
 
-      console.log(`[allergen-verify-gate] ✅ Eşleşti: room=${verifiedRoom} name="${verifiedFullName}"`);
+      console.log(`[allergen-verify-gate] ✅ Eşleşti: room=${verifiedRoom} name=${maskName(verifiedFullName)}`);
 
       // guest_allergens güncelle
       const avPlatformUserId = String(userId);
@@ -2288,7 +2334,7 @@ async function handleMessage(args: {
         if (avGaErr) {
           console.error('[allergen-verify-gate] guest_allergens UPDATE HATASI:', avGaErr.message);
         } else {
-          console.log(`[allergen-verify-gate] guest_allergens güncellendi → room=${verifiedRoom} name=${verifiedFullName}`);
+          console.log(`[allergen-verify-gate] guest_allergens güncellendi → room=${verifiedRoom} name=${maskName(verifiedFullName)}`);
         }
 
         // Bildirim gönder
@@ -2330,7 +2376,7 @@ async function handleMessage(args: {
 
     } else {
       // ❌ Eşleşmedi
-      console.log(`[allergen-verify-gate] ❌ Eşleşmedi: room=${avRoom} lastName=${avLastName} attempt=${currentAttempt}/${MAX_ALLERGEN_VERIFY_ATTEMPTS}`);
+      console.log(`[allergen-verify-gate] ❌ Eşleşmedi: room=${avRoom} lastName=${maskName(avLastName)} attempt=${currentAttempt}/${MAX_ALLERGEN_VERIFY_ATTEMPTS}`);
 
       if (currentAttempt >= MAX_ALLERGEN_VERIFY_ATTEMPTS) {
         // ── SESSİZ YUTMA FIX: state temizlenmeden ÖNCE ön büroyu uyar.
@@ -2347,8 +2393,22 @@ async function handleMessage(args: {
             .maybeSingle();
           const avFailChatId = await getFrontOfficeChatId(supa);
           if (avFailChatId) {
-            const avFailAllergen = (avFailAllergenRow?.allergen_text as string)?.trim() || '(belirtilmemiş)';
+            const avFailAllergenRaw = (avFailAllergenRow?.allergen_text as string)?.trim() ?? '';
+            const avFailAllergen = avFailAllergenRaw || '(belirtilmemiş)';
             const avFailName = `${avParsed.firstName ?? ''} ${avLastName}`.trim();
+
+            // BACKLOG #4 — alerji metni ARTIK ÇEVRİLİYOR. Misafir alerjisini kendi
+            // dilinde bildirir (RU/AR); ön büro personeli onu okuyamayabilir ve bu
+            // yaşamsal-güvenlik metnidir. Mutfak/GR kartıyla AYNI karar kaynağı
+            // (`resolveAllergenTurkish`) — kopya YOK, yalnız biçim plain-text.
+            // Yalnızca GERÇEK metin varsa çevrilir: '(belirtilmemiş)' yer tutucusunu
+            // LLM'e göndermek bedava değil ve anlamsız çıktı üretir.
+            // FAIL-SAFE: translateToTurkish throw ETMEZ, başarısızlıkta turkish=null
+            // döner → kart HAM metinle aynen gider (raw-fallback).
+            const avFailTr = avFailAllergenRaw
+              ? (await resolveAllergenTurkish(avFailAllergenRaw)).turkish
+              : null;
+
             const avFailText =
               `🧴 Alerji Doğrulaması Başarısız — Manuel Kontrol\n` +
               `━━━━━━━━━━\n` +
@@ -2356,6 +2416,7 @@ async function handleMessage(args: {
               `Beyan edilen oda: ${avRoom}\n` +
               `Beyan edilen ad-soyad: ${avFailName}\n` +
               `Bildirilen alerji: ${avFailAllergen}\n` +
+              (avFailTr ? `🇹🇷 TÜRKÇE: ${avFailTr}\n` : '') +
               `━━━━━━━━━━\n` +
               `Lütfen misafiri manuel bulup alerji kaydını doğrulayın.`;
             await tg.sendMessage({ chat_id: Number(avFailChatId), text: avFailText, disable_web_page_preview: true });
@@ -3295,8 +3356,8 @@ async function handleMessage(args: {
       console.log('[re-verify] Yeni oda/ad/soyad tespit edildi, re-verify deneniyor', {
         oldRoom: currentVerifiedGuest.room_number,
         newRoom: reParsed.roomNumber,
-        oldLast: currentVerifiedGuest.last_name,
-        newLast: reParsed.lastName,
+        oldLast: maskName(currentVerifiedGuest.last_name),
+        newLast: maskName(reParsed.lastName),
       });
 
       const reVerResult = await verifyGuest(supa, reParsed.roomNumber!, reParsed.firstName!, reParsed.lastName!);
@@ -3362,16 +3423,15 @@ async function handleMessage(args: {
         // Kart mevcut currentVerifiedGuest kimligiyle, HAM mesaj request_text olarak duser.
         // Kart gonderilemezse oksuz SLA kalmasin (BUG-2 kurali) → rollback. Hata olsa da return.
         try {
-          const { data: foDept } = await supa
-            .from('departments')
-            .select('telegram_chat_id, sla_minutes')
-            .eq('code', 'front_office')
-            .maybeSingle();
-          const foChatId = (foDept as { telegram_chat_id?: string | null } | null)?.telegram_chat_id ?? null;
+          const foDept = await getFrontOfficeRow<{
+            telegram_chat_id?: string | null;
+            sla_minutes?: number | null;
+          }>(supa, 'telegram_chat_id, sla_minutes');
+          const foChatId = foDept?.telegram_chat_id ?? null;
           if (!foChatId) {
             console.error('[reverify-forward] front_office telegram_chat_id yok — talep forward EDILEMEDI (sessiz yutma riski)');
           } else {
-            const foSlaMin = (foDept as { sla_minutes?: number | null } | null)?.sla_minutes ?? 1;
+            const foSlaMin = foDept?.sla_minutes ?? 1;
             const nowFwd = new Date();
             const guestFullFwd = `${currentVerifiedGuest.first_name ?? ''} ${currentVerifiedGuest.last_name ?? ''}`.trim().toUpperCase();
             const { data: foSla, error: foSlaErr } = await supa

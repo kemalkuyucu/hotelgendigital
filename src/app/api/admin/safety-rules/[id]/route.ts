@@ -45,8 +45,8 @@ export async function PATCH(
     if (error) throw new Error(error.message);
     return NextResponse.json({ rule: data });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[admin-safety-rules]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -65,6 +65,9 @@ export async function DELETE(
     .delete()
     .eq('id', id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[admin-safety-rules]', error);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
+  }
   return NextResponse.json({ success: true });
 }

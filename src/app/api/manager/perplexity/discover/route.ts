@@ -30,7 +30,10 @@ export async function GET(request: Request) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[perplexity-discover]', error);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
+  }
 
   return NextResponse.json({
     discoveries: data ?? [],
@@ -99,7 +102,8 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (hotelError) {
-    return NextResponse.json({ error: hotelError.message }, { status: 500 });
+    console.error('[perplexity-discover]', hotelError);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
   if (!hotelSettings?.address) {
     return NextResponse.json(
@@ -147,7 +151,8 @@ export async function POST(request: Request) {
     .single();
 
   if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 });
+    console.error('[perplexity-discover]', insertError);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 
   return NextResponse.json({

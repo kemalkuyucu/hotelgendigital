@@ -74,6 +74,6 @@ export async function DELETE(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[staff/DELETE] Unexpected error:', msg)
-    return NextResponse.json({ error: 'Sunucu hatası', detail: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }

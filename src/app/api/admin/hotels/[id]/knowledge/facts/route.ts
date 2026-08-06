@@ -24,7 +24,7 @@ export async function GET(
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error';
     console.error('[knowledge/facts GET]', msg);
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    return NextResponse.json({ ok: false, error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -87,6 +87,6 @@ export async function POST(
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error';
     console.error('[knowledge/facts POST]', msg);
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    return NextResponse.json({ ok: false, error: 'Sunucu hatası' }, { status: 500 });
   }
 }

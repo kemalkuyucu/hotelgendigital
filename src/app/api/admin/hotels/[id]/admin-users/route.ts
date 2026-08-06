@@ -27,8 +27,8 @@ export async function GET(
     if (error) throw new Error(error.message);
     return NextResponse.json({ users: data ?? [] });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotels-admin-users]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }
 
@@ -95,7 +95,7 @@ export async function POST(
 
     return NextResponse.json({ user: data }, { status: 201 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Sunucu hatası.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[hotels-admin-users]', err);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

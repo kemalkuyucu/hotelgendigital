@@ -230,6 +230,6 @@ export async function GET(
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Sunucu hatası.'
     console.error('[inhouse/list] Fatal:', msg)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }

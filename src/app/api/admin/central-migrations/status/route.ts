@@ -19,8 +19,7 @@ export async function GET(): Promise<NextResponse> {
     const status = await getCentralMigrationStatus();
     return NextResponse.json({ status });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Sunucu hatası.';
     console.error('[central-migrations/status] Hata:', err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
   }
 }

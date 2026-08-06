@@ -41,7 +41,8 @@ export async function POST(
     .eq('id', hotelId)
 
   if (updateError) {
-    return NextResponse.json({ error: 'Geri yükleme başarısız: ' + updateError.message }, { status: 500 })
+    console.error('[hotels-restore]', updateError);
+    return NextResponse.json({ error: 'Geri yükleme başarısız' }, { status: 500 })
   }
 
   await supabase.from('audit_log').insert({

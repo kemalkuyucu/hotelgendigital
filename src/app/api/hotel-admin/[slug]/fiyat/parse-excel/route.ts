@@ -23,6 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     const sampleRows = rows.slice(0, 3);
     return NextResponse.json({ headers, sample_rows: sampleRows, total_rows: rows.length });
   } catch (err) {
-    return NextResponse.json({ error: 'Parse hatasi: ' + (err as Error).message }, { status: 500 });
+    console.error('[fiyat-parse-excel]', err);
+    return NextResponse.json({ error: 'Parse hatasi' }, { status: 500 });
   }
 }

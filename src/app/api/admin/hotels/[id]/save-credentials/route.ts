@@ -62,7 +62,8 @@ export async function POST(
       )
 
     if (error) {
-      return NextResponse.json({ ok: false, error: `Kayıt hatası: ${error.message}` }, { status: 500 })
+      console.error('[hotels-save-credentials]', error);
+      return NextResponse.json({ ok: false, error: 'Kayıt hatası' }, { status: 500 })
     }
 
     await logAudit({

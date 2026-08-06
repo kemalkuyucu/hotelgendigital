@@ -39,14 +39,14 @@ export async function GET(
 
     if (error) {
       console.error('[staff/GET] DB error:', error)
-      return NextResponse.json({ error: 'Sorumlular getirilemedi', detail: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Sorumlular getirilemedi' }, { status: 500 })
     }
 
     return NextResponse.json({ staff: data ?? [] }, { status: 200 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[staff/GET] Unexpected error:', msg)
-    return NextResponse.json({ error: 'Sunucu hatası', detail: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }
 
@@ -123,6 +123,6 @@ export async function POST(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[staff/POST] Unexpected error:', msg)
-    return NextResponse.json({ error: 'Sunucu hatası', detail: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }

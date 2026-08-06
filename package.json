@@ -32,7 +32,7 @@
     "react-dom": "19.2.3",
     "resend": "^4.0.0",
     "ws": "8.21.2",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

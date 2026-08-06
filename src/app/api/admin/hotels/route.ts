@@ -68,7 +68,8 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (hotelError || !hotel) {
-    return NextResponse.json({ error: hotelError?.message ?? 'Hotel oluşturulamadı' }, { status: 500 })
+    console.error('[admin-hotels]', hotelError);
+    return NextResponse.json({ error: 'Hotel oluşturulamadı' }, { status: 500 })
   }
 
   // Boş bridge_credentials satırı aç (is_healthy=false)

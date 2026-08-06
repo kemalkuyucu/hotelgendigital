@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     results = await runSlaCheck(hotelEntries, getHotelSupabase)
   } catch (err) {
     console.error('[run-sla-check] error:', err)
-    return NextResponse.json({ error: 'SLA check failed', detail: String(err) }, { status: 500 })
+    return NextResponse.json({ error: 'SLA check failed' }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true, processed: results.length, results })

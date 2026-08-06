@@ -59,7 +59,8 @@ export async function GET(
 
   const { data, error } = await query;
   if (error) {
-    return NextResponse.json({ error: 'query_failed', detail: error.message }, { status: 500 });
+    console.error('[hotel-admin-eskalasyon]', error);
+    return NextResponse.json({ error: 'query_failed' }, { status: 500 });
   }
 
   const now = Date.now();

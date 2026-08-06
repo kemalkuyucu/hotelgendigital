@@ -158,6 +158,6 @@ export async function PATCH(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[departments/PATCH] Unexpected error:', msg)
-    return NextResponse.json({ error: 'Sunucu hatası', detail: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
 }

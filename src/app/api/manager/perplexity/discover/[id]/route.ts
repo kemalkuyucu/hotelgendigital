@@ -23,7 +23,10 @@ export async function DELETE(
     .delete()
     .eq('id', id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[perplexity-discover]', error);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
+  }
   return NextResponse.json({ success: true });
 }
 
@@ -64,6 +67,9 @@ export async function PATCH(
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[perplexity-discover]', error);
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 });
+  }
   return NextResponse.json({ discovery: data });
 }
