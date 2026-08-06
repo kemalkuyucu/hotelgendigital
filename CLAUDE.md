@@ -6,16 +6,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- Bu dosya **24. oturum sonrasi** durumu yansitir; sohbet tarafindaki
-  **DEVIR + MASTER (v38)** ile hizalidir.
-- **HEAD (24. oturum): `df38583` — SEVK EDILDI, ama DEPLOY EDILMEDI.** `front_office`
-  chat_id lookup'i tek kaynaga baglandi (backlog #6): `getFrontOfficeChatId(supa)`
+- Bu dosya **25. oturum sonrasi** durumu yansitir; sohbet tarafindaki
+  **DEVIR + MASTER (v39)** ile hizalidir.
+- **25. OTURUM — GUVENLIK KAPANISI (ozet).** Tam bir guvenlik denetimi kosuldu,
+  bulgular kapatildi, sevk **DEPLOY EDILDI** ve git gecmisine sizmis
+  `service_role` anahtarlari **ROTE EDILDI**. En agir bulgu **CROSS-TENANT
+  YAZMA** idi: `/api/hotel-admin/[slug]/departments/[code]/sla` URL'deki slug'i
+  oturumdaki otelle KARSILASTIRMIYORDU -> A otelinin admin'i B otelinin SLA
+  esigini YAZABILIYORDU (`resolveTenantBySlug` service_role client doner,
+  RLS tamamen BYPASS; middleware bu yolu kapsamaz, matcher'i `/api/...` disinda).
+  Slug kapisi `8cf4e95`, rol kapisi `1da42a9` ile kapandi. Tam liste §7'de.
+- **HEAD = PROD = `1da42a9` (25. oturum) — SEVK EDILDI ve DEPLOY EDILDI.**
+  Guvenlik kapanis batch'i: SLA **rol** kapisi · istemciye donen `error.message`
+  sizintilari (**125 site**) · xlsx CVE (SheetJS resmi CDN 0.20.3) · **KALICI
+  rate-limit** (denial-of-wallet, migration 030) · log PII maskeleme ·
+  backlog #4/#9/#10/#20. Muhur: `npm run doctor` YESIL (tsc 0 · test:is8
+  **1997/1997, 17 dosya** · sema 46/47 · marka 0 unexpected) + `npm run build`
+  exit 0. **CANLI UAT YOK** (bkz. §7).
+  **DIKKAT — bu deploy IKI commit tasidi:** 24. oturumdan branch'te bekleyen
+  `df38583` ile `1da42a9` prod'a BIRLIKTE gitti. (`dpl_` deployment id'si bu
+  dosyaya ISLENMEDI — onceki oturumlarin aksine kayit altina alinmadi, bkz. §7.)
+- **ONCEKI PROD (24. oturum): `df38583`** — `front_office` chat_id lookup'i tek
+  kaynaga baglandi (backlog #6): `getFrontOfficeChatId(supa)`
   (`src/lib/telegram/front-office.ts`) — **HAM string** dondurur, `Number()` coerce
   **CAGRI YERINDE** kalir. 6 canli site + olu `:865` bagli. Davranis-KORUYUCU saf
-  refactor oldugu icin deploy BILINCLE ertelendi -> **branch HEAD != prod**
-  (`df38583` vs `0bac2ad`); bir sonraki sevk deploy edilirken bu commit de gider.
-  Muhur: `npm run doctor` YESIL + diff-esdegerlik okumasi. **CANLI UAT YOK.**
-- **SON PROD (**hala** 23. oturum, SEVK B): `0bac2ad`** — alerjen dogrulamasinda **SESSIZ
+  refactor oldugu icin deploy o oturumda BILINCLE ertelenmisti; 25. oturumda
+  `1da42a9` ile birlikte prod'a gitti.
+- **ONCEKI PROD (23. oturum, SEVK B): `0bac2ad`** — alerjen dogrulamasinda **SESSIZ
   YUTMA KAPANDI**: 3 basarisiz oda+isim denemesinden sonra state temizlenip
   misafire "on buroya basvurun" deniyor ama **personel HIC haberdar edilmiyordu**
   (bildirilen alerji kimseye ulasmadan kayboluyordu — §3 SESSIZ YUTMA YASAGI,
@@ -48,8 +65,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   -> `f5a56a7` + `92edccb` (20. otu, **KOK**)
   -> `9e46fdf` (21. otu, backlog #13)
   -> `e36bf65` (22. otu, backlog #6)
-  -> `1b529f2` (23.a, site 7) -> `0bac2ad` (23.b, sessiz yutma — **PROD BURADA DURUYOR**)
-  -> `df38583` (24. otu, backlog #6 chat_id helper — **DEPLOY YOK**, branch-only).
+  -> `1b529f2` (23.a, site 7) -> `0bac2ad` (23.b, sessiz yutma)
+  -> `df38583` (24. otu, backlog #6 chat_id helper — o oturumda deploy YOK)
+  -> `4114d07` + `8cf4e95` + `cf961d0` + `6778749` (25. otu guvenlik on-hazirligi:
+     next/ws CVE · **cross-tenant SLA slug kapisi** · postgrest filtre + header +
+     timeout + PII + prompt guard · AR codePoint + cancel claim)
+  -> `1da42a9` (25. otu, guvenlik kapanisi — **PROD BURADA DURUYOR**,
+     `df38583` ile BIRLIKTE deploy edildi).
   Yedek tag: `pre-tier2-20260728`.
 - **DOKUMAN GECIKMESI (20. otu tespiti, 23. otu TEKRARLANDI):** 19. oturum sevki
   (`48ea1ea`) bu dosyaya DOKUNMADI — CLAUDE.md v32/18. oturumda kalmisti. AYNI SEY
@@ -57,8 +79,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   kaldi (backlog #6'yi ACIK, site 7'yi YOK gosteriyordu). Bu senkron 22+23'u
   BIRLIKTE tasir. Ders: kod sevki ile doc sevki ayri commit'ler; biri atlanirsa
   doc sessizce bayatlar (kod dogru, harita yanlis) — sevkten sonra doc senkronunu
-  AYNI oturumda kapat. **24. otu bunu UYGULADI:** `df38583` (kod) ve bu senkron
-  (doc) ayni oturumda, ayri commit'ler olarak kapatildi.
+  AYNI oturumda kapat. **24. otu bunu UYGULADI:** `df38583` (kod) ve o senkron
+  (doc) ayni oturumda, ayri commit'ler olarak kapatildi. **25. otu da UYGULADI:**
+  `1da42a9` (kod) ve bu senkron (doc) ayri commit'ler.
 
 ## 1. CALISMA PRENSIPLERI
 - **Reconnaissance-first:** Edit'ten once ilgili dosyalari OKU. Varsayimla kod yazma.
@@ -121,31 +144,79 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
-- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (23. oturum sonu **1913/1913**, **14 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (25. oturum sonu **1997/1997**, **17 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)
   -> 1872 (21. otu **YENI DOSYA** `is8-match-guest-name-test.ts`, **45 vaka**)
   -> 1898 (22. otu, YENI DOSYA YOK: `is8-match-guest-name` 45->71, §6 `sameGuestByText` 11 + §7 `sameLastName` 8 + §8 eski normalizer oracle'i 7)
   -> 1913 (23. otu, YENI DOSYA YOK: `is8-match-guest-name` 71->**86**, §9 site-7 15 vaka)
-  -> **1913 (24. otu — DEGISMEDI, bilincli:** `getFrontOfficeChatId` salt IO, icinde saf
+  -> 1913 (24. otu — DEGISMEDI, bilincli: `getFrontOfficeChatId` salt IO, icinde saf
   karar YOK; davranis-koruyucu bir IO refactorunun muhru is8 DEGIL, **doctor +
-  diff-esdegerlik okumasi**. is8'e vaka ZORLAMA — sahte kapsam uretir)) +
+  diff-esdegerlik okumasi**. is8'e vaka ZORLAMA — sahte kapsam uretir)
+  -> **1997 (25. otu, UC YENI DOSYA / +84 vaka):** `is8-mask-pii-test.ts` (**33** —
+  cekirdek iddia "HAM AD CIKTIDA GECMEZ") · `is8-allergen-tr-line-test.ts` (**14** —
+  `needsTurkishLine`, LLM'i SARMALAYAN IO degil SAF karar test edilir) ·
+  `is8-nonlatin-word-test.ts` (**37** — gercek cagri yerlerinden, eski-substring
+  oracle'i CIFT YONLU). 25. oturumun geri kalani (SLA rol kapisi, error.message
+  sizintilari, xlsx, rate-limit, #10, #20) korpusa vaka EKLEMEDI: hepsi IO ya da
+  yapilandirma, saf karar iceren yalniz bu uc modul) +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip;
-  23. otu sonu **GEREKLI 45 / MEVCUT 46**, `migration-eksik: [yok]` — 18. otu ile AYNI,
-  20-23. oturumlar migration EKLEMEDIGI icin sema DEGISMEDI. Bir kosuda gecici
+  25. otu sonu **GEREKLI 46 / MEVCUT 47**, `migration-eksik: [yok]` — 45/46'dan
+  migration **030** ile cikti (rate_limit_counters). Bir kosuda gecici
   `fetch failed` WARN'i gorulebilir; host ayakta olsa bile olur, TEKRAR KOS) +
-  [D] sabit-marka taramasi (src/**, dosya-bazli allowlist; 24. otu sonu **13 allowlisted /
-  0 unexpected — DEGISMEDI**: yeni chat_id helper'i hicbir id'yi HARDCODE ETMEZ, her
-  cagrida `departments` tablosundan ceker). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
+  [D] sabit-marka taramasi (src/**, dosya-bazli allowlist; 25. otu sonu **13 allowlisted /
+  0 unexpected — DEGISMEDI**: yeni moduller (rate-limit, mask-pii, nonlatin-word)
+  hicbir id/marka HARDCODE ETMEZ). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
 - Kalan dogrulama yine `npm run type-check` + `npm run build` + manuel/UAT. Repo kokundeki
   `__*.js/.mjs`, `scratch_*.mjs`, `__run_*.ps1`, `__test_scenario_*.json` dosyalari tek
   kullanimlik teshis scriptleridir — test degil; referans alma, yenisini ekleme.
 - **Migrations do NOT run via npm.** They run from inside the app (admin UI / API routes) per-hotel. See *Migrations* below.
 - Node 20+. Deployed on **Vercel** (`hotelgen-v2.vercel.app`); env vars live in the Vercel dashboard, locally in `.env.local`.
+- **Bagimlilik durumu (25. otu):** `next` **16.1.6 -> 16.3.0** ve `ws` 8.20.1 -> 8.21.2
+  (CVE, `4114d07`). `xlsx` npm'de **0.18.5**'te DONMUS ve prototype-pollution + ReDoS
+  advisory'si `fixAvailable: false` idi; **resmi SheetJS CDN'ine** tasindi:
+  `package.json` -> `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` (**0.20.3**
+  CDN'deki EN GUNCEL surum; 0.20.4+ 404). AYNI kutuphane, AYNI API — 10 cagri yerinin
+  tamami `read/write/writeFile/utils.*/SSF.parse_date_code` kullanir, hepsi mevcut.
+  `npm audit` 6 -> 5, `fixAvailable:false` olan tek yuksek risk dustu.
+  **TAKAS:** build artik `cdn.sheetjs.com`a baglidir — CDN kesintisi build'i DUSURUR
+  (saticinin resmi kurulum yolu, `exceljs`e GECME).
+  Perplexity cagrisina **30 sn `AbortSignal.timeout`** eklendi (`cf961d0`); oncesinde
+  asili bir istek Vercel fonksiyonunu 300 sn'ye kadar tutabiliyordu.
 - **Izin ayari (15. oturum): `.claude/settings.local.json`** — git'te TAKIPSIZ (yalniz
   `.claude/skills/**` takipli), yani commit gate'inde GORUNMEZ. `defaultMode: acceptEdits`;
   `vercel`/`npx vercel` **ask** listesinde (deploy her defasinda acik onay ister — §3
   DEPLOY kuralinin arac tarafindaki karsiligi), `.env*` okumasi ve `git push --force`
   **deny**. Yeni bir komut reddedilirse once bu dosyaya bak, tahmin etme.
+- **SEVK HEDEFI — DOGRU REPO (25. otu, teyitli):** Vercel projesi
+  **`kemalkuyucu/hotelgendigital`** reposundan deploy eder (Vercel Settings -> Git
+  ile TEYIT EDILDI). Ortamda gorulen **`qltydigital-hub`** bir KOPYADIR ve prod'u
+  BESLEMEZ — oraya push etmek canliya hicbir sey tasimaz. Deploy oncesi hedefi
+  varsayma, Settings -> Git'ten dogrula.
+- **GIT PUSH KIMLIGI — PAT (25. otu):** makinedeki varsayilan credential yardimcisi
+  yanlis hesabi (403) tasiyabiliyor. Calisan yol, yardimciyi DEVRE DISI birakip
+  PAT ile push etmektir:
+  `git -c credential.helper= push https://github.com/kemalkuyucu/hotelgendigital.git hotelgen-v4`
+  — sorulunca **username = `kemalkuyucu`**, **password = PAT**. PAT'i komut satirina
+  ya da URL'e GOMME (shell gecmisine ve log'a duser); prompt'a yaz.
+- **SERVICE_ROLE ENV ADLARI (rotasyon yuzeyi, 25. otu):** kodda **iki** ad okunur —
+  `CENTRAL_SUPABASE_SERVICE_ROLE_KEY` (5 yer: `supabase-client.ts:29`,
+  `supabase/central-server.ts:8`, `tenant/get-hotel-by-slug.ts:19`,
+  `telegram-manager/[hotelSlug]/route.ts:32`, `scripts/create-admin.mjs:22`) ve
+  `DEMO_HOTEL_SUPABASE_SERVICE_ROLE_KEY` (11 yer). **Diger otellerin service_role
+  anahtarlari env'de DEGIL** — Central `bridge_credentials` icinde AES-256-GCM
+  sifreli; onlarin rotasyonu Vercel env degil, **admin panelinden yeniden girme**
+  isidir. `anon` anahtar **TARAYICIYA GITMEZ**: `NEXT_PUBLIC_CENTRAL_SUPABASE_*`
+  yalniz `src/lib/supabase/central-browser.ts`te gecer ve o dosyanin **cagirani
+  YOKTUR** (olu kod, hicbir client bundle'ina inline edilmez).
+- **SECRET ROTASYON DESENI (25. otu, kesintisiz):** (1) Supabase'de **YENI**
+  `sb_secret` uret · (2) yeni degeri Vercel env'e **ve** `hg-scratch/tenant.env`e yaz ·
+  (3) **deploy et** (env degisikligi ancak yeni deploy'da etkinlesir) · (4) canli
+  TEST et (`/` 200 · webhook GET 405 · gercek bot mesaji) · (5) **ANCAK O ZAMAN**
+  eski/legacy anahtari Supabase'de disable et. Sirayi bozup once disable edersen
+  bot ANINDA duser.
+- **Vercel CLI self-upgrade "npm ENOENT" uyarisi ZARARSIZ (25. otu):** CLI kendini
+  guncellemeye calisirken `npm` bulamayip hata basabilir; deploy'in kendisi etkilenmez.
+  Deploy sagligini bu satira gore degil, `vercel inspect` + `/` 200 ile olc.
 - **UYARI — IKI AYRI health-check, KARISTIRMA:** `/api/health-check` (asagidaki 503'lu
   TESHIS endpoint'i) ile `/api/cron/health-check` (gunluk CRON: bridge testi +
   `runSlaCheck` + cevre kesfi + **`processed_telegram_updates` TTL supurmesi**) AYRI
@@ -358,7 +429,7 @@ NULL kalir, `allergen_asked=true` oldugu icin akis bir daha TETIKLENMEZ ->
   `getFrontOfficeChatId(supa)` cagirir; `Number(avFailChatId)` coerce'u YERINDE
   kaldi (helper HAM string doner). Bkz. asagidaki *On buro chat_id TEK KAYNAK*.
 
-### On buro chat_id TEK KAYNAK — `getFrontOfficeChatId` (backlog #6) · sevk `df38583` (24. otu, **DEPLOY YOK**)
+### On buro chat_id TEK KAYNAK — `getFrontOfficeChatId` + `getFrontOfficeRow` (backlog #6 + #20) · sevk `df38583` (24. otu) + `1da42a9` (25. otu) — **IKISI DE PROD**
 
 **KOK SORUN:** ayni dort satir (`departments` -> `.eq('code','front_office')` ->
 `telegram_chat_id` -> null guard) ALTI ayri yerde ELLE tekrarlaniyordu. Kopyalarin
@@ -383,19 +454,92 @@ yazildiginda biri sessizce kayardi — §3 *tekrarlanan karar tek kaynakta*.
   `[allergen-verify-gate]` `:2359` (dorduncu de `Number(...)` yapar) ·
   olu `notifyFrontDeskUnverified` `:865` (desen birebir ayniydi, tutarlilik icin
   baglandi; oradaki `as number` cast'i runtime **no-op**'tu — deger zaten string'di).
-- **HELPER DISI 3 CAGRI YERI (bilincli — backlog #20):** ayni satirdan **BASKA kolon
-  da** cekiyorlar, helper'a cevirmek TEK sorguyu IKIYE bolerdi:
-  `route.ts` `[reverify-forward]` `:3362` (`telegram_chat_id, sla_minutes`) ·
-  `sla/check-runner.ts:92` (`reception_sla_minutes`) ·
-  `sla/handle-callback.ts:183` (`display_name` + **`.eq('is_enabled', true)`**).
 - **SAYIM DUZELTMESI — envanter yaniltiyordu:** §7 bu borcu "**6 kopya**" diye
   tasiyordu; canli tarama (`eq('code', 'front_office')`) **9** lookup buldu. Son iki
   site (`check-runner`, `handle-callback`) listede HIC YOKTU. Ders §4'te.
-- **MUHUR:** `npm run doctor` YESIL — tsc 0 · **test:is8 1913/1913 DEGISMEDI** ·
-  sema 45/46 · marka 0 unexpected. **is8 vakasi EKLENMEDI** (saf karar yok).
+- **BACKLOG #20 KAPANDI (25. otu, `1da42a9`) — COK-KOLONLU 3 SITE de baglandi.**
+  24. oturumda bu ucu disarida BIRAKMISTIK cunku ayni satirdan **BASKA kolon da**
+  cekiyorlar ve `getFrontOfficeChatId`e cevirmek TEK sorguyu IKIYE bolerdi. Cozum
+  ikinci bir helper:
+
+| Uretim | Yer | Not |
+|---|---|---|
+| `getFrontOfficeRow<T>(supa, columns, opts?)` | ayni dosya | lookup'in SEKLINI (tablo · `code='front_office'` · `maybeSingle` · `error` okumama) tek kaynakta toplar, **KOLON SECIMINI cagirana birakir** -> tek sorgu TEK KALIR |
+
+  Bagli 3 site: `route.ts` `[reverify-forward]` (`telegram_chat_id, sla_minutes`) ·
+  `sla/check-runner.ts` (`reception_sla_minutes`) · `sla/handle-callback.ts`
+  (`display_name`).
+  **`enabledOnly` OPSIYONEL ve VARSAYILANI `false` — bu KOZMETIK DEGIL:** uc siteden
+  yalniz `handle-callback` `.eq('is_enabled', true)` filtresini tasir, yani
+  `is_enabled=false` bir on buroda O site digerlerinden FARKLI davranir. Bu
+  BUGUNKU CANLI DAVRANISTIR; varsayilani `true` yapmak sessiz bir davranis
+  degisikligi olurdu. `getFrontOfficeChatId` de artik bu helper uzerinden gider.
+  **Repoda kalan TEK `eq('code','front_office')` helper'in KENDI icindedir** —
+  9/9 lookup tek kaynakta.
+- **MUHUR:** `npm run doctor` YESIL — tsc 0 · **test:is8 DEGISMEDI** (24. otu 1913,
+  25. otu #20 icin de vaka EKLENMEDI — saf karar yok, salt IO) · marka 0 unexpected.
   Circular import YOK: dosya yalnizca `SupabaseClient` **type**'ini import eder —
-  ham non-ASCII de tasimaz (RTL riski YOK). **CANLI BOT UAT'i BEKLIYOR:** alti
+  ham non-ASCII de tasimaz (RTL riski YOK). **CANLI BOT UAT'i BEKLIYOR:** dokuz
   bildirim yolunun hicbiri gercek Telegram mesajiyla olculmedi.
+
+### 25. oturum GUVENLIK modulleri · sevkler `8cf4e95` · `cf961d0` · `1da42a9` — **PROD**
+
+Bu bolum 25. oturumda EKLENEN/DEGISEN guvenlik yuzeylerini tek yerde toplar.
+Hicbiri bir karar akisini degistirmez; her biri bir **giris yolunu kapatir**.
+
+| Modul / yer | Sorumluluk |
+|---|---|
+| `src/lib/utils/postgrest-filter.ts` | `sanitizeOrFilterValue` — `.or()` bir **FILTRE IFADESIDIR**, baglanan parametre DEGIL; misafir aramasindaki `,` `(` `)` `.` AYIRAC olarak parse edilip **hangi satirlarin dondugunu** yonlendirebiliyordu. Kesme isareti KASTEN korunur ("O'Brien" aranabilir kalmali) |
+| `src/lib/utils/mask-pii.ts` | `maskName` — log'a giden misafir adini `#<8 hex>/<uzunluk>` damgasina cevirir. Hash paylasilan **`normalizeTr`**den gecer (ikinci normalizer YOK) -> ayni misafir log satirlari arasinda KORELE olur, ismi tasimadan. **Oda no MASKELENMEZ** (teshisin omurgasi, tek basina kimlik degil) |
+| `src/lib/utils/nonlatin-word.ts` | `matchesNonLatinWord` / `matchesAnyNonLatinWord` — Unicode kelime siniri (`(?<!\p{L})X(?!\p{L})`, `u` bayragi). JS `\b` ASCII `\w` tabanli oldugu icin Kiril/Arap'ta OLU; bu yuzden substring'e mahkum kalan uyeler vardi |
+| `src/lib/telegram/rate-limit.ts` + `migrations/tenant/030` | `claimRateLimit` — KALICI (cross-instance) rate limit, per-chat **ve** per-hotel. **FAIL-OPEN** |
+| `src/lib/telegram/allergen-notify.ts` | `resolveAllergenTurkish` (IO) + **`needsTurkishLine` (SAF)** — alerjen ceviri satiri karari, IKI kart icin TEK KAYNAK |
+| `hotel-admin/[slug]/departments/[code]/sla/route.ts` | **slug kapisi** (`8cf4e95`) + **rol kapisi** (`1da42a9`) |
+| `src/lib/ai/system-prompts.ts` | misafir mesaji **VERIDIR, TALIMAT DEGIL** guard'i + kurallarini/modelini/mimarisini ifsa etmeme, baska persona benimsememe |
+| `next.config.ts` | HSTS · `X-Frame-Options: DENY` · `nosniff` · Referrer-Policy · Permissions-Policy · `poweredByHeader: false` |
+
+- **KALICI RATE LIMIT — neden gerekliydi:** tek koruma `route.ts`teki MODUL-SEVIYESI
+  `_rateLimitMap`ti. Vercel'de her invocation AYRI instance olabilir -> sayac cold
+  start'ta SIFIRLANIR ve instance'lar birbirini GORMEZ; yeterli paralellikte sinir
+  pratikte YOK sayilir. Ustelik yalniz chat basinaydi: N sahte hesap otelin AI
+  butcesini (Anthropic + Whisper) tuketebilirdi — **otel capinda tavan YOKTU**.
+  Sayac artik tenant DB'de; `rate_limit_hit()` chat ve otel sayacini **TEK deyimde**
+  (`INSERT ... ON CONFLICT DO UPDATE ... RETURNING`) artirir -> okuma-sonra-yazma
+  yarisi YOK (M1 atomik claim ile ayni gerekce), ve **TEK RPC** ile iki sayac.
+  Esikler: chat **10/60 sn** (in-memory ile AYNI — amac siniri SIKILASTIRMAK degil,
+  instance'lar ARASINDA gecerli kilmak), otel **600/60 sn** (bilincli YUKSEK; mesru
+  trafigi kesmemeli. **Bu esik OLCUME DEGIL TAHMINE dayanir**, dusurmeden once
+  gercek zirve olcun).
+- **FAIL-OPEN — YONU TERSINE CEVIRME:** sayac okunamazsa (migration kosmamis tenant,
+  DB hatasi, timeout) istek **GECER**. Hatada bloklamak bir DB kesintisinde TUM
+  misafirleri susturur — §3 SESSIZ YUTMA'nin en agir hali. In-memory gate KALDI ve
+  bunun ONUNDE durur (bedava, bariz floodu DB'ye hic gitmeden keser).
+- **CANLI OLCULDU, varsayilmadi:** gercek modulle probe — 10'a kadar gecti, **11.
+  cagride red** (`scope=chat`, `hits=11`), farkli chat hala izinli, sayaclar
+  chat=12 / chat=1 / hotel=13. **FAIL-OPEN'in KENDISI de** bozuk client'la
+  kosturuldu -> `allowed=true, degraded=true`. Probe sentetik slug kullandi (canli
+  otelin sayacina DOKUNMADI) ve hemen SILINDI.
+- **TTL:** `rate_limit_counters` 24 saatlik supurmesi `cron/health-check` icinde,
+  `processed_telegram_updates` supurmesinin YANINDA ve KENDI try/catch'inde.
+- **ISTEMCIYE HATA DETAYI DONMUYOR (125 site):** 64 dogrudan (`{ error: err.message }`,
+  `detail: String(err)`) + **61 DOLAYLI** — mesaj once bir yerele atanip
+  (`const msg = err instanceof Error ? err.message : ...`) sonra donuluyordu, ilk
+  grep bunlari KACIRMISTI. Istemci artik sabit metin alir; detay `console.error`a
+  gider ve o log **75 sitede HIC YOKTU**. `detail` alaninin tek tuketicisi
+  (`DepartmentManagementTab`) zaten `json?.detail ?? json?.error` fallback'i yapiyor.
+- **ALERJEN TR SATIRI — karar tek kaynak, BICIM cagri yerinde:** mutfak/GR karti
+  HTML, on buro max-deneme karti PLAIN-TEXT. Ortak olan KARARDIR (`needsTurkishLine`),
+  bicim degil. Yalniz GERCEK metin cevrilir — `'(belirtilmemis)'` yer tutucusu LLM'e
+  GITMEZ. `translateToTurkish` throw ETMEZ -> basarisizlikta HAM satir (raw-fallback).
+- **`день` / `зал` GERI EKLENDI (backlog #9):** ikisi de substring yanlis-pozitifi
+  yuzunden listeden CIKARILMISTI (`деньги`=para · `сказал`/`вокзал`/`показал`).
+  Artik AYRI kelime-siniri listelerinde; **mevcut substring listelerine DOKUNULMADI**
+  (RU cekim eki kapsami kaybolmasin). Salon halleri ACIKCA yazilir ve DAR tutulur ki
+  `залив`/`залог` eslesmesin.
+- **`order:noop` DIL HARDCODE'u KALKTI (backlog #10):** IS 10'un son bilincli `'tr'`
+  istisnasiydi; RU/AR misafir pasif butona basinca TURKCE toast goruyordu. Artik
+  `telegram_chat_id` ile TEK sorgu (`created_at` ASC + `limit(1)` — PGRST116 deseni).
+  Her miss'te `'tr'` fallback = ESKI davranis, yani toast KAYBOLAMAZ.
 
 ### Oda-no parse disqualifier (backlog #1) · sevk `6c30f6f` + `3d9e593` (15. otu)
 
@@ -761,7 +905,7 @@ Two Vercel Cron jobs, both daily at 00:00 (`vercel.json`), authed by `Authorizat
 ### Migrations (`src/lib/migrations/`, `migrations/`)
 
 Versioned, idempotent SQL applied **per hotel DB at runtime** — not a CLI step.
-- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (18. otu): `029_processed_telegram_updates.sql`** — yeni tablo, ADDITIVE ve GUVENLI (mevcut kolon/veriye dokunmaz). **YALNIZ v5 tenant'a uygulandi**; her YENI tenant'ta calistirilmasi gerekir, aksi halde `claimTelegramUpdate` fail-safe `true` doner ve o otelde dedup sessizce DEVRE DISI kalir (davranis eskisiyle ayni, bozulma yok). (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil. Onceki kayit "027" idi, 028 zaten mevcuttu — duzeltildi.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
+- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (25. otu): `030_rate_limit_counters.sql`** — yeni tablo + `rate_limit_hit()` fonksiyonu, ADDITIVE ve GUVENLI (mevcut kolon/veriye dokunmaz). Dollar-quote etiketi BILINCLI olarak `$rate_limit_hit$`: dosya runner tarafindan `exec_sql(sql text)` icine PARAMETRE olarak gecer ve `exec_sql`in kendi govdesi `$$` kullanir. Onceki: `029_processed_telegram_updates.sql` (18. otu). **IKISI DE YALNIZ v5 tenant'a uygulandi**; her YENI tenant'ta calistirilmasi gerekir. Kosulmazsa iki koruma da fail-safe/fail-open yonde SESSIZCE devre disi kalir: `claimTelegramUpdate` `true` doner (dedup yok), `claimRateLimit` `allowed=true, degraded=true` doner (limit yok). Davranis eskisiyle ayni, bozulma yok — ama koruma da yok. (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil. Onceki kayit "027" idi, 028 zaten mevcuttu — duzeltildi.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
 - `runMigrations({ hotelSlug })` (`runMigrations.ts`) decrypts the hotel bridge, builds a tenant client, ensures `schema_migrations`, and runs unapplied files via the **`exec_sql` RPC** (SQL executed through a Postgres function, not the JS query builder).
 - Triggered from admin UI / API: `/api/admin/migrations` (tenant), `/api/admin/central-migrations`, `/api/admin/hotels/[id]/run-migrations`, with a `migrations` admin page. Also `seedBaseline` / `runBootstrap`.
 - **Single source of truth for tenant schema = `migrations/tenant/*`.** The legacy `sql/0x` hotel-side files (`05_hotel_schema` … `12_*`) are DEPRECATED/archive only — pre-migration manual "Supabase SQL Editor" bootstrap; never re-run them. (A15/AUDIT D7, resolved 2026-06-01: a read-only probe of both live tenants — demo-hotel + green-park-test — confirmed **no schema drift**; both are pure 001-chain. Only live difference: `match_documents()` RPC present on demo, absent on green-park → a Phase-C/RAG follow-up, not a schema conflict.)
@@ -864,12 +1008,78 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     Inline `departments` + `.eq('code','front_office')` sorgusu YAZILMAZ. **HAM string**
     doner (`raw ? String(raw) : null` — eski `if (!chatId)` falsy-guard'i ile BIREBIR);
     **coerce CAGRI YERINDE** kalir (`Number(...)` kimi sitede var, kimisinde ham deger
-    gider — helper'a coerce KOYMA). **6 canli site + olu `:865` BAGLI**; ayni satirdan
-    BASKA kolon da ceken **3 site helper DISI** (tek sorguyu ikiye bolerdi — backlog #20).
+    gider — helper'a coerce KOYMA). **6 canli site + olu `:865` BAGLI.**
+    **25. otu (`1da42a9`): kalan 3 cok-kolonlu site de baglandi (backlog #20 KAPANDI)
+    -> 9/9 lookup TEK KAYNAKTA**; repoda kalan tek `eq('code','front_office')`
+    helper'in KENDI icindedir.
+  - **on buro satiri COK KOLONLU okunacaksa** -> `front-office.ts`
+    **`getFrontOfficeRow(supa, columns, opts?)`** (25. otu, `1da42a9`). Inline
+    `departments` sorgusu YAZILMAZ. `enabledOnly` varsayilani **`false`** —
+    `handle-callback`in `is_enabled` filtresi O SITEYE OZGUDUR, genellestirme.
+  - **non-latin TAM KELIME eslesmesi** -> `src/lib/utils/nonlatin-word.ts`
+    `matchesNonLatinWord` / `matchesAnyNonLatinWord` (25. otu). Unicode
+    lookaround (`(?<!\p{L})X(?!\p{L})`, `u`). Substring listelerinin YERINI ALMAZ;
+    yalniz yanlis-pozitif yuzunden disarida kalmis uyeler icindir. **Kendi
+    lookaround'unu yazma**, bu ikiliyi cagir.
+  - **log'a giden misafir adi** -> `src/lib/utils/mask-pii.ts` `maskName`
+    (25. otu). Ham ad `console.*`a YAZILMAZ. Oda no maskelenmez.
+  - **PostgREST `.or()` filtresine giden kullanici girdisi** ->
+    `src/lib/utils/postgrest-filter.ts` `sanitizeOrFilterValue`
+  - **alerjen ceviri satiri gerekli mi** -> `allergen-notify.ts`
+    `needsTurkishLine` (SAF) / `resolveAllergenTurkish` (IO) — mutfak/GR karti da
+    on buro karti da AYNI karari cagirir, bicimi kendi yazar
   - **TR normalize** -> `normalize-tr.ts` `normalizeTr` (ikinci normalizer YASAK)
+- **25. OTURUM GUVENLIK KARARLARI (IHLAL EDILEMEZ):**
+  - **URL'DEKI `slug` SALDIRGAN GIRDISIDIR.** `[slug]` tasiyan HER admin/API
+    route'u, is yapmadan ONCE `slug !== admin.hotel_slug -> 403` kontrolunu
+    yapmak ZORUNDA. `resolveTenantBySlug` **service_role** client doner ve RLS'i
+    BYPASS eder; `middleware.ts` bu yolu KORUMAZ (matcher `/hotel-admin/:slug/:path*`,
+    `/api/...` DISARIDA). Bu kontrol atlanirsa izolasyonun TEK katmani duser
+    (canli ornek: SLA route'u, `8cf4e95`).
+  - **SLUG KAPISI "HANGI OTEL"i coz er, "HANGI ROL"u COZMEZ.** Ikisi AYRI kapidir;
+    yazma yapan route ROL kapisini de tasimak zorunda (`1da42a9`).
+  - **TENANT SECIMINI LLM YAPMAZ.** Hangi otelin DB'sine gidilecegi, hangi
+    departmana forward edilecegi ve yetki kararlari KODDA — bu, §3 #3'un
+    (deterministik kapi) guvenlik tarafidir.
+  - **RATE LIMIT / DEDUP KAPILARI FAIL-OPEN.** Sayac ya da dedup KARAR VEREMIYORSA
+    istek GECER. Hatada bloklamak bir DB kesintisinde tum misafirleri susturur.
+  - **HATA DETAYI ISTEMCIYE DONMEZ.** Istemciye sabit/generic metin; `error.message`,
+    `err.stack`, `JSON.stringify(error)` yalniz **server-side log**. Bir hata dali
+    eklerken sor: bu metni KIM okuyacak?
+  - **SIZAN SECRET ROTE EDILIR, "gecmiste kaldi" DENMEZ.** Git gecmisindeki bir
+    `service_role` bugun de gecerlidir. Rotasyon sirasi §2'de (yeni uret -> env +
+    tenant.env -> deploy -> test -> ANCAK O ZAMAN legacy disable).
+  - **UNIQUE CONSTRAINT'TEN ONCE CANLI DUPLICATE OLC.** Semaya benzersizlik
+    eklemek geriye donuk bir iddiadir; mevcut veri onu tutmuyorsa migration
+    PATLAR, tutuyorsa da ileride mesru bir tekrar **sessiz 23505 kaybina** doner.
+    Once say, sonra karar ver (25. otu: `sla_events` 62 / `room_service_orders`
+    20 fazla satir -> constraint EKLENMEDI).
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
 ## 4. TUZAKLAR (defalarca saat kaybettirdi)
+- **`.or()` PARAMETRE BAGLAMAZ — string INTERPOLE ETME (25. otu):** PostgREST'te
+  `.or()` bir **FILTRE IFADESIDIR**: `or=(room_number.ilike.%x%,last_name.ilike.%x%)`.
+  Kullanici girdisini icine dogrudan yazarsan `,` `(` `)` `.` karakterleri AYIRAC
+  olarak parse edilir ve cagiran **hangi satirlarin donecegini** yonlendirebilir.
+  SQL injection DEGIL (degerleri PostgREST baglar) ama sonuc kumesini kaydirir.
+  `sanitizeOrFilterValue` KULLAN. Normal arama girdisinde bu karakterler
+  bulunmadigi icin pratikte no-op'tur — yani "calisiyor" gorunmesi kanit DEGIL.
+- **HATAYI ISTEMCIYE SERIALIZE ETME (25. otu):** `{ error: err.message }`,
+  `detail: String(err)`, `err.stack`, `JSON.stringify(error)` -> istemciye tablo/
+  kolon adlarini, sorgu yapisini ve ic yollari sizdirir. **DIKKAT — iki asamali
+  desen ilk bakista GORUNMEZ:** `const msg = err instanceof Error ? err.message :
+  '...'` sonra `{ error: msg }`. Tek satirlik grep bunu KACIRIR (25. oturumda
+  64 dogrudan sitenin yaninda **61 dolayli** site boyle bulundu). Sizinti ararken
+  hem donusu hem ONCEKI atamayi tara.
+- **HAM PII LOGLAMA (25. otu):** misafir ad/soyadi `console.*`a yazilmaz — Vercel
+  log'lari saklanan, paylasilan ve disari aktarilabilen bir yuzeydir. `maskName`
+  kullan. Oda no teshis icin kalir. Alerji metni zaten `cf961d0` ile maskeliydi
+  (yalniz `len=`). **Personel `full_name`'leri HALA HAM loglaniyor** (bkz. §7).
+- **`[slug]` ROUTE'UNDA SLUG KONTROLUNU ATLAMA (25. otu):** URL'deki slug saldirgan
+  girdisidir ve `resolveTenantBySlug` **service_role** client doner (RLS BYPASS).
+  `middleware.ts` `/api/...`i KAPSAMAZ. Yeni bir `[slug]` route'u acarken ilk is
+  `slug !== admin.hotel_slug -> 403`. Canli ornek: SLA route'u bu kontrolu tasimadigi
+  icin **cross-tenant YAZMAYA ACIKTI** (`8cf4e95`). Rol kapisi AYRI bir kontroldur.
 - **Migration klasoru:** migrations/tenant/ — `supabase/migrations` YOKTUR.
   Kod var + migration yok = sessiz no-op. information_schema ile teyit sart.
 - **Supabase:** .maybeSingle() yerine .order('created_at').limit(1).maybeSingle()
@@ -936,6 +1146,14 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
   ya da tirnakli commit mesajini scratchpad'e `.txt` yaz, `git commit -F <dosya>` ile
   ver** (bu dosya `04aa216`'da boyle commit'lendi). Tirnaksiz tek satirda `-m` sorunsuz.
 - **Commit mesaji ASCII only.** Turkce karakter YASAK.
+- **SIR SOHBETE / GIT'E / LOG'A GIRMEZ (25. otu, genisletildi):** `service_role` ve
+  `anon` anahtarlari, **`sb_secret_*` degerleri**, **GitHub PAT'i**,
+  `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `ENCRYPTION_MASTER_KEY`. Rapor ederken
+  **ADINI yaz, DEGERINI YAZMA**. Pratik kurallar: PAT'i komut satirina/URL'e gomme
+  (shell gecmisine ve log'a duser) — git sorunca prompt'a gir; `tenant.env` gibi
+  dosyalari incelerken `=` oncesini kesen bir komut kullan
+  (`sed -n 's/^\([A-Za-z0-9_]*\)=.*/\1/p'`), `cat` ATMA; JWT'nin `role` claim'ini
+  merak ediyorsan yalniz o alani decode edip bas, token'in kendisini ASLA.
 - **Misafire donuk metinler TAM Turkce karakterli.**
 - **JS `\b` ASCII-ONLY:** `\w` Kiril/Arap harfini SAYMAZ -> `\bчеловек` / `\bحفل`
   kaliplari HICBIR ZAMAN eslesmez ve SESSIZ OLU KOD olur (test yesil, canli bos).
@@ -1092,7 +1310,8 @@ test:is8 1872 -> 1898. Ayrinti: §2 *Misafir ismi eslesmesi TEK KAYNAK*.
   -> bu commit ile v37'ye tasindi.
 
 **24. oturumda KAPANDI:** **backlog #6 — `front_office` chat_id lookup TEK KAYNAK**
-(`df38583`; **DEPLOY EDILMEDI**, prod hala `0bac2ad`). Ayni dort satir alti yerde elle
+(`df38583`; o oturumda deploy EDILMEDI, **25. oturumda `1da42a9` ile BIRLIKTE prod'a
+gitti**). Ayni dort satir alti yerde elle
 tekrarlaniyordu; artik `getFrontOfficeChatId(supa): Promise<string | null>`
 (`src/lib/telegram/front-office.ts`) TEK kaynak — **HAM string** doner, coerce CAGRI
 YERINDE kalir, falsy katlamasi eski `if (!chatId)` guard'iyla BIREBIR. 6 canli site +
@@ -1102,10 +1321,35 @@ Muhur: doctor YESIL, **test:is8 1913 DEGISMEDI** (salt IO — vaka EKLENMEDI),
 circular import yok. Ayrinti: §2 *On buro chat_id TEK KAYNAK*. **CANLI UAT YOK.**
 **DOC SENKRONU:** bu commit dosyayi v37 -> **v38**'e tasir (kod sevkiyle AYNI oturum).
 
+**25. oturumda KAPANDI — GUVENLIK KAPANISI** (`4114d07` · `8cf4e95` · `cf961d0` ·
+`6778749` · `1da42a9`; **HEPSI PROD**):
+- **CROSS-TENANT YAZMA (KRITIK, `8cf4e95`)** — `[slug]/departments/[code]/sla`
+  URL slug'ini oturumla karsilastirmiyordu; A otelinin admin'i B'nin SLA esigini
+  YAZABILIYORDU. 21 `[slug]` route'u tarandi, eksik olan TEK bu idi.
+- **SLA route ROL kapisi (`1da42a9`)** — slug kapisi "hangi otel"i cozer, "hangi
+  rol"u cozmez: otelin HERHANGI bir departman muduru TUM departmanlarin esigini
+  yazabiliyordu. Bu route'un calisan bir cagirani YOK (panel formu `method="PATCH"`
+  ile ates edemez), yani kapi hicbir akisi bozmadi.
+- **error.message SIZINTISI — 125 site (`1da42a9`)** · **PostgREST filtre
+  enjeksiyonu** + **guvenlik header'lari** + **Perplexity 30 sn timeout** +
+  **alerjen metni log maskesi** + **prompt guard** (`cf961d0`).
+- **xlsx CVE (`1da42a9`)** — `fixAvailable:false` olan tek yuksek risk; SheetJS
+  resmi CDN 0.20.3'e tasindi. **next 16.3.0 + ws 8.21.2** (`4114d07`).
+- **KALICI RATE LIMIT (`1da42a9`, migration 030)** — denial-of-wallet; in-memory
+  sayac Vercel'de cold start'ta sifirlandigi ve otel capinda tavan olmadigi icin
+  koruma pratikte yoktu.
+- **LOG PII (`1da42a9`)** — misafir ad/soyadi 7 log sitesinde maskelendi.
+- **backlog #4** (alerjen TR ceviri) · **#9** (`зал`/`день` kelime siniri) ·
+  **#10** (`order:noop` dili) · **#20** (cok-kolon helper) — hepsi KAPANDI.
+- **SIZAN `service_role` ROTE EDILDI.** Git gecmisindeki token demo-hotel
+  projesinin `service_role`u idi (`scripts/check-table-counts.mjs`, `a2061a0`
+  hardcode etti / `9ecf2c9` env'e cevirdi).
+- **DOC SENKRONU:** bu commit dosyayi v38 -> **v39**'a tasir (kod sevkiyle AYNI
+  oturum, AYRI commit).
+
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida). Isim-eslesme
-konsolidasyonu **TAMAMEN KAPANDI** (7/7 site) — yeniden acmayin; `front_office`
-chat_id konsolidasyonu da **6/6 baglanabilir site** icin KAPANDI (kalan 3 site
-kasitli disarida, bkz. #20).
+konsolidasyonu **TAMAMEN KAPANDI** (7/7 site) ve `front_office` konsolidasyonu da
+**9/9 site** ile KAPANDI (#6 + #20) — ikisini de yeniden acmayin.
 
 - **verification parse yanlis-pozitifi (SIRADAKI IS — kok neden ACIK):** `ROOM_REGEX`
   (`verify-guest.ts:131`) prefix'i OPSIYONEL tuttugu icin serbest metindeki HER 2-4
@@ -1118,26 +1362,19 @@ kasitli disarida, bkz. #20).
   da DOKUNMADI** (onlar isim-eslesme tarafiydi, oda-no parse degil). Duzeltmek
   verification cekirdegine dokunmaktir, ayri korpus ister (`is8-verify-parse-test.ts`
   zemini hazir, **94 vaka**).
-- **On buro alerji karti ALERJEN METNINI CEVIRMIYOR (23. otu, orta):** yeni
-  max-deneme karti `allergen_text`i HAM basar. `sendAllergenNotifications` ise
-  mutfak/GR kartinda `translateToTurkish` + "TURKCE:" satiri EKLER
-  (`allergen-notify.ts:247-252`). RU/AR bildiren misafirde on buro personeli metni
-  okuyamayabilir — yasamsal-guvenlik metni icin asimetri. Duzeltmek 1 satirlik
-  degil: `translateToTurkish` bir LLM cagrisidir, webhook yolunu uzatir.
+- ~~On buro alerji karti alerjen metnini cevirmiyor~~ — **25. otu KAPANDI**
+  (backlog #4, `1da42a9`). Karar tek kaynakta (`needsTurkishLine` SAF +
+  `resolveAllergenTurkish` IO); mutfak/GR karti da bu kaynaga BAGLANDI (kopya YOK),
+  bicim her kartta kendi dilinde (HTML vs plain-text). Yer tutucu
+  `'(belirtilmemis)'` LLM'e GITMEZ.
 - **On buro alerji karti BUTONSUZ + `sla_events` YOK (23. otu, dusuk):** M4 spec'i
   alerji yolunda SLA takibini YASAKLADIGI icin bilincli; ama "manuel kontrol
   edildi mi" de IZLENMEZ. Alternatif desen `createReceptionApproval`dir (butonlu +
   `pending_guest_matches` satiri) — kullanilmadi.
-- **#20 — COK-KOLONLU `front_office` lookup'lari helper DISINDA (24. otu, dusuk):**
-  uc cagri yeri ayni satirdan **baska kolon da** cekiyor, bu yuzden
-  `getFrontOfficeChatId`e BAGLANMADI (helper'a cevirmek TEK sorguyu IKIYE bolerdi —
-  davranis + maliyet degisikligi): `route.ts` `[reverify-forward]` `:3362`
-  (`telegram_chat_id, sla_minutes`) · `sla/check-runner.ts:92`
-  (`reception_sla_minutes`) · `sla/handle-callback.ts:183` (`display_name` +
-  **`.eq('is_enabled', true)`** — bunun ek FILTRESI de var, yani `is_enabled=false`
-  bir departmanda digerlerinden FARKLI davranir). Gercek cozum tek satiri cok-kolon
-  donduren ikinci bir helper (`getFrontOfficeRow`) olabilir; bugun **hicbiri bozuk
-  degil**, yalniz tek-kaynak disinda. Elle dokunulursa dordu de gozden gecirilmeli.
+- ~~#20 — cok-kolonlu `front_office` lookup'lari helper disinda~~ — **25. otu
+  KAPANDI** (`1da42a9`). Cozum ongorulen sekilde ikinci bir helper oldu:
+  `getFrontOfficeRow(supa, columns, opts?)`. `handle-callback`in
+  `.eq('is_enabled', true)` FARKI opt-in bayrakla KORUNDU. 9/9 lookup tek kaynakta.
 - **`route.ts` `notifyFrontDeskUnverified` OLU KOD (23. otu kesfi, dusuk):**
   tanimli, `intentLabel`de `allergy` girisi bile var, ama repo genelinde HICBIR
   cagri yeri yok (canli yol `createReceptionApproval`). Silmek ayri bir karar
@@ -1189,9 +1426,9 @@ kasitli disarida, bkz. #20).
 - **ru/ar ceviri anlam review'u YOK:** 5-dil sozlukteki Rusca/Arapca metinler is8
   ile yalniz YON, DOLULUK ve "tr'den farkli" acisindan dogrulanir; ANLAM/uslup
   icin native goz gecmedi. Misafire giden metinler, oncelik orta.
-- **`order:noop` dil-baglama:** tek kalan bilincli `'tr'` (bkz. IS 10 istisnasi).
-  callback_data'ya convId sigdirmak ya da chat_id lookup'i acmak gerekir; nadir
-  yol oldugu icin ertelendi.
+- ~~`order:noop` dil-baglama~~ — **25. otu KAPANDI** (backlog #10, `1da42a9`).
+  `telegram_chat_id` ile tek lookup acildi; her miss'te `'tr'` fallback (ESKI
+  davranis) oldugu icin toast kaybolamaz. IS 10'un son bilincli istisnasi bitti.
 - **Misafire donuk ASCII metin ihlali (KISMEN kapandi):** `advanceHousekeeping`in
   adet sorusu artik guest-text.ts'ten TAM Turkce geliyor ("Kaç adet ... istersiniz?"),
   onay/iptal kart etiketleri de oyle. KALAN: `labelForHousekeepingCode` esya
@@ -1214,3 +1451,60 @@ kasitli disarida, bkz. #20).
   create-table ne canli tenant DB'de). Dusuk oncelik — rezervasyon linki room_rates'ten bagimsiz
   (hotel-context.ts fetchRoomRates, IS13) + Barboon canli fiyat veriyor. Fiyat listesi icin
   room_rates migration'i + veri gerekir (ayri is).
+
+### 25. oturumdan KALAN borc
+
+**A) KEMAL'IN ELIYLE YAPILACAKLAR (kod isi DEGIL, ajan kapatamaz):**
+- **AI butce/harcama limiti KURULMADI.** Kalici rate-limit tuketimi YAVASLATIR ama
+  bir TAVAN degildir. Anthropic + OpenAI (Whisper) tarafinda hesap seviyesinde
+  harcama limiti/alarmi tanimlanmali — denial-of-wallet'in ikinci yarisi budur.
+- **Central `service_role` rotasyonunun TEYIDI.** Demo-hotel anahtari rote edildi;
+  `CENTRAL_SUPABASE_SERVICE_ROLE_KEY` tarafinin da yeni degerle deploy edilip
+  canli test edildigi (bkz. §2 rotasyon sirasi) TEYIT EDILMELI.
+- **`hg-scratch/tenant.env` guncel mi?** Yerel arac dosyasidir, deploy'a girmez;
+  rotasyondan sonra guncellenmezse `tsql.js` ve probe'lar sessizce 401 alir.
+- **`dpl_` deployment id KAYIT ALTINA ALINMADI (25. otu).** Onceki oturumlarin
+  aksine bu dosyada `1da42a9` deploy'unun id'si YOK; sonradan "hangi deploy neyi
+  tasidi" sorusu `vercel ls` ile elle cozulmek zorunda kalir.
+
+**B) VERI BUTUNLUGU — backlog #3 (UNIQUE constraint) ACIK, BILINCLI:**
+- **Canlida DUPLICATE VAR (25. otu OLCUMU):** `sla_events` (conversation_id,
+  department_code, request_text) uzerinde **21 grup / 62 fazla satir**, en buyuk
+  grup **14**; `room_service_orders` (conversation_id, items) uzerinde **7 grup /
+  20 fazla satir**. Bu haliyle dogal anahtarlarda UNIQUE **KURULAMAZ**.
+- **"Acik kayit" partial variant da KANIT DEGIL:** olcum aninda acik (`responded_at`
+  ve `closed_at` NULL) kayit sayisi **0** idi, yani o alt kume vakumen dup'suz
+  gorunur — kurulmasi hicbir sey ISPATLAMAZ.
+- **Ve eklemek TEHLIKELI olabilir:** M2'nin serbest-metinde KAPALI birakilmasi
+  bilincli bir karardir ("fazladan kart, kayip talepten iyidir"). UNIQUE, mesru bir
+  ikinci talebi **sessiz 23505 kaybina** cevirir — 23505 yakalama + personele
+  bildirim eklenmeden bu bir DAVRANIS DEGISIKLIGIDIR, additive migration degil.
+  Once mevcut fazla satirlarin nereden geldigi anlasilmali (SILME YOK).
+
+**C) OPSIYONEL ZIRH (bugun bozuk bir sey YOK — kapsam ve sure tahmini):**
+- **Tenant DB'lerde RLS (~2-3 gun).** Bugun izolasyonun TEK katmani uygulama
+  kodudur; her tenant erisimi `service_role` ile gider ve RLS'i bypass eder
+  (25. otu SLA acigi tam olarak bu yuzden "kod atlarsa koruma yok" demekti).
+  RLS ikinci bir katman olurdu. Buyuk is: her tablo icin politika + regresyon.
+- **Tam CSP (~1 gun).** `cf961d0` header'lari ekledi ama **CSP BILINCLI olarak
+  EKLENMEDI**: panel inline style ve tsparticles tasiyor, Report-Only ile
+  olcmeden zorlamak UI'yi kirar. Once Report-Only, sonra enforce.
+- **`serverActions.allowedOrigins` KASTEN bos** — bos birakmak Next'in
+  Origin===Host kuralini korur (daha siki) ve preview deploy'lari bozmaz.
+
+**D) 25. oturumda ACILAN kucuk borclar:**
+- **Personel `full_name`'leri HALA HAM loglaniyor** (`allergen-notify.ts`,
+  `forward-to-department.ts`). Misafir adlari maskelendi; personel adi talimat
+  kapsami disindaydi. Ayni `maskName` ile kapatilabilir — ama teslimat teshisinde
+  "kime gitti" okunakliligini dusurur, once karar gerekir.
+- **`migrations/tenant/030` YALNIZ v5 tenant'ta.** Diger otellerde rate-limit
+  FAIL-OPEN calisir (limit YOK, bozulma da yok). Yeni tenant acilisinda kosulmali.
+- **Otel rate-limit tavani (600/dk) OLCUME DEGIL TAHMINE dayanir.** Dusurmeden
+  once gercek zirve trafigi olculmeli.
+- **Build artik `cdn.sheetjs.com`a bagli** — CDN kesintisi build'i dusurur.
+- **`system-prompts.ts` DEGISTI (prompt guard eklendi, `cf961d0`)** -> daha once
+  alinmis prompt snapshot'lari (`scripts/prompt-snap.ts` ciktilari) BAYAT; prompt
+  karsilastirmasi yapacaksan snapshot'i YENIDEN al.
+- **backlog #5 (alerji kartina buton + SLA takibi) bir FEATURE'dir**, guvenlik
+  borcu degil — M4 spec'i alerji yolunda SLA'yi YASAKLADIGI icin once urun karari
+  gerekir. Bu batch'in DISINDA birakildi.
