@@ -6,8 +6,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- Bu dosya **26. oturum sonrasi** durumu yansitir; sohbet tarafindaki
-  **DEVIR + MASTER (v40)** ile hizalidir.
+- Bu dosya **27. oturum sonrasi** durumu yansitir; sohbet tarafindaki
+  **DEVIR + MASTER (v41)** ile hizalidir.
+- **27. OTURUM — DB-KATMAN HARDENING (RLS defense-in-depth) (ozet).** SALT-OKUMA
+  recon **CANLI bir acik** buldu: tenant DB'lerinde `anon` anahtari **45 tabloda
+  tam CRUD** (RLS yok + anon/authenticated'e blanket grant) yapabiliyor VE
+  `exec_sql` (SECURITY DEFINER, owner=postgres) **anon/authenticated'e acik**
+  oldugu icin anon anahtariyla **postgres-yetkili KEYFI SQL** kosulabiliyordu.
+  **Kok neden:** Supabase'in `public` semada anon+authenticated'e otomatik verdigi
+  **default-privilege grant'lari**; bootstrap'in `REVOKE ... FROM PUBLIC`u bu iki
+  AYRI grant'i temizlemiyor. **CANLI KANIT (demo anon key):** `inhouse_guests_v2`
+  ONCE **20 satir okundu** -> SONRA **permission denied**; `exec_sql('SELECT 1')`
+  ONCE **CALISTI** -> SONRA **42501**. Cozum: **migration 032** (tenant) +
+  **central-011** (Central) — `REVOKE ALL ... FROM PUBLIC, anon, authenticated`
+  (tablo+sequence+fonksiyon) + `GRANT ... TO service_role` (geri ver) +
+  `ALTER DEFAULT PRIVILEGES ... REVOKE` (gelecek grant'lari kes) +
+  **RLS ENABLE her public tabloda** (policy yok -> anon/auth **sifir satir**;
+  service_role `rolbypassrls=true` -> app ETKILENMEZ). **INVARIANT:** app runtime +
+  tsql YALNIZ service_role kullanir (recon: user-JWT yolu YOK, `mode:'anon'` HIC
+  cagrilmiyor, `central-browser` anon = olu kod) -> app BOZULMAZ.
+  **UYGULAMA:** 032 -> v5 + demo tenant (`apply-hardening`, exec_sql/postgres-definer,
+  preflight owner-assert = 0 non-postgres tablo); **central-011 -> hotelgen-central
+  PROD SQL Editor'den CANLI** (`anon_bridge=false`, `anon_hotels=false`, `rls_off=0`,
+  `svc_ok=true`). `tsql.js` (untracked) patch'lendi: `exec_sql_json` her kurulumdan
+  sonra **service_role-only** birakilir (Supabase `CREATE OR REPLACE`'te default-grant'i
+  geri acar). **DB-KATMAN DEPLOY DEGILDIR** — grant/RLS canli DB'de yasar, runtime
+  kod degismez; bu yuzden **HEAD > PROD KASITLI** (asagida). Tam liste §7'de.
 - **26. OTURUM — #3 DAR-GUVENLI BACKSTOP (ozet).** `sla_events` cift-kayit icin
   **DAR-GUVENLI 23505 backstop** kuruldu + prod deploy (`9dcf48a`) +
   **migration 031 partial-unique CANLI** (v5). Naive "temizle + dogal-anahtar
@@ -19,14 +43,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   kumede dup **0** -> SIFIR temizlik) + `insertSlaEvent` **tek-kaynak** (4 site) +
   **23505 -> `notifyDuplicateRequest`**. `room_service_orders`'a guvenli bir
   statik constraint YOK -> onun yerine **2 defekt duzeltildi**. Tam liste §7'de.
-- **HEAD = PROD = `9dcf48a` (26. oturum) — SEVK EDILDI, DEPLOY EDILDI,
-  migration 031 CANLI.**
-  Deploy `dpl_GDKd8CqbR6nUBVi5gAr6TjBnqXP2` (target=production, READY; alias
-  `hotelgen-v2.vercel.app` uzerinden `vercel inspect` AYNI dpl id'yi cozdu).
+- **HEAD = `3409a0e` (27. oturum) · PROD(deploy) = `9dcf48a` (26. oturum) —
+  HEAD > PROD KASITLI.** Aradaki iki commit (`3409a0e` tenant-032 kaydi +
+  bu doc-sync) **RUNTIME KOD DEGISTIRMEZ** — 032/central-011 birer **DB-katman
+  migration KAYDIDIR** (grant/RLS canli DB'de uygulandi; Vercel bundle'i AYNI).
+  Bu yuzden bir sonraki `vercel --prod` bunlari tasisa da davranis degismez;
+  DB-katman deploy'a BAGLI DEGIL, zaten CANLI. **26. oturum PROD dokunulmadi:**
+  deploy hala `dpl_GDKd8CqbR6nUBVi5gAr6TjBnqXP2` (target=production, READY; alias
+  `hotelgen-v2.vercel.app` `vercel inspect` AYNI dpl id).
   Saglik: `/` 200 · webhook GET 405 · webhook POST secret'siz 401.
-  Muhur: `npm run doctor` YESIL (tsc 0 · test:is8 **2031/2031, 18 dosya** ·
-  sema 46/47 · marka 0 unexpected) + `npm run build` exit 0. **CANLI BOT UAT YOK**
-  (bkz. §7) — 23505 dalinin gercekten tetiklendigi bir vaka HENUZ gorulmedi.
+  Muhur (27.otu): `npm run doctor` YESIL (tsc 0 · test:is8 **2031/2031, 18 dosya** ·
+  sema 46/47 · marka 0 unexpected) — **hardening kodu BOZMADI**; katalog dogrulamasi
+  service_role INSERT/exec_sql = true. **CANLI BOT UAT YOK** (26.otu 23505 dali +
+  27.otu hardening sonrasi uctan-uca forward zinciri) — bkz. §7.
 - **ONCEKI PROD (25. oturum): `1da42a9` — GUVENLIK KAPANISI.** Tam bir guvenlik
   denetimi kosuldu, bulgular kapatildi ve git gecmisine sizmis `service_role`
   anahtarlari **ROTE EDILDI**. En agir bulgu **CROSS-TENANT YAZMA** idi:
@@ -1024,7 +1053,7 @@ Two Vercel Cron jobs, both daily at 00:00 (`vercel.json`), authed by `Authorizat
 ### Migrations (`src/lib/migrations/`, `migrations/`)
 
 Versioned, idempotent SQL applied **per hotel DB at runtime** — not a CLI step.
-- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (26. otu): `031_sla_events_open_unique.sql`** — `sla_events` uzerinde **partial UNIQUE index** (`conversation_id, department_code, md5(request_text)` WHERE `responded_at IS NULL AND closed_at IS NULL`). Tablo/kolon YARATMAZ, veri DEGISTIRMEZ; **v5 tenant'a UYGULANDI** ve `pg_indexes` ile teyit edildi. **DIKKAT — `schema_migrations`'a DUSMEDI:** `exec_sql` RPC'si DOGRUDAN cagrildi (runMigrations akisi degil), o yuzden kayit satiri yazilmadi. Bu YENI bir tutarsizlik DEGIL: canli tabloda en yuksek kayit **"020"** (toplam 19 satir) — 021..031 arasi HICBIRI kayitli degil, 029/030 da ayni yoldan uygulanmisti. Pratik etki: panelden migration kosulursa 031 "uygulanmamis" gorunup TEKRAR kosar; `CREATE UNIQUE INDEX IF NOT EXISTS` sayesinde **no-op**, zararsiz. Onceki: **`030_rate_limit_counters.sql`** (25. otu) — yeni tablo + `rate_limit_hit()` fonksiyonu, ADDITIVE ve GUVENLI (mevcut kolon/veriye dokunmaz). Dollar-quote etiketi BILINCLI olarak `$rate_limit_hit$`: dosya runner tarafindan `exec_sql(sql text)` icine PARAMETRE olarak gecer ve `exec_sql`in kendi govdesi `$$` kullanir. Onceki: `029_processed_telegram_updates.sql` (18. otu). **IKISI DE YALNIZ v5 tenant'a uygulandi**; her YENI tenant'ta calistirilmasi gerekir. Kosulmazsa iki koruma da fail-safe/fail-open yonde SESSIZCE devre disi kalir: `claimTelegramUpdate` `true` doner (dedup yok), `claimRateLimit` `allowed=true, degraded=true` doner (limit yok). Davranis eskisiyle ayni, bozulma yok — ama koruma da yok. (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil. Onceki kayit "027" idi, 028 zaten mevcuttu — duzeltildi.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
+- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (27. otu): `032_db_hardening_revoke_anon_rls.sql`** — DB-KATMAN HARDENING: `public` semada anon/authenticated/PUBLIC'ten tablo+sequence+fonksiyon yetkilerini REVOKE eder, service_role'e GRANT geri verir, `ALTER DEFAULT PRIVILEGES REVOKE` ile gelecek grant'lari keser ve **her public tabloda RLS ENABLE** eder (policy yok -> deny-by-default; service_role bypass). **v5 + demo tenant'a UYGULANDI** (`exec_sql`/postgres-definer, preflight owner-assert=0), katalog ile teyit (`anon_*=false`, `rls_kapali=0`, `svc_*=true`). Central ikizi **`migrations/central/011_db_hardening_revoke_anon_rls.sql`** — hotelgen-central PROD SQL Editor'den CANLI (`anon_bridge=false`, `rls_off=0`, `svc_ok=true`). **DIKKAT — `schema_migrations`'a DUSMEDI** (dogrudan exec_sql / SQL Editor — 029/030/031 ile ayni yol). Tablo/kolon/veri DEGISTIRMEZ (yalniz grant/RLS). Onceki: **`031_sla_events_open_unique.sql`** (26. otu) — `sla_events` uzerinde **partial UNIQUE index** (`conversation_id, department_code, md5(request_text)` WHERE `responded_at IS NULL AND closed_at IS NULL`). Tablo/kolon YARATMAZ, veri DEGISTIRMEZ; **v5 tenant'a UYGULANDI** ve `pg_indexes` ile teyit edildi. **DIKKAT — `schema_migrations`'a DUSMEDI:** `exec_sql` RPC'si DOGRUDAN cagrildi (runMigrations akisi degil), o yuzden kayit satiri yazilmadi. Bu YENI bir tutarsizlik DEGIL: canli tabloda en yuksek kayit **"020"** (toplam 19 satir) — 021..031 arasi HICBIRI kayitli degil, 029/030 da ayni yoldan uygulanmisti. Pratik etki: panelden migration kosulursa 031 "uygulanmamis" gorunup TEKRAR kosar; `CREATE UNIQUE INDEX IF NOT EXISTS` sayesinde **no-op**, zararsiz. Onceki: **`030_rate_limit_counters.sql`** (25. otu) — yeni tablo + `rate_limit_hit()` fonksiyonu, ADDITIVE ve GUVENLI (mevcut kolon/veriye dokunmaz). Dollar-quote etiketi BILINCLI olarak `$rate_limit_hit$`: dosya runner tarafindan `exec_sql(sql text)` icine PARAMETRE olarak gecer ve `exec_sql`in kendi govdesi `$$` kullanir. Onceki: `029_processed_telegram_updates.sql` (18. otu). **IKISI DE YALNIZ v5 tenant'a uygulandi**; her YENI tenant'ta calistirilmasi gerekir. Kosulmazsa iki koruma da fail-safe/fail-open yonde SESSIZCE devre disi kalir: `claimTelegramUpdate` `true` doner (dedup yok), `claimRateLimit` `allowed=true, degraded=true` doner (limit yok). Davranis eskisiyle ayni, bozulma yok — ama koruma da yok. (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil. Onceki kayit "027" idi, 028 zaten mevcuttu — duzeltildi.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
 - `runMigrations({ hotelSlug })` (`runMigrations.ts`) decrypts the hotel bridge, builds a tenant client, ensures `schema_migrations`, and runs unapplied files via the **`exec_sql` RPC** (SQL executed through a Postgres function, not the JS query builder).
 - Triggered from admin UI / API: `/api/admin/migrations` (tenant), `/api/admin/central-migrations`, `/api/admin/hotels/[id]/run-migrations`, with a `migrations` admin page. Also `seedBaseline` / `runBootstrap`.
 - **Single source of truth for tenant schema = `migrations/tenant/*`.** The legacy `sql/0x` hotel-side files (`05_hotel_schema` … `12_*`) are DEPRECATED/archive only — pre-migration manual "Supabase SQL Editor" bootstrap; never re-run them. (A15/AUDIT D7, resolved 2026-06-01: a read-only probe of both live tenants — demo-hotel + green-park-test — confirmed **no schema drift**; both are pure 001-chain. Only live difference: `match_documents()` RPC present on demo, absent on green-park → a Phase-C/RAG follow-up, not a schema conflict.)
@@ -1158,6 +1187,33 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     yerine KOPYALANMAZ. "Dup olunca ne yapilacagi" (misafire ne denecek, `continue`
     mi return mi) CAGIRANA aittir — helper onu genellestirmez.
   - **TR normalize** -> `normalize-tr.ts` `normalizeTr` (ikinci normalizer YASAK)
+- **27. OTURUM DB-KATMAN KARARLARI (IHLAL EDILEMEZ):**
+  - **(a) IZOLASYON PER-DB'DIR, `hotel_id` FILTRESI DEGIL.** Her otel AYRI Supabase
+    projesi; tenant tablolarinda `hotel_id`/`tenant_id` kolonu YOK. Guvenlik "dogru
+    DB'ye baglan"maya dayanir -> kod yanlis tenant client'i secerse hicbir sahiplik
+    kolonu yakalamaz. Bu yuzden `[slug]` kapisi (§25-otu) + DB-katman (RLS) BIRLIKTE
+    gerekli.
+  - **(b) `REVOKE ... FROM PUBLIC` TEK BASINA YETMEZ.** Supabase public-semada
+    anon+authenticated'e **AYRI** default-privilege grant'i koyar; revoke daima
+    `FROM PUBLIC, anon, authenticated` olmali. Ayrica `ALTER DEFAULT PRIVILEGES ...
+    REVOKE` ile GELECEK grant'lar da kesilmeli. (Canli delik tam buydu — bootstrap
+    yalniz PUBLIC'i revoke ediyordu, anon ACIK kaliyordu.)
+  - **(c) SIRA: fonksiyon/grant REVOKE ONCE -> RLS SONRA.** `exec_sql`
+    (SECURITY DEFINER, postgres) anon'a acik kaldigi surece anon o fonksiyon
+    uzerinden RLS'i BYPASS eder (postgres `rolbypassrls`). Once anon/auth'tan
+    EXECUTE cekilir, SONRA RLS anlam kazanir. Tersi sirada RLS olu koddur.
+  - **(d) RLS ENABLE'DAN ONCE OWNER-ASSERT (fail-loud).** `ALTER TABLE ... ENABLE
+    RLS` yalniz tablo sahibince yapilir; non-postgres sahipli bir public tablo varsa
+    DO bloğu patlar. Uygulamadan once `count(*) WHERE tableowner <> 'postgres'`
+    kosulur, >0 ise DUR. (central-011 per-tablo `EXCEPTION WHEN OTHERS -> RAISE
+    NOTICE skip` ile ayni korumayi migration ICINDE tasir.)
+  - **(e) service_role DOKUNULMAZ + GRANT GERI VERILIR.** REVOKE'lar app'i (yalniz
+    service_role kullanir) BOZMAMALI: her REVOKE blogunun yaninda `GRANT ... TO
+    service_role` olmali. Dogrulama: `has_*_privilege('service_role', ...)=true`.
+  - **(f) DB-KATMAN DEPLOY DEGILDIR.** Grant/RLS canli DB'de yasar, Vercel bundle'ini
+    degistirmez. Migration KAYDI commit'lenir ama `vercel --prod` GEREKMEZ; HEAD > PROD
+    olmasi bu yuzden KASITLIDIR, bir sevk borcu DEGIL. `schema_migrations`a dusmez
+    (dogrudan exec_sql / SQL Editor).
 - **26. OTURUM VERI-BUTUNLUGU KARARLARI (IHLAL EDILEMEZ):**
   - **(a) DB UNIQUE, BULANIK dedup'i TAKLIT EDEMEZ.** Constraint tam esitliktir;
     app dedup'i Jaccard 0.5'tir. Bir constraint ancak dedup'in **DAR ALT KUMESI**
@@ -1532,6 +1588,36 @@ circular import yok. Ayrinti: §2 *On buro chat_id TEK KAYNAK*. **CANLI UAT YOK.
 - **DOC SENKRONU:** bu commit dosyayi v39 -> **v40**'a tasir (kod sevkiyle AYNI
   oturum, AYRI commit).
 
+**27. oturumda KAPANDI — DB-KATMAN HARDENING (RLS defense-in-depth)** (`3409a0e`
+tenant-032 kaydi + central-011 kaydi + bu doc-sync; **DEPLOY YOK** — DB-katman,
+runtime kod degil):
+- **CANLI ACIK BULUNDU (recon):** `anon` anahtari 45 tabloda tam CRUD + `exec_sql`
+  (SECURITY DEFINER/postgres) anon'a acik -> anon anahtariyla postgres-yetkili
+  keyfi SQL. Kok neden: Supabase public-sema **default-privilege** grant'lari;
+  bootstrap'in `REVOKE ... FROM PUBLIC`u anon+authenticated'in AYRI grant'larini
+  temizlemiyor. **CANLI KANIT:** demo anon key `inhouse_guests_v2` 20 satir ->
+  SONRA denied; `exec_sql('SELECT 1')` CALISTI -> SONRA 42501.
+- **`migrations/tenant/032_db_hardening_revoke_anon_rls.sql`** (YENI) + **`migrations/
+  central/011_db_hardening_revoke_anon_rls.sql`** (YENI): tablo+sequence+fonksiyondan
+  anon/authenticated/PUBLIC REVOKE + service_role GRANT + `ALTER DEFAULT PRIVILEGES
+  REVOKE` (gelecek grant'lar) + **RLS ENABLE her public tabloda** (policy yok ->
+  deny-by-default; service_role bypass).
+- **UYGULAMA + KANIT:** 032 -> v5 + demo (`apply-hardening`, exec_sql/postgres-definer,
+  preflight owner-assert=0). v5 katalog SONRA: `anon_exec_sql=false`,
+  `anon_inhouse_read=false`, `auth_admin_read=false`, `rls_kapali=0`,
+  `svc_conv_write=true`, `svc_exec_sql=true` (APP SAGLAM). central-011 ->
+  hotelgen-central PROD **SQL Editor'den CANLI** (`anon_bridge=false`,
+  `anon_hotels=false`, `rls_off=0`, `svc_ok=true`).
+- **`tsql.js` (untracked, hg-scratch) PATCH:** `exec_sql_json` CREATE'inden sonra
+  `REVOKE ... FROM PUBLIC, anon, authenticated` + `GRANT ... TO service_role` —
+  her tsql kosusu Supabase default-grant'i geri acsa da service_role-only birakir
+  (OLCULDU: patched tsql sonrasi `anon exec_sql_json=false`). Commit'e GIRMEZ.
+- **INVARIANT KORUNDU:** app + tsql yalniz service_role (user-JWT yolu YOK,
+  `mode:'anon'` HIC cagrilmiyor, `central-browser` anon = OLU KOD, `supabase.auth`
+  sifir kullanim) -> hardening app'i BOZMAZ. `npm run doctor` YESIL (is8 2031/2031).
+- **DOC SENKRONU:** bu commit dosyayi v40 -> **v41**'e tasir (DB-katman kaydiyla AYNI
+  oturum). Migration max: **tenant 032 / central 011**.
+
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida). Isim-eslesme
 konsolidasyonu **TAMAMEN KAPANDI** (7/7 site), `front_office` konsolidasyonu
 **9/9 site** ile KAPANDI (#6 + #20) ve `sla_events` INSERT konsolidasyonu **4/4
@@ -1674,10 +1760,16 @@ site** ile KAPANDI (#3) — ucunu de yeniden acmayin.
   temizlik degil, §3-h geregi constraint EKLENMEMESI karari gecerlidir.
 
 **C) OPSIYONEL ZIRH (bugun bozuk bir sey YOK — kapsam ve sure tahmini):**
-- **Tenant DB'lerde RLS (~2-3 gun).** Bugun izolasyonun TEK katmani uygulama
-  kodudur; her tenant erisimi `service_role` ile gider ve RLS'i bypass eder
-  (25. otu SLA acigi tam olarak bu yuzden "kod atlarsa koruma yok" demekti).
-  RLS ikinci bir katman olurdu. Buyuk is: her tablo icin politika + regresyon.
+- ~~**Tenant DB'lerde RLS (~2-3 gun).**~~ **27. otu KAPANDI** (migration 032 +
+  central-011). Bugune kadar izolasyonun TEK katmani uygulama koduydu; her tenant
+  erisimi `service_role` ile gidip RLS'i bypass ediyordu (25. otu SLA acigi tam bu
+  yuzden "kod atlarsa koruma yok" demekti). Artik **ikinci katman VAR:** her public
+  tabloda RLS deny-by-default (policy yok -> anon/authenticated sifir satir),
+  anon/authenticated tablo+fonksiyon grant'lari REVOKE, `exec_sql` service_role-only.
+  Politika YAZILMADI (gerek yok — app service_role, `rolbypassrls=true`). **ACIK
+  KALAN:** 032/central-011 **cok-tenant yayilim** (bkz. D) — yeni tenant acilisinda
+  032 kosulmali; RLS'i bugun kullanan app yolu YOK, ama ileride user-JWT/anon yolu
+  eklenirse **once policy yazilmali** (deny-by-default o yolu da keser).
 - **Tam CSP (~1 gun).** `cf961d0` header'lari ekledi ama **CSP BILINCLI olarak
   EKLENMEDI**: panel inline style ve tsparticles tasiyor, Report-Only ile
   olcmeden zorlamak UI'yi kirar. Once Report-Only, sonra enforce.
@@ -1694,6 +1786,13 @@ site** ile KAPANDI (#3) — ucunu de yeniden acmayin.
   KOD olarak kosar** (`isUniqueViolation` asla true donmez — davranis eskisiyle
   ayni, koruma da YOK). Yeni tenant acilisinda ikisi de kosulmali; **031'den once
   o tenant'ta acik-dup gate'i TAZE olculmeli** (§3-d).
+- **`migrations/tenant/032` YALNIZ v5 + demo'da; `central/011` Central PROD'da (27.otu).**
+  032 kosmamis bir tenant'ta anon/authenticated DB'de HALA tam yetkili + RLS kapali
+  (acik durur — recon'daki delik). **Yeni tenant acilisinda 032 KOSULMALI**, ve her
+  seferinde **preflight owner-assert** (non-postgres sahipli public tablo varsa
+  DUR — RLS ENABLE patlar). `central/011` Central migration runner
+  (`/admin/central-migrations`) ile de yeniden kosulabilir (idempotent). Bu ucu de
+  `schema_migrations`a DUSMEDI (dogrudan exec_sql / SQL Editor — 031 ile ayni).
 - **Otel rate-limit tavani (600/dk) OLCUME DEGIL TAHMINE dayanir.** Dusurmeden
   once gercek zirve trafigi olculmeli.
 - **Build artik `cdn.sheetjs.com`a bagli** — CDN kesintisi build'i dusurur.
