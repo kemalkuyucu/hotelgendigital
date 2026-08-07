@@ -43,11 +43,16 @@ import { getJwtSecretBytes } from '@/lib/auth/jwt-secret'
 //  - connect: yalniz same-origin /api/... (harici fetch'lerin HEPSI server-side).
 //  - worker: tsparticles slim worker KULLANMAZ; yine de 'self' blob' (Next chunk'lari).
 //
-// BILINEN ACIK (Faz 2): iki panel srcDoc iframe'i (_calculator-frame / _teklif-frame)
-// inline <script> + on*= handler tasir (calculator-html 10, teklif-takip-html 6);
-// srcDoc statik string -> NONCE ALAMAZ. Report-Only'de RAPORLANIR ama KIRILMAZ.
-// Enforce'ta bu iki iframe bozulur -> Faz 2: script'i harici dosyaya tasi VEYA
-// iframe'e ayri sandbox/CSP ver.
+// srcDoc TOOL-FRAME'LERI (Faz 2/a'da KAPANDI — asagidaki RELAXED_FRAME_HOSTS):
+// iki panel srcDoc iframe'i (_calculator-frame / _teklif-frame) inline <script> +
+// on*= handler tasir. GERCEK envanter (olculdu, 2026-08-07):
+//   calculator-html.ts : 1 <script> blogu + 1 on*  (toggleGuide)
+//   teklif-takip-html.ts: 1 <script> blogu + 4 on* (switchTab x2, addHotel, removeHotel)
+// (Bu satir daha once "10 + 6" diyordu — YANLISTI; sayim `content="` yanlis-pozitifi
+//  tasiyan bir grep'ten geliyordu. Duzeltildi.)
+// srcDoc dokumani PARENT'in politikasini MIRAS ALIR ve nonce ALAMAZ -> STRONG
+// altinda kalsalardi enforce'ta olurlerdi (olculdu: script-src-elem + script-src-attr,
+// tool fonksiyonlari undefined). Cozum: host sayfalari RELAXED'e alindi.
 //
 // ---------------------------------------------------------------------------
 // NEDEN IKI KADEME (Faz 2/a) — headless olcum, PROD dpl_6XQqFCNx6..., 2026-08-07
@@ -70,8 +75,9 @@ import { getJwtSecretBytes } from '@/lib/auth/jwt-secret'
 //
 // ENFORCE HEDEFI (Faz 2/b, tek-satir flip): AYNI iki politika, yalniz header adi
 // 'Content-Security-Policy' (Report-Only kalkar) — kademe mantigi DEGISMEZ.
-// ONCE cozulmesi gerekenler: (1) srcDoc iframe'leri (yukari bak), (2) STRONG
-// alanindaki her route'un `npm run build` ciktisinda f oldugunun TEYIDI.
+// Bilinen iki bloker de KAPANDI: (1) srcDoc tool-frame'leri -> host'lari RELAXED
+// (asagida), (2) STRONG alanindaki statik route'lar -> hepsi force-dynamic (build
+// ciktisinda f). Enforce oncesi son kontrol yine `npm run build` o/f listesidir.
 
 /**
  * Iki kademede de AYNI olan yonergeler. Kopya YAZILMAZ (bkz. CLAUDE.md §3
@@ -98,12 +104,12 @@ function buildCsp(scriptSrc: string): string {
 }
 
 /** RELAXED — halka acik / statik prerender edilebilen sayfalar. Nonce YOK. */
-function relaxedCsp(): string {
+export function relaxedCsp(): string {
   return buildCsp("script-src 'self' 'unsafe-inline'")
 }
 
 /** STRONG — uygulama/auth alanlari. Next nonce'i HTML'e isler (dynamic render SART). */
-function nonceCsp(nonce: string): string {
+export function nonceCsp(nonce: string): string {
   return buildCsp(`script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`)
 }
 
@@ -113,11 +119,46 @@ function nonceCsp(nonce: string): string {
  * DIKKAT: bu prefix'lerin ALTINDAKI bir route statik (o) kalirsa nonce
  * TASIYAMAZ ve enforce'ta TUM script'leri bloklanir.
  */
-const STRONG_PREFIXES = ['/admin', '/hotel-admin', '/group-admin', '/manager', '/login']
+export const STRONG_PREFIXES = ['/admin', '/hotel-admin', '/group-admin', '/manager', '/login']
 
 /** Eslesme SEGMENT sinirinda — '/loginfoo' STRONG SAYILMAZ. */
-function isStrongArea(pathname: string): boolean {
+export function isStrongArea(pathname: string): boolean {
   return STRONG_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+}
+
+/**
+ * STRONG alani icindeki ISTISNA: statik srcDoc tool-frame HOST'lari.
+ *
+ * NEDEN RELAXED (Option A, 2026-08-07):
+ *  - Bu iki sayfa bir `srcDoc` iframe gomer (_calculator-frame / _teklif-frame).
+ *    srcDoc dokumani PARENT'in CSP'sini MIRAS ALIR ve nonce ALAMAZ -> STRONG
+ *    altinda enforce'ta arac TAMAMEN oler (olculdu: script-src-elem yukleme
+ *    aninda + script-src-attr tikta; compute()/renderQuote() undefined).
+ *  - Gomulen HTML %100 STATIK: 0 template interpolasyonu, frame bilesenine prop
+ *    YOK, fetch/XHR/localStorage YOK, eval/new Function YOK, harici kaynak YOK.
+ *    Host sayfa + layout zincirinde dangerouslySetInnerHTML YOK; tek dinamik
+ *    degerler (admin.full_name / admin.role) JSX text child olarak React
+ *    tarafindan escape edilir. Yani 'unsafe-inline' icin SOMURULEBILIR bir
+ *    enjeksiyon noktasi YOK -> bu iki sayfada relaxed GUVENLI.
+ *  - Alternatif (frame'i ayri route'tan servis etmek) `next.config.ts`teki
+ *    X-Frame-Options: DENY'i gevsetmeyi gerektirirdi; o kontrol BUGUN enforce
+ *    ve guvenligi ACIKCA srcDoc kullanimina dayaniyor -> REDDEDILDI.
+ *
+ * DIKKAT — YENI BIR srcDoc/inline-script FRAME EKLERSEN host path'ini BURAYA DA
+ * EKLE; yoksa enforce'a gecildiginde o arac SESSIZCE oler.
+ *
+ * Esleme EXACT: iki sayfanin da alt-route'u YOK. Alt-route eklenirse burasi
+ * bilincli olarak genisletilmeli (genis prefix, gereginden fazla yuzey gevsetir).
+ */
+export const RELAXED_FRAME_HOSTS = ['/admin/maliyet', '/admin/ozgur-kemal']
+
+export function isRelaxedFrameHost(pathname: string): boolean {
+  return RELAXED_FRAME_HOSTS.includes(pathname)
+}
+
+/** Bir path STRONG politika mi alir? (middleware'in KULLANDIGI nihai karar) */
+export function useStrongCsp(pathname: string): boolean {
+  return isStrongArea(pathname) && !isRelaxedFrameHost(pathname)
 }
 
 // Report-To (eski) — Reporting-Endpoints (yeni) header'i cspResponse'ta ayrica set edilir.
@@ -231,7 +272,7 @@ export default async function middleware(req: NextRequest) {
   // 'unsafe-inline' GEREKMEZ). RELAXED alanda nonce YOKTUR: o sayfalar statik
   // prerender + CDN cache olabilir ve nonce tasiyamaz (bkz. yukaridaki olcum).
   // Report-Only oldugu icin her iki kademede de ihlaller yalniz RAPORLANIR.
-  const nonce = isStrongArea(pathname) ? btoa(crypto.randomUUID()) : null
+  const nonce = useStrongCsp(pathname) ? btoa(crypto.randomUUID()) : null
   const csp = nonce ? nonceCsp(nonce) : relaxedCsp()
   const cspResponse = () => {
     let res: NextResponse
