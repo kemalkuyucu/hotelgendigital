@@ -26,7 +26,8 @@ import { jwtVerify } from 'jose'
 import { getJwtSecretBytes } from '@/lib/auth/jwt-secret'
 
 // ---------------------------------------------------------------------------
-// CSP — Faz 1: Content-Security-Policy-Report-Only (OLCUM, enforce DEGIL; KIRMAZ)
+// CSP — Faz 2/a: IKI KADEMELI Content-Security-Policy-Report-Only
+//                (hala OLCUM, enforce DEGIL; KIRMAZ)
 // ---------------------------------------------------------------------------
 // Recon (27+ otu) — tarayici yuzeyi tarandi. SADECE tarayici; server-side fetch'ler
 // (webhook/OpenAI/Perplexity/Telegram/Supabase API-route) CSP'ye TABI DEGIL.
@@ -48,25 +49,75 @@ import { getJwtSecretBytes } from '@/lib/auth/jwt-secret'
 // Enforce'ta bu iki iframe bozulur -> Faz 2: script'i harici dosyaya tasi VEYA
 // iframe'e ayri sandbox/CSP ver.
 //
-// ENFORCE HEDEFI (Faz 2, tek-satir flip): AYNI politika, yalniz header adi
-// 'Content-Security-Policy' (Report-Only kalkar). srcDoc sorunu ONCE cozulmeli.
-function buildCsp(nonce: string): string {
-  return [
-    "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: blob: https://*.supabase.co",
-    "connect-src 'self'",
-    "worker-src 'self' blob:",
-    "frame-src 'self'",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-    'report-uri /api/csp-report',
-    'report-to csp-endpoint',
-  ].join('; ')
+// ---------------------------------------------------------------------------
+// NEDEN IKI KADEME (Faz 2/a) — headless olcum, PROD dpl_6XQqFCNx6..., 2026-08-07
+// ---------------------------------------------------------------------------
+// 'strict-dynamic' spec geregi 'self'i ve host allowlist'ini GECERSIZ KILAR ->
+// yalniz nonce/hash eslesen script gecer. Statik prerender edilen HTML ise BUILD
+// aninda uretilip CDN'de cache'lenir (olculdu: X-Nextjs-Prerender: 1 +
+// X-Vercel-Cache: HIT) -> nonce TASIYAMAZ, middleware ise her istekte TAZE nonce
+// yollar = KALICI uyusmazlik. Canli sonuc: '/' -> 12 ihlal (10 same-origin _next
+// chunk + 2 inline), '/admin/login' (dynamic) -> 0 ihlal.
+//
+// COZUM — path'e gore IKI politika, TEK KAYNAK yine BU dosya:
+//   STRONG  (uygulama/auth) -> nonceCsp:   nonce + 'strict-dynamic', 'unsafe-inline' YOK.
+//                              Bu alandaki route'larin HEPSI dynamic (f) olmak ZORUNDA.
+//   RELAXED (halka acik)    -> relaxedCsp: nonce YOK, 'strict-dynamic' YOK,
+//                              script-src 'self' 'unsafe-inline' -> statik + CDN
+//                              cache ile UYUMLU.
+// Yeni bir PUBLIC sayfa varsayilan olarak RELAXED'e duser -> enforce'ta KIRILMAZ.
+// Yeni bir APP sayfasi STRONG_PREFIXES altina duser -> otomatik guclu politika.
+//
+// ENFORCE HEDEFI (Faz 2/b, tek-satir flip): AYNI iki politika, yalniz header adi
+// 'Content-Security-Policy' (Report-Only kalkar) — kademe mantigi DEGISMEZ.
+// ONCE cozulmesi gerekenler: (1) srcDoc iframe'leri (yukari bak), (2) STRONG
+// alanindaki her route'un `npm run build` ciktisinda f oldugunun TEYIDI.
+
+/**
+ * Iki kademede de AYNI olan yonergeler. Kopya YAZILMAZ (bkz. CLAUDE.md §3
+ * "tekrarlanan karar tek kaynakta") — iki politika YALNIZ script-src'de ayrilir.
+ */
+const CSP_DEFAULT_SRC = "default-src 'self'"
+const CSP_SHARED_TAIL = [
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob: https://*.supabase.co",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+  "frame-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  'report-uri /api/csp-report',
+  'report-to csp-endpoint',
+]
+
+function buildCsp(scriptSrc: string): string {
+  return [CSP_DEFAULT_SRC, scriptSrc, ...CSP_SHARED_TAIL].join('; ')
+}
+
+/** RELAXED — halka acik / statik prerender edilebilen sayfalar. Nonce YOK. */
+function relaxedCsp(): string {
+  return buildCsp("script-src 'self' 'unsafe-inline'")
+}
+
+/** STRONG — uygulama/auth alanlari. Next nonce'i HTML'e isler (dynamic render SART). */
+function nonceCsp(nonce: string): string {
+  return buildCsp(`script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`)
+}
+
+/**
+ * STRONG politika alanlari — uygulama/auth yuzeyi.
+ * Kaynak: `npm run build` route listesi (o/f sutunu) + src/app agaci.
+ * DIKKAT: bu prefix'lerin ALTINDAKI bir route statik (o) kalirsa nonce
+ * TASIYAMAZ ve enforce'ta TUM script'leri bloklanir.
+ */
+const STRONG_PREFIXES = ['/admin', '/hotel-admin', '/group-admin', '/manager', '/login']
+
+/** Eslesme SEGMENT sinirinda — '/loginfoo' STRONG SAYILMAZ. */
+function isStrongArea(pathname: string): boolean {
+  return STRONG_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))
 }
 
 // Report-To (eski) — Reporting-Endpoints (yeni) header'i cspResponse'ta ayrica set edilir.
@@ -175,18 +226,27 @@ const PATH_ROLE_MAP: Record<string, HotelAdminRole[]> = {
 export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // ── CSP Faz 1: her istekte nonce uret + Report-Only politika ──────────────
-  // Nonce Next'in inline (hydration) script'lerine uygulanir; boylece script-src
-  // 'unsafe-inline' GEREKMEZ. Report-Only oldugu icin ihlaller yalniz RAPORLANIR.
-  const nonce = btoa(crypto.randomUUID())
-  const csp = buildCsp(nonce)
-  const requestHeaders = new Headers(req.headers)
-  requestHeaders.set('x-nonce', nonce)
-  // Next, nonce'i request'teki CSP header'indan okuyup script'lere uygular
-  // (Report-Only header'ini de tanir) — bu yuzden request'e de yaziyoruz.
-  requestHeaders.set('content-security-policy-report-only', csp)
+  // ── CSP Faz 2/a: path'e gore IKI KADEMELI Report-Only politika ────────────
+  // STRONG alanda nonce uretilir (Next inline hydration script'lerine isler ->
+  // 'unsafe-inline' GEREKMEZ). RELAXED alanda nonce YOKTUR: o sayfalar statik
+  // prerender + CDN cache olabilir ve nonce tasiyamaz (bkz. yukaridaki olcum).
+  // Report-Only oldugu icin her iki kademede de ihlaller yalniz RAPORLANIR.
+  const nonce = isStrongArea(pathname) ? btoa(crypto.randomUUID()) : null
+  const csp = nonce ? nonceCsp(nonce) : relaxedCsp()
   const cspResponse = () => {
-    const res = NextResponse.next({ request: { headers: requestHeaders } })
+    let res: NextResponse
+    if (nonce) {
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-nonce', nonce)
+      // Next, nonce'i request'teki CSP header'indan okuyup script'lere uygular
+      // (Report-Only header'ini de tanir) — bu yuzden request'e de yaziyoruz.
+      requestHeaders.set('content-security-policy-report-only', csp)
+      res = NextResponse.next({ request: { headers: requestHeaders } })
+    } else {
+      // RELAXED: request header'ina DOKUNMA. Nonce'lu bir CSP request header'i
+      // Next'i dinamik render'a zorlar; bu sayfalar CDN cache'inde KALMALI.
+      res = NextResponse.next()
+    }
     res.headers.set('Content-Security-Policy-Report-Only', csp)
     res.headers.set('Reporting-Endpoints', 'csp-endpoint="/api/csp-report"')
     res.headers.set('Report-To', REPORT_TO)

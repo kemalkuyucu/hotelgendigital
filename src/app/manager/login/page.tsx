@@ -7,6 +7,10 @@
  */
 import { redirect } from 'next/navigation';
 
+// CSP Faz 2/a: STRONG alan (/manager) — statik prerender edilirse HTML nonce
+// TASIYAMAZ ve enforce'ta tum script'leri bloklanir. Dynamic kalmali.
+export const dynamic = 'force-dynamic';
+
 export default function ManagerLoginRedirect() {
   redirect('/hotel-admin/demo-hotel/login');
 }
