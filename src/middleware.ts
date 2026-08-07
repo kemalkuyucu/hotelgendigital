@@ -26,8 +26,8 @@ import { jwtVerify } from 'jose'
 import { getJwtSecretBytes } from '@/lib/auth/jwt-secret'
 
 // ---------------------------------------------------------------------------
-// CSP — Faz 2/a: IKI KADEMELI Content-Security-Policy-Report-Only
-//                (hala OLCUM, enforce DEGIL; KIRMAZ)
+// CSP — Faz 2/b: IKI KADEMELI **ENFORCING** Content-Security-Policy
+//                (Report-Only KALKTI; ihlal artik BLOKLANIR)
 // ---------------------------------------------------------------------------
 // Recon (27+ otu) — tarayici yuzeyi tarandi. SADECE tarayici; server-side fetch'ler
 // (webhook/OpenAI/Perplexity/Telegram/Supabase API-route) CSP'ye TABI DEGIL.
@@ -73,11 +73,18 @@ import { getJwtSecretBytes } from '@/lib/auth/jwt-secret'
 // Yeni bir PUBLIC sayfa varsayilan olarak RELAXED'e duser -> enforce'ta KIRILMAZ.
 // Yeni bir APP sayfasi STRONG_PREFIXES altina duser -> otomatik guclu politika.
 //
-// ENFORCE HEDEFI (Faz 2/b, tek-satir flip): AYNI iki politika, yalniz header adi
-// 'Content-Security-Policy' (Report-Only kalkar) — kademe mantigi DEGISMEZ.
-// Bilinen iki bloker de KAPANDI: (1) srcDoc tool-frame'leri -> host'lari RELAXED
-// (asagida), (2) STRONG alanindaki statik route'lar -> hepsi force-dynamic (build
-// ciktisinda f). Enforce oncesi son kontrol yine `npm run build` o/f listesidir.
+// ENFORCE YAPILDI (Faz 2/b): header adi 'Content-Security-Policy'; iki kademe +
+// RELAXED_FRAME_HOSTS mantigi DEGISMEDI. Onceki iki bloker kapatilmis olarak
+// gelindi: (1) srcDoc tool-frame'leri -> host'lari RELAXED (asagida),
+// (2) STRONG alanindaki statik route'lar -> hepsi force-dynamic (build'de f).
+// RAPORLAMA ACIK KALDI (report-uri/report-to + Reporting-Endpoints): enforce'ta
+// da ihlaller /api/csp-report'a duser, yani prod'da bir sey kirilirsa GORUNUR.
+// GERI ALMA (bir sey kirilirsa): bu dosyada iki header adini
+// 'Content-Security-Policy-Report-Only' / 'content-security-policy-report-only'
+// yapmak yeterli — politika ve kademe mantigina DOKUNMA.
+// ENFORCE ONCESI/SONRASI degismeyen kontrol: `npm run build` o/f listesi —
+// STRONG alaninda 'o' (statik) bir route BELIRIRSE o sayfa nonce alamaz ve
+// script'leri BLOKLANIR.
 
 /**
  * Iki kademede de AYNI olan yonergeler. Kopya YAZILMAZ (bkz. CLAUDE.md §3
@@ -267,11 +274,12 @@ const PATH_ROLE_MAP: Record<string, HotelAdminRole[]> = {
 export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // ── CSP Faz 2/a: path'e gore IKI KADEMELI Report-Only politika ────────────
+  // ── CSP Faz 2/b: path'e gore IKI KADEMELI **ENFORCING** politika ──────────
   // STRONG alanda nonce uretilir (Next inline hydration script'lerine isler ->
   // 'unsafe-inline' GEREKMEZ). RELAXED alanda nonce YOKTUR: o sayfalar statik
   // prerender + CDN cache olabilir ve nonce tasiyamaz (bkz. yukaridaki olcum).
-  // Report-Only oldugu icin her iki kademede de ihlaller yalniz RAPORLANIR.
+  // ARTIK ENFORCE: ihlal RAPORLANMAKLA KALMAZ, BLOKLANIR. Raporlama yine acik
+  // (report-uri/report-to) -> prod'da bir sey kirilirsa [csp-report]'ta gorunur.
   const nonce = useStrongCsp(pathname) ? btoa(crypto.randomUUID()) : null
   const csp = nonce ? nonceCsp(nonce) : relaxedCsp()
   const cspResponse = () => {
@@ -279,16 +287,18 @@ export default async function middleware(req: NextRequest) {
     if (nonce) {
       const requestHeaders = new Headers(req.headers)
       requestHeaders.set('x-nonce', nonce)
-      // Next, nonce'i request'teki CSP header'indan okuyup script'lere uygular
-      // (Report-Only header'ini de tanir) — bu yuzden request'e de yaziyoruz.
-      requestHeaders.set('content-security-policy-report-only', csp)
+      // Next, nonce'i request'teki CSP header'indan okuyup script'lere uygular.
+      // ENFORCE'ta header ADI RESPONSE ile ESLESMELI: request'e 'report-only'
+      // yazilip response 'Content-Security-Policy' donerse Next nonce'i yanlis
+      // header'dan okumaya calisir -> script'ler nonce'suz kalir ve BLOKLANIR.
+      requestHeaders.set('content-security-policy', csp)
       res = NextResponse.next({ request: { headers: requestHeaders } })
     } else {
       // RELAXED: request header'ina DOKUNMA. Nonce'lu bir CSP request header'i
       // Next'i dinamik render'a zorlar; bu sayfalar CDN cache'inde KALMALI.
       res = NextResponse.next()
     }
-    res.headers.set('Content-Security-Policy-Report-Only', csp)
+    res.headers.set('Content-Security-Policy', csp)
     res.headers.set('Reporting-Endpoints', 'csp-endpoint="/api/csp-report"')
     res.headers.set('Report-To', REPORT_TO)
     return res
@@ -407,7 +417,7 @@ export default async function middleware(req: NextRequest) {
 }
 
 // ---------------------------------------------------------------------------
-// Matcher — CSP Faz 1 icin GENISLETILDI: tum sayfa route'lari (nonce + Report-Only).
+// Matcher — CSP icin GENISLETILDI: tum sayfa route'lari (nonce + enforcing CSP).
 // HARIC: /api (webhook hot-path'e DOKUNMA), _next/static, _next/image, favicon ve
 // statik dosya uzantilari. Auth mantigi iceride pathname'e gore dallanir; auth-disi
 // path'lerde (landing vb.) yalniz CSP header'i eklenir, auth no-op.
