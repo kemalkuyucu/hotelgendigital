@@ -23,7 +23,7 @@
 
 | Dosya | Kaynak | Uretilen nesne / etki |
 |---|---|---|
-| `tenant_hardening.sql` | tenant 029+030+031+032 | tablo `processed_telegram_updates` (+`idx_ptu_seen_at`) · tablo `rate_limit_counters` (+`idx_rlc_window_start`) · fonksiyon `public.rate_limit_hit(text,text,integer)` · partial-unique index `uq_sla_events_open_request` (yalniz `sla_events` VARSA) · **hardening**: anon/authenticated/PUBLIC'ten tablo+sequence+fonksiyon REVOKE, `service_role`'e GRANT, `ALTER DEFAULT PRIVILEGES` ile gelecek nesneler, her public base tabloda **RLS ENABLE** |
+| `tenant_hardening.sql` | tenant 029+030+031+032 | tablo `processed_telegram_updates` (+`idx_ptu_seen_at`) · tablo `rate_limit_counters` (+`idx_rlc_window_start`) · fonksiyon `public.rate_limit_hit(text,text,integer)` · partial-unique index `uq_sla_events_open_request` (yalniz `sla_events` VARSA) · **hardening**: anon/authenticated/PUBLIC'ten tablo+sequence+fonksiyon REVOKE, `service_role`'e GRANT, `ALTER DEFAULT PRIVILEGES` (best-effort — **fonksiyonlarda ETKISIZ**, bkz. §3), her public base tabloda **RLS ENABLE** |
 | `central_hardening.sql` | central 011 | **yalniz hardening** (yukaridaki grant/RLS deseni). Nesne URETMEZ — Central'da 029/030/031 karsiligi tablo yoktur |
 | `verify_hardening.sql` | — | **SALT-OKUMA.** Tek SELECT -> `check_name · detail · status` (`PASS`/`FAIL`) |
 
@@ -76,12 +76,48 @@ Tum deyimler `IF NOT EXISTS` · `CREATE OR REPLACE` · `REVOKE`/`GRANT` ·
 yaratan bir migration kosarsan (or. ileride `033`), `tenant_hardening.sql`'i
 **TEKRAR KOS**. Iki sebep:
 1. Yeni tablo RLS'siz dogar.
-2. `ALTER DEFAULT PRIVILEGES ... REVOKE` yalnizca **onu calistiran rolun**
-   yarattigi nesneleri kapsar; baska bir rol nesne yaratirsa varsayilan
-   grant'lar yeniden devreye girebilir.
+2. **Yeni fonksiyon anon-executable dogar.** `ALTER DEFAULT PRIVILEGES ... ON
+   FUNCTIONS` bunu ENGELLEMEZ — 29. oturumda OLCULDU (asagidaki bolum). Tek
+   guvence, hardening'in `REVOKE EXECUTE ON ALL FUNCTIONS` sweep'ini TEKRAR
+   kosmaktir.
 
 Ayni sekilde `sla_events` baz semayla sonradan gelirse BOLUM 3 ancak
 **re-run'da** index'i kurar.
+
+### Fonksiyon default-priv'i GUVENCE DEGIL — 29. oturumda OLCULDU
+
+Iki hardening dosyasindaki `ALTER DEFAULT PRIVILEGES ... REVOKE EXECUTE ON
+FUNCTIONS ...` satiri **gelecek fonksiyonlari KORUMAZ.** Canli olcum (v5,
+harness-bite, salt-okuma + gecici dummy):
+
+- `defaclrole=postgres · sema=public · objtype=f` girdisi **zaten mevcuttu** ve
+  icerigi `postgres=X | service_role=X` idi (PUBLIC/anon/authenticated YOK) —
+  yani `032` o girdiyi kurmustu.
+- **Buna RAGMEN** `exec_sql` (postgres-definer) yolundan yaratilan taze bir
+  fonksiyon su ACL ile dogdu:
+  `=X/postgres | postgres=X/postgres | service_role=X/postgres`.
+  Bastaki bos alici **PUBLIC**'tir -> `has_function_privilege('anon', ...)` =
+  **true**.
+- `anon` hicbir role uye DEGIL (`pg_auth_members` bos) -> hakkin tek kaynagi
+  bu PUBLIC girdisidir.
+- Aday `ALTER DEFAULT PRIVILEGES **FOR ROLE postgres** ...` denendi:
+  `pg_default_acl` **hic degismedi** (no-op) ve taze fonksiyon yine `anon=true`
+  dogdu.
+- Mekanizma **KANITLANMADI** (owner=postgres, `current_user`=postgres teyitli);
+  sonuc mekanizmadan bagimsizdir.
+
+**GUVENCE = ACIK REVOKE.** Dort katman:
+1. **Sweep** — hardening'in `REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public
+   FROM PUBLIC, anon, authenticated` satiri O ANDAKI tum fonksiyonlari kilitler.
+2. **Re-run** — nesne ekleyen HER migration'dan sonra `tenant_hardening.sql`
+   tekrar kosulur (ya da migration kendi REVOKE'unu tasir).
+3. **Yakalama** — `verify_hardening.sql` -> `grant_anon_auth_functions` satiri
+   anon-executable kalan fonksiyonu **FAIL** ile ve ADIYLA raporlar.
+4. **Self-heal** — `exec_sql_json` ozelinde `tsql.js` ve `scripts/doctor.mjs`
+   CREATE'in HEMEN ardindan REVOKE+GRANT uygular.
+
+`ALTER DEFAULT PRIVILEGES` satirlari **zararsiz best-effort** olarak KALIR
+(tablo/sequence tarafi ayrica OLCULMEDI) — ama **guvence sayilmaz**.
 
 ### RLS ENABLE engellenirse ne olur — iki dosya, iki desen
 `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` **yalniz tablo sahibince**

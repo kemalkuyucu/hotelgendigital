@@ -32,6 +32,7 @@
 --     BIRINCIL KILIT BUDUR; RLS ikincil katmandir.
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon, authenticated;
 GRANT  EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO service_role;
+-- NOT (s29 olculdu): FONKSIYONLAR icin default-priv exec_sql yaratma yolunda ETKISIZ; guvence = REVOKE sweep + object-migration sonrasi re-run + verify grant_anon_auth_functions. best-effort, guvenme.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;
 
 REVOKE ALL ON ALL TABLES    IN SCHEMA public FROM PUBLIC, anon, authenticated;
