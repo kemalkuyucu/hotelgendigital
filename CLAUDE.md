@@ -6,8 +6,55 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- Bu dosya **28. oturum sonrasi** durumu yansitir; sohbet tarafindaki
-  **DEVIR + MASTER (v42)** ile hizalidir.
+- Bu dosya **29. oturum sonrasi** durumu yansitir; sohbet tarafindaki
+  **DEVIR + MASTER (v43)** ile hizalidir.
+- **29. OTURUM — COK-TENANT ONBOARDING HARDENING KITI + BULGU B (ozet).** Uc commit;
+  **PROD'a DOKUNULMADI** (deploy YOK — ucu de deploy gerektirmez).
+  **(1) `ab85c60` — `migrations/onboarding/` (4 YENI dosya).** `tenant_hardening.sql`
+  (029+030+031+032 **konsolide**, idempotent, tenant-agnostik, **fail-loud
+  owner-assert** — 032'ye sadik) · `central_hardening.sql` (**011-sadik**:
+  tablo-basina `EXCEPTION -> RAISE NOTICE skip`) · `verify_hardening.sql`
+  (**SALT-OKUMA**, TEK SELECT, **8 kontrol**: tablo+fonksiyon grant, RLS,
+  service_role CRUD, zorunlu nesneler) · `ONBOARDING_HARDENING.md` (checklist).
+  **TURETILMIS ASSET:** numarali sirayi BOZMAZ (tenant max **032** / central max
+  **011** AYNEN) ve runner bu klasoru **GORMEZ** (`loadMigrations` yalniz
+  `migrations/tenant`, `loadCentralMigrations` yalniz `migrations/central` okur)
+  -> `schema_migrations`a kayit DUSMEZ.
+  **CANLI DOGRULANDI (v5, tsql/`exec_sql` yolu):** B1 verify **8/8 PASS** -> B2 apply
+  (idempotent, **NET 0 degisiklik**; amac SQL'in gercek PG'de kostugunu kanitlamakti
+  — DO bloklari, `to_regclass` guard'i, owner-assert, dollar-quote'lu CREATE OR
+  REPLACE: **hata YOK**) -> B3 verify **yine 8/8 PASS**. **HARNESS-BITE:** ayni sorgu
+  hardening UYGULANMAMIS `storage` semasina yoneltilince **6/8 FAIL** dondu ve ihlal
+  edenleri ADIYLA saydi -> kontroller dekoratif DEGIL.
+  **(2) `68373c8` — `scripts/doctor.mjs` `exec_sql_json` ACL self-heal.** doctor her
+  kosuda `exec_sql_json`'i `CREATE OR REPLACE` ediyordu ama `tsql.js`'in 27.otu
+  **REVOKE-after-CREATE** yamasi EKSIKTI -> fonksiyon dusmusse ya da tenant YENIYSE
+  doctor'in ilk kosusu onu **SECURITY DEFINER + anon-executable** birakirdi. Yama
+  BIREBIR tasindi (ayni string, ayni `exec_sql` RPC'si). **OLCULDU** (gecici dummy
+  fonksiyon): once `anon=true`/`auth=true`, snippet sonrasi `anon=false`/`auth=false`,
+  `service_role=true`.
+  **(3) `a5724c9` — BULGU B durust dokumantasyon** (doc/comment-only; SQL davranisi
+  DEGISMEDI, yalniz MD + iki hardening SQL'ine caveat yorumu).
+- **29. OTURUM — BULGU B (KALICI, OLCULDU): `ALTER DEFAULT PRIVILEGES ... ON
+  FUNCTIONS` BU KOD TABANINDA ETKISIZDIR.** `exec_sql` (postgres-definer) yolundan
+  yaratilan TAZE bir fonksiyon su ACL ile dogar:
+  `=X/postgres | postgres=X/postgres | service_role=X/postgres` — bastaki **bos
+  alici PUBLIC**'tir, dolayisiyla `has_function_privilege('anon', ...)` = **true**
+  (`anon` hicbir role uye DEGIL, `pg_auth_members` **BOS** -> hakkin tek kaynagi bu
+  PUBLIC girdisi). Aday `ALTER DEFAULT PRIVILEGES **FOR ROLE postgres** ...` denendi:
+  `pg_default_acl` **HIC DEGISMEDI** (no-op) — cunku `defaclrole=postgres ·
+  sema=public · objtype=f` girdisini **032 ZATEN kurmustu**
+  (`postgres=X | service_role=X`, PUBLIC/anon/authenticated YOK) ve buna **RAGMEN**
+  taze fonksiyon anon-executable dogdu. **Mekanizma KANITLANMADI** (owner=postgres,
+  `current_user`=postgres teyitli); sonuc mekanizmadan BAGIMSIZDIR.
+  **GUVENCE = ACIK REVOKE, DORT KATMAN:** (1) 032'nin `REVOKE EXECUTE ON ALL
+  FUNCTIONS` **sweep**'i O ANDAKI tum fonksiyonlari kilitler · (2) nesne ekleyen HER
+  migration'dan sonra `tenant_hardening.sql` **RE-RUN** (ya da migration kendi
+  REVOKE'unu tasir) · (3) `verify_hardening.sql` -> **`grant_anon_auth_functions`**
+  anon-executable kalani **FAIL + ADIYLA** yakalar · (4) `exec_sql_json` ozelinde
+  **self-heal** (`tsql.js` 27.otu + `scripts/doctor.mjs` 29.otu).
+  `ALTER DEFAULT PRIVILEGES` satirlari **zararsiz best-effort** olarak KALIR
+  (tablo/sequence tarafi AYRICA OLCULMEDI) — ama **guvence DEGIL**.
 - **28. OTURUM — TAM CSP: IKI KADEMELI ENFORCING POLITIKA CANLI (ozet).** §7-C'nin
   "CSP BILINCLI olarak EKLENMEDI" borcu **KAPANDI** — CSP artik **enforce ediliyor**
   (Report-Only DEGIL). Dort adimda gidildi: **`fd638a0`** Faz 1 (Report-Only politika
@@ -64,25 +111,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   kumede dup **0** -> SIFIR temizlik) + `insertSlaEvent` **tek-kaynak** (4 site) +
   **23505 -> `notifyDuplicateRequest`**. `room_service_orders`'a guvenli bir
   statik constraint YOK -> onun yerine **2 defekt duzeltildi**. Tam liste §7'de.
-- **HEAD = `b6ef712` (28. oturum) · PROD(deploy) = `b6ef712` — HEAD = PROD.**
-  28. oturum PROD'a **DOKUNDU**: CSP **runtime koddur** (middleware), DB-katmanin
-  aksine **deploy GEREKTIRIR**. Deploy `dpl_7waBxtk6bwUTtjcgkhLg7PHfE6ww`
-  (target=production, READY; alias `hotelgen-v2.vercel.app` `vercel inspect` AYNI
-  dpl id). Onceki prod `dpl_GDKd8CqbR6nUBVi5gAr6TjBnqXP2` (26. otu) idi; aradaki
-  27. oturum commit'leri (`3409a0e` tenant-032 kaydi + `b56985f` central-011 + doc)
-  **RUNTIME DEGISTIRMIYORDU** — bu deploy onlari da tasidi, davranis degismedi
-  (DB-katman zaten canliydi).
-  **DIKKAT — `origin` GERIDE: `1e8c356`.** `11d4aa7` + `b6ef712` (+ bu doc-sync)
-  **PUSH BEKLIYOR**; `vercel --prod` calisma agacini yukledigi icin prod push'suz
-  cikti. **PROD > ORIGIN oldugu surece git uzerinden ROLLBACK YOK** — geri alma yolu
-  Vercel panelinden promote/rollback'tir. Push Kemal'in terminalinde yapilacak
-  (GCM bu ortamda non-interaktif ASILIR, bkz. §4).
-  Saglik (28.otu, enforce SONRASI olculdu): `/` 200 · webhook GET 405 · webhook
-  POST secret'siz 401 — **DEGISMEDI**.
-  Muhur (28.otu): `npm run doctor` YESIL (tsc 0 · test:is8 **2065/2065, 19 dosya** ·
-  sema 46/47 · marka 0 unexpected). **CANLI UAT YOK** — CSP tarafinda authed
-  paneller + iki srcDoc araci + `[csp-report]` prod verisi; ayrica 26.otu 23505 dali
-  ve 27.otu hardening sonrasi uctan-uca forward zinciri — bkz. §7.
+- **HEAD = `a5724c9` (29. oturum) · PROD(deploy) = `b6ef712` (28. oturum) —
+  29. OTURUM PROD'A DOKUNMADI.** Ucu de deploy GEREKTIRMEZ: `ab85c60` bir
+  DB-katman/onboarding **ASSET**'idir (runtime bundle'a girmez, runner gormez),
+  `68373c8` **YEREL arac**tir (`scripts/doctor.mjs`, prod'a deploy EDILMEZ),
+  `a5724c9` **doc-only**. PROD deploy `dpl_7waBxtk6bwUTtjcgkhLg7PHfE6ww`
+  (28.otu, target=production, READY; alias `hotelgen-v2.vercel.app` `vercel inspect`
+  AYNI dpl id) — **DEGISMEDI**. 28. oturum PROD'a DOKUNMUSTU: CSP **runtime koddur**
+  (middleware), DB-katmanin aksine **deploy GEREKTIRIR**. Onceki prod
+  `dpl_GDKd8CqbR6nUBVi5gAr6TjBnqXP2` (26. otu) idi; aradaki 27. oturum commit'leri
+  (`3409a0e` tenant-032 kaydi + `b56985f` central-011 + doc) **RUNTIME
+  DEGISTIRMIYORDU** — o deploy onlari da tasidi, davranis degismedi.
+  **`origin` = `6c6dcec` — `git ls-remote` ile OLCULDU (29. otu).** 28. oturumun
+  push borcu **KAPANMIS**: `11d4aa7` + `b6ef712` + `6c6dcec` origin'de ->
+  **PROD origin'de VAR, git uzerinden ROLLBACK ACIK.** (Bu dosyanin onceki
+  "origin GERIDE `1e8c356` -> rollback YOK" kaydi **BAYATTI**; §7-E ile birlikte
+  duzeltildi. Ders: push durumunu `git status`in tracking ref'inden OKUMA.)
+  **PUSH BEKLIYOR: 29. oturumun 3 commit'i + bu doc-sync** (`ab85c60` · `68373c8` ·
+  `a5724c9` · v43). Push Kemal'in terminalinde (GCM bu ortamda non-interaktif
+  ASILIR, bkz. §4); sonrasi **`git status` ile DEGIL `git ls-remote` ile**
+  dogrulanir — tracking ref bayat kalabilir (tam da bu oturumda yasandi).
+  Saglik: 29. oturumda prod'a dokunulmadigi icin **OLCULMEDI**; son olcum 28.otu
+  (`/` 200 · webhook GET 405 · webhook POST secret'siz 401).
+  Muhur (29.otu): `npm run doctor` YESIL (tsc 0 · test:is8 **2065/2065, 19 dosya —
+  DEGISMEDI**; kit SQL/MD'dir, saf karar icermez -> is8'e vaka ZORLANMADI ·
+  sema 46/47 **DEGISMEDI**: [C] yalniz `migrations/tenant/*.sql` okur, onboarding
+  klasoru sayimi ETKILEMEZ · marka 0 unexpected). **CANLI UAT YOK** — CSP tarafinda
+  authed paneller + iki srcDoc araci + `[csp-report]` prod verisi; ayrica 26.otu
+  23505 dali ve 27.otu hardening sonrasi uctan-uca forward zinciri — bkz. §7.
 - **ONCEKI PROD (25. oturum): `1da42a9` — GUVENLIK KAPANISI.** Tam bir guvenlik
   denetimi kosuldu, bulgular kapatildi ve git gecmisine sizmis `service_role`
   anahtarlari **ROTE EDILDI**. En agir bulgu **CROSS-TENANT YAZMA** idi:
@@ -257,6 +313,7 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   0 unexpected — DEGISMEDI**: yeni moduller (pg-error, insert-sla-event) hicbir
   id/marka HARDCODE ETMEZ). Yesil/kirmizi, FAIL -> exit 1. YEREL arac,
   PROD'a deploy EDILMEZ. "Bir sey bozuldu mu?" -> once bunu kos.
+- **`doctor.mjs` [C] KOSARKEN `exec_sql_json`'i KURAR — ve 29. otu'dan beri ACL'ini SELF-HEAL EDER (`68373c8`).** `CREATE OR REPLACE`in HEMEN ardindan `REVOKE EXECUTE ... FROM PUBLIC, anon, authenticated` + `GRANT ... TO service_role` kosar (`tsql.js`in 27.otu yamasinin BIREBIR ayni). Bu KOZMETIK DEGIL: `exec_sql_json` **SECURITY DEFINER**'dir; yamasiz haliyle fonksiyon dusmus ya da tenant yeniyse doctor'in ilk kosusu onu anon-executable yaratirdi (bkz. §0 BULGU B, §3-29e, §4). `CREATE OR REPLACE` MEVCUT fonksiyonun ACL'ini KORUDUGU icin acik canli tenant'ta GORUNMEZ — bu yuzden uzun sure fark edilmedi.
 - Kalan dogrulama yine `npm run type-check` + `npm run build` + manuel/UAT. Repo kokundeki
   `__*.js/.mjs`, `scratch_*.mjs`, `__run_*.ps1`, `__test_scenario_*.json` dosyalari tek
   kullanimlik teshis scriptleridir — test degil; referans alma, yenisini ekleme.
@@ -1134,6 +1191,7 @@ Two Vercel Cron jobs, both daily at 00:00 (`vercel.json`), authed by `Authorizat
 
 Versioned, idempotent SQL applied **per hotel DB at runtime** — not a CLI step.
 - Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (27. otu): `032_db_hardening_revoke_anon_rls.sql`** — DB-KATMAN HARDENING: `public` semada anon/authenticated/PUBLIC'ten tablo+sequence+fonksiyon yetkilerini REVOKE eder, service_role'e GRANT geri verir, `ALTER DEFAULT PRIVILEGES REVOKE` ile gelecek grant'lari keser ve **her public tabloda RLS ENABLE** eder (policy yok -> deny-by-default; service_role bypass). **v5 + demo tenant'a UYGULANDI** (`exec_sql`/postgres-definer, preflight owner-assert=0), katalog ile teyit (`anon_*=false`, `rls_kapali=0`, `svc_*=true`). Central ikizi **`migrations/central/011_db_hardening_revoke_anon_rls.sql`** — hotelgen-central PROD SQL Editor'den CANLI (`anon_bridge=false`, `rls_off=0`, `svc_ok=true`). **DIKKAT — `schema_migrations`'a DUSMEDI** (dogrudan exec_sql / SQL Editor — 029/030/031 ile ayni yol). Tablo/kolon/veri DEGISTIRMEZ (yalniz grant/RLS). Onceki: **`031_sla_events_open_unique.sql`** (26. otu) — `sla_events` uzerinde **partial UNIQUE index** (`conversation_id, department_code, md5(request_text)` WHERE `responded_at IS NULL AND closed_at IS NULL`). Tablo/kolon YARATMAZ, veri DEGISTIRMEZ; **v5 tenant'a UYGULANDI** ve `pg_indexes` ile teyit edildi. **DIKKAT — `schema_migrations`'a DUSMEDI:** `exec_sql` RPC'si DOGRUDAN cagrildi (runMigrations akisi degil), o yuzden kayit satiri yazilmadi. Bu YENI bir tutarsizlik DEGIL: canli tabloda en yuksek kayit **"020"** (toplam 19 satir) — 021..031 arasi HICBIRI kayitli degil, 029/030 da ayni yoldan uygulanmisti. Pratik etki: panelden migration kosulursa 031 "uygulanmamis" gorunup TEKRAR kosar; `CREATE UNIQUE INDEX IF NOT EXISTS` sayesinde **no-op**, zararsiz. Onceki: **`030_rate_limit_counters.sql`** (25. otu) — yeni tablo + `rate_limit_hit()` fonksiyonu, ADDITIVE ve GUVENLI (mevcut kolon/veriye dokunmaz). Dollar-quote etiketi BILINCLI olarak `$rate_limit_hit$`: dosya runner tarafindan `exec_sql(sql text)` icine PARAMETRE olarak gecer ve `exec_sql`in kendi govdesi `$$` kullanir. Onceki: `029_processed_telegram_updates.sql` (18. otu). **IKISI DE YALNIZ v5 tenant'a uygulandi**; her YENI tenant'ta calistirilmasi gerekir. Kosulmazsa iki koruma da fail-safe/fail-open yonde SESSIZCE devre disi kalir: `claimTelegramUpdate` `true` doner (dedup yok), `claimRateLimit` `allowed=true, degraded=true` doner (limit yok). Davranis eskisiyle ayni, bozulma yok — ama koruma da yok. (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil. Onceki kayit "027" idi, 028 zaten mevcuttu — duzeltildi.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
+- **`migrations/onboarding/` (29. otu, `ab85c60`) — TURETILMIS KIT, MIGRATION DEGIL.** Yeni tenant kurulumunu tekrarlanabilir kilar. `tenant_hardening.sql` = 029+030+031+032 konsolide (SIRA BAGLAYICI: once nesne uretimi, sonra hardening — aksi halde yeni tablolar revoke+RLS disinda kalir) · `central_hardening.sql` = central-011'in esi · `verify_hardening.sql` = SALT-OKUMA 8 kontrol (`PASS`/`FAIL`) · `ONBOARDING_HARDENING.md` = checklist. **RUNNER BU KLASORU GORMEZ** (`loadMigrations` yalniz `migrations/tenant`, `loadCentralMigrations` yalniz `migrations/central`) -> panelden KOSMAZ, `schema_migrations`a DUSMEZ, numarali sirayi (tenant 032 / central 011) BOZMAZ. Elle kosulur: `tsql` (dosyayi Node ile oku, ARGV olarak gecir) ya da Supabase SQL Editor. **Kite bir sey eklemek = once numarali migration'a eklemek, sonra turetmek** (bkz. §3-29a).
 - `runMigrations({ hotelSlug })` (`runMigrations.ts`) decrypts the hotel bridge, builds a tenant client, ensures `schema_migrations`, and runs unapplied files via the **`exec_sql` RPC** (SQL executed through a Postgres function, not the JS query builder).
 - Triggered from admin UI / API: `/api/admin/migrations` (tenant), `/api/admin/central-migrations`, `/api/admin/hotels/[id]/run-migrations`, with a `migrations` admin page. Also `seedBaseline` / `runBootstrap`.
 - **Single source of truth for tenant schema = `migrations/tenant/*`.** The legacy `sql/0x` hotel-side files (`05_hotel_schema` … `12_*`) are DEPRECATED/archive only — pre-migration manual "Supabase SQL Editor" bootstrap; never re-run them. (A15/AUDIT D7, resolved 2026-06-01: a read-only probe of both live tenants — demo-hotel + green-park-test — confirmed **no schema drift**; both are pure 001-chain. Only live difference: `match_documents()` RPC present on demo, absent on green-park → a Phase-C/RAG follow-up, not a schema conflict.)
@@ -1379,9 +1437,67 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     **0** oldugu icin partial unique (`031`) SIFIR temizlikle kuruldu; naive
     dogal-anahtar UNIQUE ise REDDEDILDI. Ayrinti ve gerekce: asagidaki
     *26. OTURUM VERI-BUTUNLUGU KARARLARI* (a-h).
+- **29. OTURUM KARARLARI (IHLAL EDILEMEZ):**
+  - **(a) TURETILMIS ASSET NUMARALI SIRAYI BOZMAZ.** `migrations/onboarding/*`
+    mevcut numarali migration'larin **KONSOLIDASYONUDUR**; yeni karar/tablo/politika
+    ICERMEZ ve bir migration DEGILDIR (runner gormez, `schema_migrations`a dusmez).
+    Kite bir sey eklemek istiyorsan **ONCE numarali migration'a** ekle, SONRA kiti
+    turet. Tersi iki gercek uretir: panelden kosan tenant ile elle kosan tenant
+    ayrisir.
+  - **(b) HER TURETILMIS DOSYA KENDI KAYNAGINA SADIKTIR.** `tenant_hardening.sql`
+    032'nin **fail-loud owner-assert**'ini, `central_hardening.sql` 011'in
+    **tablo-basina `EXCEPTION -> skip`**'ini tasir. Ikisini "tutarli olsun" diye
+    ESITLEME — kaynaklar farkli, davranis farki BILINCLI. Her iki desende de
+    dogrulama `verify_hardening.sql`'dedir (atlanan tablo `rowsecurity=false` ->
+    FAIL; yani skip SESSIZ KALMAZ).
+  - **(c) TURETILEN SEY CANLI DOGRULANIR.** Bir kit/script "tsc gecti" ile teslim
+    EDILMEZ: gercek DB'de kosturulur (idempotent apply -> **net-0**), verify
+    ONCE/SONRA alinir ve **harness-bite** ile kontrolun gercekten isirdigi
+    gosterilir (29.otu: ayni sorgu `storage` semasina yoneltilince 6/8 FAIL).
+  - **(d) BULGU B — YENI FONKSIYONDA default-priv'e GUVENME.** Ayrinti ve kanit
+    §0'da. Guvence **ACIK REVOKE**'tur; dort katman: 032-sweep · object-migration
+    sonrasi re-run · `verify_hardening.sql` `grant_anon_auth_functions` ·
+    `exec_sql_json` self-heal. Bir fonksiyonun guvenli oldugunu **olcmeden** iddia
+    etme.
+  - **(e) `exec_sql_json`'I RECREATE EDEN HER ARAC, HEMEN ARDINDAN REVOKE ETMEK
+    ZORUNDA.** Bugun iki arac yapiyor: `tsql.js` (27.otu) ve `scripts/doctor.mjs`
+    (29.otu). UCUNCU bir arac yazilirsa AYNI iki satiri tasir — yoksa SECURITY
+    DEFINER bir fonksiyonu anon'a acik birakir.
+  - **(f) EVENT TRIGGER COZUMU BACKLOG'DADIR, KENDILIGINDEN UYGULANMAZ.** "DDL
+    sonrasi otomatik REVOKE" icin event trigger cazip gorunur ama **Supabase'in
+    KENDI DDL'ini de yakalar** (migration/dashboard/replication) -> dar bir
+    harness-bite ile olculmeden YAZILMAZ.
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
 ## 4. TUZAKLAR (defalarca saat kaybettirdi)
+- **`ALTER DEFAULT PRIVILEGES ... ON FUNCTIONS` ETKISIZ (29. otu, OLCULDU):** girdi
+  `pg_default_acl`de DURUYOR olabilir (032 kurdu, `postgres=X | service_role=X`) ve
+  YINE DE `exec_sql` yolundan yaratilan taze fonksiyon `=X/postgres` (**PUBLIC**)
+  alir -> `anon=true`. "Default-priv var, gelecek fonksiyonlar guvende" **DEME**;
+  `verify_hardening.sql`in `grant_anon_auth_functions` satiriyla **OLC**. Kanit ve
+  dort katmanli guvence §0 BULGU B'de.
+- **`exec_sql_json`'i `CREATE OR REPLACE` EDEN ARAC REVOKE ETMEZSE ACIK BIRAKIR
+  (29. otu):** tuzagin sinsi tarafi — `CREATE OR REPLACE` **MEVCUT** fonksiyonun
+  ACL'ini KORUR, bu yuzden acik canli tenant'ta **GORUNMEZ**; fonksiyon dusmusse ya
+  da tenant YENIYSE ilk kosu onu anon-executable yaratir. `doctor.mjs` tam bu yuzden
+  yamalandi (`68373c8`). Yeni bir arac yazarken §3-29e.
+- **TURETILMIS KIT'I RUNNER GORMEZ (29. otu):** `migrations/onboarding/*.sql`
+  panelden ya da `runMigrations` ile **KOSMAZ**; elle kosulur. "Migration klasorune
+  koydum, uygulanir" varsayimi YANLIS. Ayni sebeple `npm run doctor` [C]'nin
+  "GEREKLI" tablo sayisi da **DEGISMEZ** — [C] yalniz `migrations/tenant/*.sql`
+  okur (rekursif DEGIL), `[D]` ise yalniz `src/**`. Kit dosyalarindaki metin
+  (or. bir otel adi) `[D]`ye TAKILMAZ; bu bir muafiyettir, izin degil.
+- **`tsql.js` YONLENDIRMESI `^\s*(select|with)` (29. otu):** **yorum blogu ile
+  BASLAYAN** bir SELECT dosyasi DDL dalina duser ve `exec_sql` (RETURNS void)
+  sessizce satir DONDURMEZ -> "sorgu bos dondu" sanirsin. Dosyayi verirken bastaki
+  yorumlari KIRP (ya da SQL'i `WITH`/`SELECT` ile baslat). SQL'i **PowerShell
+  argumani YAPMA**: Node ile oku, `spawn`a **ARGV DIZISI** olarak gecir (§4'un
+  here-string tuzaginin kardesi).
+- **KARSILASTIRMA KONTROLU DE YANLIS-KIRMIZI VEREBILIR (29. otu):** iki ayri kosuda
+  ayni sorguyu FARKLI kolon alias'iyla aldim (`grantor` vs `defaclrole`) ve JSON
+  karsilastirmasi "degisti" dedi — degisen VERI degil ANAHTAR ADIYDI. Kontrolu
+  normalize et ve **negatif kontrolle** sina (sahte satir ekleyince kirmizi donmeli).
+  Yanlis-kirmizi, yanlis-yesil kadar zaman yakar.
 - **`export const dynamic = 'force-dynamic'` BIR `'use client'` SAYFASINDA SESSIZCE
   YOK SAYILIR (28. otu):** hata VERMEZ, uyari VERMEZ — sayfa build'de sessizce `o`
   (statik) basmaya devam eder. `/login` tam olarak boyle kacti: config `page.tsx`e
@@ -1800,6 +1916,32 @@ runtime kod degil):
   AYRI commit — §0 *DOKUMAN GECIKMESI* dersi). **PUSH BEKLIYOR** (`origin` =
   `1e8c356`; bkz. E).
 
+**29. oturumda KAPANDI — COK-TENANT ONBOARDING KITI + doctor SELF-HEAL + BULGU B**
+(`ab85c60` · `68373c8` · `a5724c9`; **DEPLOY YOK** — kit DB-katman asset'i, doctor
+yerel arac, ucuncusu doc-only):
+- **KIT (`ab85c60`):** §7-D'nin "032/031/030 YALNIZ v5+demo'da; yeni tenant acilisinda
+  kosulmali" borcu artik **TEKRARLANABILIR bir kite** baglandi (borcun kendisi ACIK
+  kalir — kit *yayilimi* degil, yayilimin **arac**ini saglar). Ayrinti §2
+  *Migrations* + §3-29a/b/c.
+- **CANLI KANIT (v5):** B1 verify 8/8 PASS -> B2 apply **net-0** (SQL gercek PG'de
+  hatasiz kostu) -> B3 verify 8/8 PASS · harness-bite `storage` semasinda **6/8 FAIL**.
+  Ayrica MD'nin kendi on-adimi kosuldu: acik-dup olcumu **BOS** (031 index'i zaten
+  canli, `IF NOT EXISTS` no-op).
+- **doctor SELF-HEAL (`68373c8`):** 27.otu sinifi **LATENT** acik kapandi; harness-bite
+  ile olculdu (dummy fn: `anon` **true -> false**, `service_role` true KALDI).
+  `[C]` yesil kaldi -> REVOKE service_role'u KISITLAMIYOR.
+- **BULGU B (`a5724c9`):** olcum sonucu dokumana **DURUSTCE** islendi — `ALTER
+  DEFAULT PRIVILEGES ... ON FUNCTIONS` "gelecek fonksiyonlari korur" iddiasi
+  **KALDIRILDI**, yerine dort katmanli acik-REVOKE guvencesi yazildi. Satirlar
+  best-effort olarak KALDI (silmek bir davranis degisikligi olurdu, kazanc YOK).
+- **RECON NOTU (29. otu):** bugun **TEK CANLI tenant v5**'tir; kit ile canli durum
+  arasinda **gap YOK** (8/8 PASS). Yeni oteller v5'ten klonlanacagi icin kitin ilk
+  gercek sinavi **bos/yeni bir DB'de ilk kosu** olacaktir — o zamana kadar
+  fail-loud dallari (owner-assert `RAISE`, `to_regclass` NULL, acik-dup patlamasi)
+  ve `central_hardening.sql`in TAMAMI **DOGRULANMAMIS** durumdadir.
+- **DOC SENKRONU:** bu commit dosyayi v42 -> **v43**'e tasir (sevkle AYNI oturum,
+  AYRI commit — §0 *DOKUMAN GECIKMESI* dersi).
+
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida). Isim-eslesme
 konsolidasyonu **TAMAMEN KAPANDI** (7/7 site), `front_office` konsolidasyonu
 **9/9 site** ile KAPANDI (#6 + #20) ve `sla_events` INSERT konsolidasyonu **4/4
@@ -1991,11 +2133,14 @@ site** ile KAPANDI (#3) — ucunu de yeniden acmayin.
   gerekir. Bu batch'in DISINDA birakildi.
 
 **E) 28. oturumda ACILAN borclar (CSP):**
-- **PROD > ORIGIN — PUSH BEKLIYOR (en acil).** `origin` = `1e8c356`; `11d4aa7` +
-  `b6ef712` + bu doc-sync push'lanmadi (GCM non-interaktif ASILIYOR, §4). Bu durum
-  surdukce **git uzerinden rollback YOK** ve repo canliyi YANLIS gosterir — biri
-  `origin`e bakip "CSP hala Report-Only" sanabilir. Push Kemal'in terminalinde;
-  sonrasi `git ls-remote` ile dogrulanmali.
+- ~~**PROD > ORIGIN — PUSH BEKLIYOR**~~ — **29. otu'da KAPALI oldugu OLCULDU.**
+  `git ls-remote` -> `origin/hotelgen-v4` = **`6c6dcec`**, yani `11d4aa7` +
+  `b6ef712` + 28.otu doc-sync **PUSH EDILMIS**. **PROD origin'de VAR -> git
+  uzerinden ROLLBACK ACIK.** (Bu madde uzun sure "origin = `1e8c356`, rollback YOK"
+  diyordu; kayit **BAYATTI** ve duzeltildi.) **DERS:** push durumunu `git status`in
+  tracking ref'inden OKUMA — o bayat kalir; `git ls-remote` ile OLC.
+  **BUGUNKU PUSH BORCU 29. oturumundur:** `ab85c60` · `68373c8` · `a5724c9` +
+  bu v43 doc-sync (Kemal'in terminalinde, tek batch).
 - **CSP CANLI UAT'i ACIK (uc nokta).** Authed paneller + iki srcDoc araci +
   `[csp-report]` prod verisi (yukarida ayrintili). Enforce'un gercekten kimseyi
   kirmadigi HENUZ kanitlanmadi; kanit gelene kadar geri alma recetesi elde tutulur
