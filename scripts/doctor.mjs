@@ -48,7 +48,11 @@ BEGIN
   EXECUTE format('SELECT jsonb_agg(row_to_json(t)) FROM (%s) t', query) INTO result;
   RETURN COALESCE(result, '[]'::jsonb);
 END;
-$fn$;`;
+$fn$;
+-- HARDENING (032 ile ayni niyet): Supabase public-sema default-grant'i bu fonksiyonu
+-- CREATE aninda anon/authenticated'e acar; her kurulumdan HEMEN SONRA service_role-only birak.
+REVOKE EXECUTE ON FUNCTION public.exec_sql_json(text) FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION public.exec_sql_json(text) TO service_role;`;
 
 async function checkTenantSchema() {
   // GEREKLI: migrations/tenant/*.sql icindeki tum create-table adlari
