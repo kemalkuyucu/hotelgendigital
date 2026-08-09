@@ -6,8 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- Bu dosya **27. oturum sonrasi** durumu yansitir; sohbet tarafindaki
-  **DEVIR + MASTER (v41)** ile hizalidir.
+- Bu dosya **28. oturum sonrasi** durumu yansitir; sohbet tarafindaki
+  **DEVIR + MASTER (v42)** ile hizalidir.
+- **28. OTURUM — TAM CSP: IKI KADEMELI ENFORCING POLITIKA CANLI (ozet).** §7-C'nin
+  "CSP BILINCLI olarak EKLENMEDI" borcu **KAPANDI** — CSP artik **enforce ediliyor**
+  (Report-Only DEGIL). Dort adimda gidildi: **`fd638a0`** Faz 1 (Report-Only politika
+  + `/api/csp-report` ihlal-rapor endpoint'i — OLCUM, kirmaz) -> **`1e8c356`** Faz 2/a
+  (IKI KADEME: STRONG/RELAXED + STRONG route'lari dynamic) -> **`11d4aa7`** srcDoc
+  blokeri (Option A) -> **`b6ef712`** Faz 2/b (**ENFORCE flip — PROD**).
+  **KOK NEDEN — nonce ile SSG/CDN cache UYUSMAZ:** `'strict-dynamic'` `'self'`i ve
+  host allowlist'ini **GECERSIZ KILAR**; statik prerender edilen HTML **build aninda**
+  uretilip CDN'de cache'lenir (olculdu: `X-Nextjs-Prerender: 1` + `X-Vercel-Cache: HIT`)
+  -> nonce **TASIYAMAZ**, middleware ise her istekte TAZE nonce yollar = **KALICI**
+  uyusmazlik. Canli olcum: `/` **12 ihlal** (10 same-origin `_next` chunk + 2 inline),
+  `/admin/login` (dynamic) **0 ihlal**. TEK politika enforce edilseydi halka acik
+  landing dahil TUM statik rotalarin JS'i OLURDU. **Ikinci bloker:** iki panel
+  **srcDoc** araci parent'in politikasini MIRAS ALIR ve **nonce ALAMAZ** -> host'lari
+  RELAXED'e alindi (Option A). **COZUM: path'e gore IKI kademe, TEK KAYNAK
+  `src/middleware.ts`** (§2 *CSP*).
+  **PROD KANITI (curl, 2026-08-09):** `/` -> `Content-Security-Policy` +
+  `script-src 'self' 'unsafe-inline'`; `/admin/login` (200) -> AYNI header adi +
+  `'nonce-<uuid>' 'strict-dynamic'`; ikisinde de **`-Report-Only` sayimi 0**.
+  **CSP RUNTIME KODDUR** — DB-katmanin aksine **deploy GEREKTIRIR** (ve edildi).
+  Tam liste §7'de.
 - **27. OTURUM — DB-KATMAN HARDENING (RLS defense-in-depth) (ozet).** SALT-OKUMA
   recon **CANLI bir acik** buldu: tenant DB'lerinde `anon` anahtari **45 tabloda
   tam CRUD** (RLS yok + anon/authenticated'e blanket grant) yapabiliyor VE
@@ -43,19 +64,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   kumede dup **0** -> SIFIR temizlik) + `insertSlaEvent` **tek-kaynak** (4 site) +
   **23505 -> `notifyDuplicateRequest`**. `room_service_orders`'a guvenli bir
   statik constraint YOK -> onun yerine **2 defekt duzeltildi**. Tam liste §7'de.
-- **HEAD = `3409a0e` (27. oturum) · PROD(deploy) = `9dcf48a` (26. oturum) —
-  HEAD > PROD KASITLI.** Aradaki iki commit (`3409a0e` tenant-032 kaydi +
-  bu doc-sync) **RUNTIME KOD DEGISTIRMEZ** — 032/central-011 birer **DB-katman
-  migration KAYDIDIR** (grant/RLS canli DB'de uygulandi; Vercel bundle'i AYNI).
-  Bu yuzden bir sonraki `vercel --prod` bunlari tasisa da davranis degismez;
-  DB-katman deploy'a BAGLI DEGIL, zaten CANLI. **26. oturum PROD dokunulmadi:**
-  deploy hala `dpl_GDKd8CqbR6nUBVi5gAr6TjBnqXP2` (target=production, READY; alias
-  `hotelgen-v2.vercel.app` `vercel inspect` AYNI dpl id).
-  Saglik: `/` 200 · webhook GET 405 · webhook POST secret'siz 401.
-  Muhur (27.otu): `npm run doctor` YESIL (tsc 0 · test:is8 **2031/2031, 18 dosya** ·
-  sema 46/47 · marka 0 unexpected) — **hardening kodu BOZMADI**; katalog dogrulamasi
-  service_role INSERT/exec_sql = true. **CANLI BOT UAT YOK** (26.otu 23505 dali +
-  27.otu hardening sonrasi uctan-uca forward zinciri) — bkz. §7.
+- **HEAD = `b6ef712` (28. oturum) · PROD(deploy) = `b6ef712` — HEAD = PROD.**
+  28. oturum PROD'a **DOKUNDU**: CSP **runtime koddur** (middleware), DB-katmanin
+  aksine **deploy GEREKTIRIR**. Deploy `dpl_7waBxtk6bwUTtjcgkhLg7PHfE6ww`
+  (target=production, READY; alias `hotelgen-v2.vercel.app` `vercel inspect` AYNI
+  dpl id). Onceki prod `dpl_GDKd8CqbR6nUBVi5gAr6TjBnqXP2` (26. otu) idi; aradaki
+  27. oturum commit'leri (`3409a0e` tenant-032 kaydi + `b56985f` central-011 + doc)
+  **RUNTIME DEGISTIRMIYORDU** — bu deploy onlari da tasidi, davranis degismedi
+  (DB-katman zaten canliydi).
+  **DIKKAT — `origin` GERIDE: `1e8c356`.** `11d4aa7` + `b6ef712` (+ bu doc-sync)
+  **PUSH BEKLIYOR**; `vercel --prod` calisma agacini yukledigi icin prod push'suz
+  cikti. **PROD > ORIGIN oldugu surece git uzerinden ROLLBACK YOK** — geri alma yolu
+  Vercel panelinden promote/rollback'tir. Push Kemal'in terminalinde yapilacak
+  (GCM bu ortamda non-interaktif ASILIR, bkz. §4).
+  Saglik (28.otu, enforce SONRASI olculdu): `/` 200 · webhook GET 405 · webhook
+  POST secret'siz 401 — **DEGISMEDI**.
+  Muhur (28.otu): `npm run doctor` YESIL (tsc 0 · test:is8 **2065/2065, 19 dosya** ·
+  sema 46/47 · marka 0 unexpected). **CANLI UAT YOK** — CSP tarafinda authed
+  paneller + iki srcDoc araci + `[csp-report]` prod verisi; ayrica 26.otu 23505 dali
+  ve 27.otu hardening sonrasi uctan-uca forward zinciri — bkz. §7.
 - **ONCEKI PROD (25. oturum): `1da42a9` — GUVENLIK KAPANISI.** Tam bir guvenlik
   denetimi kosuldu, bulgular kapatildi ve git gecmisine sizmis `service_role`
   anahtarlari **ROTE EDILDI**. En agir bulgu **CROSS-TENANT YAZMA** idi:
@@ -191,7 +218,7 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   anahtari gerektirmez. Yeni bir kapi/karar eklersen korpusa vaka EKLE.
   Bayrak seviyesi olduguna dikkat: Telegram butonu / gercek forward karti / misafire giden
   LLM metni burada dogrulanamaz — onlar canli UAT konusudur.
-- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (26. oturum sonu **2031/2031**, **18 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)
+- **`npm run doctor` (scripts/doctor.mjs) = TEK KOMUT saglik kontrolu.** [A] tsc + [B] test:is8 (28. oturum sonu **2065/2065**, **19 dosya**; 1651 (13. otu, 10 dosya) -> 1693 (15. otu `is8-verify-parse-test.ts`, 42 vaka) -> 1734 (16. otu `is8-duplicate-guard-test.ts` 31 vaka + guest-lang'e dedup metni kapsami 10 vaka) -> 1747 (17. otu, YENI DOSYA YOK: `is8-duplicate-guard` 31->36 §8 M2 kapisi, `is8-pending-order` 20->28 §g `isStructuredOrder`) -> 1775 (18. otu `is8-update-dedup-test.ts`, 28 vaka §u1-u10) -> 1781 (19. otu, YENI DOSYA YOK: `is8-verify-parse` 42->48 §8 AR prefix strip) -> 1819 (20. otu §9 regex+strip tek kaynak, 38 vaka) -> 1827 (20. otu §10 STOP_WORDS, 8 vaka; `is8-verify-parse` toplam **94**)
   -> 1872 (21. otu **YENI DOSYA** `is8-match-guest-name-test.ts`, **45 vaka**)
   -> 1898 (22. otu, YENI DOSYA YOK: `is8-match-guest-name` 45->71, §6 `sameGuestByText` 11 + §7 `sameLastName` 8 + §8 eski normalizer oracle'i 7)
   -> 1913 (23. otu, YENI DOSYA YOK: `is8-match-guest-name` 71->**86**, §9 site-7 15 vaka)
@@ -212,7 +239,14 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   `1a` ters cevrilince **33/34** + `17/18 dosya` + `DUSEN: is8-pg-error-test.ts` +
   exit 1 KIRMIZI dondu, geri alininca YESIL. `insertSlaEvent`'in kendisi korpusa
   vaka EKLEMEDI (salt IO — §4 "davranis-koruyucu IO refactorunun muhru is8 DEGIL";
-  onun muhru doctor + payload SHA256 esdegerligi + sahte-client probe'u oldu) +
+  onun muhru doctor + payload SHA256 esdegerligi + sahte-client probe'u oldu)
+  -> **2065 (28. otu, YENI DOSYA `is8-csp-tier-test.ts`, 34 vaka):** CSP **kademe
+  karari** — `useStrongCsp` (= `isStrongArea && !isRelaxedFrameHost`), `STRONG_PREFIXES`,
+  `RELAXED_FRAME_HOSTS` **EXACT** eslesmesi + iki politika ureticisinin
+  (`relaxedCsp` / `nonceCsp`) YALNIZ `script-src`'de ayristigi ve `CSP_SHARED_TAIL`
+  12 yonergenin ORTAK kaldigi. **HARNESS-BITE olculdu.** Middleware'in IO'lu yani
+  (header YAZMA, nonce uretimi, request-header enjeksiyonu) korpusta **DEGIL** —
+  o taraf canli curl ile olculdu (§7) +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip;
   26. otu sonu **GEREKLI 46 / MEVCUT 47 — DEGISMEDI**: migration **031** yalnizca
   bir INDEX yaratir, `CREATE TABLE` icermez, bu yuzden [C]'nin "GEREKLI" sayisi
@@ -602,6 +636,52 @@ Hicbiri bir karar akisini degistirmez; her biri bir **giris yolunu kapatir**.
   istisnasiydi; RU/AR misafir pasif butona basinca TURKCE toast goruyordu. Artik
   `telegram_chat_id` ile TEK sorgu (`created_at` ASC + `limit(1)` — PGRST116 deseni).
   Her miss'te `'tr'` fallback = ESKI davranis, yani toast KAYBOLAMAZ.
+
+### CSP — IKI KADEMELI ENFORCING politika · sevkler `fd638a0` -> `1e8c356` -> `11d4aa7` -> `b6ef712` (28. otu) — **PROD**
+
+**TEK KAYNAK: `src/middleware.ts`.** `next.config.ts` diger guvenlik header'larini
+(HSTS / XFO / nosniff / Referrer / Permissions) tasir ama **CSP'ye DOKUNMAZ** —
+politika ikiye bolunmez. Matcher tum SAYFALARI kapsar; `/api` + `_next/static` +
+`_next/image` + favicon + statikler HARIC -> **webhook hot-path'i DOKUNULMAZ**.
+
+| Kademe | Alan | `script-src` |
+|---|---|---|
+| **STRONG** | `STRONG_PREFIXES = ['/admin','/hotel-admin','/group-admin','/manager','/login']` | `'self' 'nonce-<uuid>' 'strict-dynamic'` (**`unsafe-inline` YOK**) |
+| **RELAXED** | geri kalan halka acik/statik yuzey **+** `RELAXED_FRAME_HOSTS = ['/admin/maliyet','/admin/ozgur-kemal']` | `'self' 'unsafe-inline'` (nonce YOK, `strict-dynamic` YOK) |
+
+- **Karar TEK ifadede:** `useStrongCsp(p) = isStrongArea(p) && !isRelaxedFrameHost(p)`.
+  `RELAXED_FRAME_HOSTS` eslesmesi **EXACT**'tir (prefix DEGIL) — bir tool-frame host'u
+  gevsetilirken altindaki butun agac gevsemesin.
+- **Ayrim YALNIZ `script-src`'dedir.** Kalan **12 yonerge `CSP_SHARED_TAIL`**'de ORTAK:
+  `default-src 'self'` · `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com` ·
+  `font-src 'self' https://fonts.gstatic.com data:` · `img-src 'self' data: blob:
+  https://*.supabase.co` · `connect-src 'self'` · `worker-src 'self' blob:` ·
+  `frame-src 'self'` · `object-src 'none'` · `base-uri 'self'` · `form-action 'self'` ·
+  `frame-ancestors 'none'` · `report-uri /api/csp-report` (+ `report-to`).
+- **RAPORLAMA ENFORCE'TA DA ACIK:** ihlaller `/api/csp-report`'a duser
+  (`src/app/api/csp-report/route.ts` — POST, `(directive|blocked)` dedup +
+  500-key/64KB guard, her zaman 204, auth yok). Prod'da bir sey kirilirsa
+  **SESSIZ kalmaz, GORUNUR**.
+- **GERI ALMA (bir sey kirilirsa):** middleware'de **YALNIZ IKI HEADER ADINI**
+  Report-Only'ye cevir — politikaya ve kademelere DOKUNMA. Iki ad **BIRLIKTE**
+  degismek ZORUNDA: response `Content-Security-Policy` **ve** nonce'i tasiyan
+  request header'i `content-security-policy`. Next nonce'i **REQUEST** header'indan
+  okur; adlar ayrisirsa script'ler nonce'suz kalir ve enforce'ta **BLOKLANIR**.
+- **KURALLAR (yeni kod yazarken):**
+  - Yeni **srcDoc / inline-script tasiyan frame** -> host sayfasini
+    `RELAXED_FRAME_HOSTS`'a **EKLE**. srcDoc dokumani parent'in politikasini
+    MIRAS ALIR ve **nonce ALAMAZ**; STRONG altinda birakilirsa arac OLUR.
+  - Yeni **STRONG route STATIK KALMASIN** — `force-dynamic` sart. `npm run build`
+    route listesinde STRONG prefix altinda bir `o` (statik) belirirse o sayfa nonce
+    tasiyamaz ve TUM script'leri bloklanir. Enforce oncesi/sonrasi degismeyen kontrol
+    budur.
+  - Yeni **PUBLIC** sayfa varsayilan olarak RELAXED'e duser -> enforce'ta KIRILMAZ.
+  - **CSP RUNTIME KODDUR** — DB-katman migration'larinin aksine bir degisiklik
+    ancak `vercel --prod` ile canliya cikar.
+- **YENI DOSYALAR (28. otu):** `src/app/api/csp-report/route.ts` (ihlal endpoint'i) ·
+  `src/app/login/layout.tsx` (**yalnizca `force-dynamic` tasiyicisi** — `page.tsx`
+  `'use client'` oldugu icin config orada **SESSIZCE YOK SAYILIYORDU**, bkz. §4) ·
+  `scripts/is8-csp-tier-test.ts` (34 vaka).
 
 ### Oda-no parse disqualifier (backlog #1) · sevk `6c30f6f` + `3d9e593` (15. otu)
 
@@ -1070,6 +1150,10 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 
 - Middleware also does **per-role path gating** for hotel admins via `PATH_ROLE_MAP` (e.g. `front-office` segment → only `hotel_owner` + `front_office_manager`). Add a new protected hotel-admin section → update that map.
 - `getManagerOrHotelAdmin()` (dual-auth) lets routes accept either the manager session or a hotel-admin JWT.
+- **`src/middleware.ts` ayni zamanda CSP'nin TEK KAYNAGIDIR** (28. otu — iki kademeli
+  ENFORCING politika + per-request nonce; bkz. §2 *CSP*). Bu dosyaya dokunan bir
+  degisiklik AYNI ANDA auth kapilarini ve tarayici guvenlik politikasini etkiler;
+  matcher'i genisletirken/daraltirken IKISINI DE dusun.
 - App Router groups: `src/app/admin/(protected)/*`, `src/app/hotel-admin/[slug]/*`, `src/app/group-admin/[slug]/*`, `src/app/manager/*`, plus the public landing (`src/components/landing/*`). API under `src/app/api/{admin,hotel-admin,manager,group-admin,webhooks,cron,auth,health-check}/`.
 
 ## 3. KALICI KARARLAR (IHLAL EDILEMEZ)
@@ -1187,6 +1271,32 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     yerine KOPYALANMAZ. "Dup olunca ne yapilacagi" (misafire ne denecek, `continue`
     mi return mi) CAGIRANA aittir — helper onu genellestirmez.
   - **TR normalize** -> `normalize-tr.ts` `normalizeTr` (ikinci normalizer YASAK)
+  - **CSP politikasi** -> `src/middleware.ts` (28. otu). `next.config.ts`'te ya da bir
+    route handler'da IKINCI bir `Content-Security-Policy` header'i YAZILMAZ; iki kademe
+    (`relaxedCsp` / `nonceCsp`) ve `CSP_SHARED_TAIL` TEK yerde yasar. Kademe karari da
+    tek ifadedir: `useStrongCsp = isStrongArea && !isRelaxedFrameHost`.
+- **28. OTURUM CSP KARARLARI (IHLAL EDILEMEZ):**
+  - **(a) NONCE ILE STATIK RENDER BIR ARADA OLMAZ.** `'strict-dynamic'` `'self'`i
+    GECERSIZ KILAR ve statik HTML build aninda uretilip CDN'de cache'lenir -> nonce
+    TASIYAMAZ. Bu yuzden **STRONG alanindaki her route dynamic (`f`) OLMAK ZORUNDA**.
+    Kontrol `npm run build` route listesidir: STRONG prefix altinda bir `o` (statik)
+    belirirse o sayfanin TUM script'leri enforce'ta bloklanir. Cozum politikayi
+    gevsetmek DEGIL, sayfayi dynamic yapmaktir.
+  - **(b) srcDoc / INLINE-SCRIPT FRAME TASIYAN HOST RELAXED'E ALINIR.** srcDoc
+    dokumani parent'in politikasini MIRAS ALIR ve **nonce ALAMAZ** (olculdu: STRONG
+    altinda arac fonksiyonlari `undefined`). Yeni bir tool-frame eklenirse host'u
+    `RELAXED_FRAME_HOSTS`'a EKLE — politikaya global `unsafe-inline` EKLEME.
+  - **(c) ENFORCE/REPORT-ONLY FLIP'INDE IKI HEADER ADI BIRLIKTE DEGISIR.** Response
+    header'i ile nonce'i tasiyan REQUEST header'i ayrisirsa Next nonce'i okuyamaz ve
+    script'ler nonce'suz kalir — Report-Only'de yalniz raporlanir, enforce'ta
+    **BLOKLANIR**. Tek satir degistirip "flip yaptim" DEME.
+  - **(d) RAPORLAMA KAPATILMAZ.** `report-uri /api/csp-report` (+ `report-to`)
+    enforce'ta da ACIK kalir — bu, §3 SESSIZ YUTMA YASAGI'nin tarayici tarafidir:
+    bir sey bloklaniyorsa GORUNUR olmali. Endpoint auth'suz ve her zaman 204'tur;
+    dedup + boyut guard'i tasir.
+  - **(e) CSP RUNTIME KODDUR — DEPLOY GEREKTIRIR.** DB-katman migration'larinin
+    (§27-otu (f)) aksine grant/RLS gibi canli DB'de yasamaz; degisiklik ancak
+    `vercel --prod` ile canliya cikar.
 - **27. OTURUM DB-KATMAN KARARLARI (IHLAL EDILEMEZ):**
   - **(a) IZOLASYON PER-DB'DIR, `hotel_id` FILTRESI DEGIL.** Her otel AYRI Supabase
     projesi; tenant tablolarinda `hotel_id`/`tenant_id` kolonu YOK. Guvenlik "dogru
@@ -1272,6 +1382,34 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
 - **RAPOR BOTU:** @hotel_yonetici_rapor_bot (id 8504961295) — ASLA DOKUNMA.
 
 ## 4. TUZAKLAR (defalarca saat kaybettirdi)
+- **`export const dynamic = 'force-dynamic'` BIR `'use client'` SAYFASINDA SESSIZCE
+  YOK SAYILIR (28. otu):** hata VERMEZ, uyari VERMEZ — sayfa build'de sessizce `o`
+  (statik) basmaya devam eder. `/login` tam olarak boyle kacti: config `page.tsx`e
+  konuldu, build ciktisi DEGISMEDI, sorun ancak route listesi satir satir okununca
+  gorundu. **Cozum: config'i server-component `layout.tsx`'e tasi**
+  (`src/app/login/layout.tsx` bunun icin var). CSP STRONG alaninda bu tuzak
+  KOZMETIK DEGIL — statik kalan sayfa nonce tasiyamaz ve enforce'ta TUM script'leri
+  bloklanir. **Kanit `npm run build`'in `o`/`f` sutunudur, kaynaktaki satir DEGIL.**
+- **`frame-ancestors 'none'` srcDoc IFRAME'INI BLOKLAMAZ (28. otu, OLCULDU):**
+  sezgi tersini soyler ama `frame-ancestors` ve `frame-src 'self'` srcDoc dokumanini
+  ENGELLEMEZ (canli olcum: iframe 2/2 render, 46KB/30KB). srcDoc'un gercek problemi
+  farkli: parent'in politikasini MIRAS ALIR ve **nonce ALAMAZ** -> STRONG altinda
+  `script-src-elem` + tikta `script-src-attr` ihlali verip arac OLUR. Tesisi
+  "frame yonergesi" tarafinda arama, **kademe** tarafinda coz (§3-28b).
+- **NONCE + STATIK RENDER = KALICI UYUSMAZLIK (28. otu):** middleware her istekte
+  TAZE nonce uretir, statik HTML ise **build aninda** uretilip CDN'de cache'lenir
+  (`X-Nextjs-Prerender: 1` + `X-Vercel-Cache: HIT`) -> ikisi ASLA tutmaz. Ustune
+  `'strict-dynamic'` `'self'`i ve host allowlist'ini GECERSIZ KILDIGI icin sayfanin
+  **kendi same-origin chunk'lari** bile bloklanir. Tek bir "guclu politika" herkese
+  uygulanamaz; ayrim path bazli olmak ZORUNDA.
+- **`git push` BU ORTAMDA GCM'E TAKILIP ASILIR (28. otu):** non-interaktif kabukta
+  kimlik yardimcisi prompt acamaz; komut hata vermek yerine **timeout'a kadar
+  ASILI KALIR** ve `GIT_TERMINAL_PROMPT=0` tek basina bunu COZMEZ. Push, Kemal'in
+  kendi terminaline birakilir. **Deploy'u BLOKLAMAZ:** `vercel --prod` calisma
+  agacini yukler, dolayisiyla push'suz da prod'a cikilabilir — ama o zaman
+  **PROD > ORIGIN** olur ve **git uzerinden rollback YOLU KALMAZ** (geri alma
+  Vercel panelinden promote/rollback'tir). Push'un gerceklestigini `git status`
+  degil **`git ls-remote`** ile dogrula; tracking ref bayat kalabilir.
 - **`.or()` PARAMETRE BAGLAMAZ — string INTERPOLE ETME (25. otu):** PostgREST'te
   `.or()` bir **FILTRE IFADESIDIR**: `or=(room_number.ilike.%x%,last_name.ilike.%x%)`.
   Kullanici girdisini icine dogrudan yazarsan `,` `(` `)` `.` karakterleri AYIRAC
@@ -1618,6 +1756,50 @@ runtime kod degil):
 - **DOC SENKRONU:** bu commit dosyayi v40 -> **v41**'e tasir (DB-katman kaydiyla AYNI
   oturum). Migration max: **tenant 032 / central 011**.
 
+**28. oturumda KAPANDI — TAM CSP (iki kademeli ENFORCE)** (`fd638a0` -> `1e8c356` ->
+`11d4aa7` -> `b6ef712`; **PROD = `b6ef712`**, deploy `dpl_7waBxtk6bwUTtjcgkhLg7PHfE6ww`):
+- **§7-C'nin "CSP BILINCLI olarak EKLENMEDI" maddesi ARTIK GECERSIZ** (asagida
+  duzeltildi). O maddenin ongordugu sira AYNEN izlendi — once Report-Only, sonra
+  enforce — ama ARADA iki bloker cikti ve **ikisi de OLCUMLE bulundu, tahminle degil**.
+- **BLOKER 1 — STATIK PRERENDER (asil olan; srcDoc DEGIL).** Headless probe: `/`
+  **12 ihlal** (10 same-origin `_next` chunk + 2 inline, hepsi `script-src-elem`),
+  `/admin/login` **0 ihlal** (14 nonce'lu script). Kok neden canli header'la
+  kanitlandi: `/` -> `X-Nextjs-Prerender: 1` + `X-Vercel-Cache: HIT` + **12 script
+  etiketi / 0 nonce**; `/admin/login` -> prerender header YOK + `Cache: MISS` +
+  **14 nonce**. **COZUM `1e8c356`:** politika IKI KADEMEYE ayrildi + STRONG alandaki
+  statik route'lar dynamic yapildi. **Politikaya YENI ORIGIN GEREKMEDI** — bloklanan
+  her sey same-origin ya da inline'di (fonts.googleapis/gstatic/data: disinda
+  beklenmeyen kaynak CIKMADI).
+- **BLOKER 2 — srcDoc TOOL-FRAME'LERI.** `11d4aa7` **Option A**: host sayfalari
+  `RELAXED_FRAME_HOSTS`'a alindi (EXACT eslesme). Gercek envanter OLCULDU
+  (`calculator-html.ts` 1 `<script>` + 1 `on*`; `teklif-takip-html.ts` 1 `<script>` +
+  4 `on*`) — dokumanda daha once gecen "10 + 6" sayisi **YANLISTI** (`content="`
+  yanlis-pozitifi tasiyan bir grep'ten geliyordu). srcDoc'lar **%100 STATIK**
+  (0 interpolasyon/prop/fetch/eval) ve host+layout zincirinde
+  `dangerouslySetInnerHTML` YOK -> `unsafe-inline` icin somurulebilir enjeksiyon
+  noktasi YOK. **Option 2b (frame'i ayri route'tan sun) REDDEDILDI:**
+  `next.config.ts`teki `X-Frame-Options: DENY` **TUM** route'lara uygulanir ve BUGUN
+  enforce'tur -> 2b onu gevsetmeyi + `getCostAccess` kapisini cogaltmayi gerektirirdi.
+- **ENFORCE FLIP `b6ef712`:** degisen **YALNIZ iki header adi** (response + nonce'i
+  tasiyan request); politika icerigi ve kademe mantigi DEGISMEDI.
+- **ENFORCE-BREAKER REPO TARAMASI TEMIZ:** `dangerouslySetInnerHTML` 0 · `eval` /
+  `new Function` 0 · `javascript:` 0 · `next/script` 0 · ham inline `<script>` 0 ·
+  HTML-string `on*=` 0 (iki bilinen modul haric) · istemci tarafinda harici origin 0.
+- **MUHUR:** `npm run doctor` YESIL (tsc 0 · **is8 2031 -> 2065**, 18 -> **19 dosya**
+  · sema 46/47 DEGISMEDI · marka 0 unexpected) + `npm run build` exit 0 (route
+  `o`/`f` listesi enforce oncesi/sonrasi AYNI) + **PROD curl teyidi** (iki kademe
+  canli, `-Report-Only` sayimi **0**) + saglik DEGISMEDI (`/` 200 · webhook GET 405 ·
+  webhook POST secret'siz 401).
+- **CANLI UAT YOK — UC ACIK NOKTA:** (i) **authed paneller** (hotel-admin / manager /
+  group-admin dashboard'lari) headless erisilemez -> enforce altinda gercek panel
+  script'leri OLCULMEDI; (ii) iki **srcDoc araci** (`/admin/maliyet`,
+  `/admin/ozgur-kemal`) canli tiklamayla denenmedi; (iii) **`[csp-report]` prod
+  verisi HENUZ okunmadi** — enforce'un kimseyi kirmadiginin asil kaniti birkac
+  saatlik gercek trafik sonrasi o logdur.
+- **DOC SENKRONU:** bu commit dosyayi v41 -> **v42**'ye tasir (sevkle AYNI oturum,
+  AYRI commit — §0 *DOKUMAN GECIKMESI* dersi). **PUSH BEKLIYOR** (`origin` =
+  `1e8c356`; bkz. E).
+
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida). Isim-eslesme
 konsolidasyonu **TAMAMEN KAPANDI** (7/7 site), `front_office` konsolidasyonu
 **9/9 site** ile KAPANDI (#6 + #20) ve `sla_events` INSERT konsolidasyonu **4/4
@@ -1770,9 +1952,14 @@ site** ile KAPANDI (#3) — ucunu de yeniden acmayin.
   KALAN:** 032/central-011 **cok-tenant yayilim** (bkz. D) — yeni tenant acilisinda
   032 kosulmali; RLS'i bugun kullanan app yolu YOK, ama ileride user-JWT/anon yolu
   eklenirse **once policy yazilmali** (deny-by-default o yolu da keser).
-- **Tam CSP (~1 gun).** `cf961d0` header'lari ekledi ama **CSP BILINCLI olarak
-  EKLENMEDI**: panel inline style ve tsparticles tasiyor, Report-Only ile
-  olcmeden zorlamak UI'yi kirar. Once Report-Only, sonra enforce.
+- ~~**Tam CSP (~1 gun).**~~ **28. otu KAPANDI** (`b6ef712`, PROD). `cf961d0` yalniz
+  DIGER guvenlik header'larini eklemisti; CSP artik **ENFORCE ediliyor** (iki kademe,
+  TEK KAYNAK `src/middleware.ts` — bkz. §2 *CSP*). Maddenin ongordugu "once
+  Report-Only, sonra enforce" sirasi AYNEN izlendi ve arada iki bloker olculup
+  kapatildi (yukarida). **`unsafe-inline` STYLE tarafinda BILINCLI KALDI:** nonce
+  style **ATTRIBUTE**'unu kapsamaz, panel `style={{}}` + tsparticles inline style
+  tasir; kilit **script** tarafindadir. **ACIK KALAN = canli UAT** (authed panel /
+  srcDoc araclari / `[csp-report]` verisi).
 - **`serverActions.allowedOrigins` KASTEN bos** — bos birakmak Next'in
   Origin===Host kuralini korur (daha siki) ve preview deploy'lari bozmaz.
 
@@ -1802,3 +1989,26 @@ site** ile KAPANDI (#3) — ucunu de yeniden acmayin.
 - **backlog #5 (alerji kartina buton + SLA takibi) bir FEATURE'dir**, guvenlik
   borcu degil — M4 spec'i alerji yolunda SLA'yi YASAKLADIGI icin once urun karari
   gerekir. Bu batch'in DISINDA birakildi.
+
+**E) 28. oturumda ACILAN borclar (CSP):**
+- **PROD > ORIGIN — PUSH BEKLIYOR (en acil).** `origin` = `1e8c356`; `11d4aa7` +
+  `b6ef712` + bu doc-sync push'lanmadi (GCM non-interaktif ASILIYOR, §4). Bu durum
+  surdukce **git uzerinden rollback YOK** ve repo canliyi YANLIS gosterir — biri
+  `origin`e bakip "CSP hala Report-Only" sanabilir. Push Kemal'in terminalinde;
+  sonrasi `git ls-remote` ile dogrulanmali.
+- **CSP CANLI UAT'i ACIK (uc nokta).** Authed paneller + iki srcDoc araci +
+  `[csp-report]` prod verisi (yukarida ayrintili). Enforce'un gercekten kimseyi
+  kirmadigi HENUZ kanitlanmadi; kanit gelene kadar geri alma recetesi elde tutulur
+  (iki header adi -> Report-Only, §3-28c).
+- **`style-src 'unsafe-inline'` KALDI (bilincli, dusuk).** Kapatmak panel
+  `style={{}}` kullanimini ve tsparticles'i kirar; nonce style attribute'unu
+  kapsamadigi icin ucuz bir cozum YOK. Kilit script tarafinda oldugu icin kabul
+  edildi — ama "CSP tam" derken bunu unutma.
+- **`/api/csp-report` AUTH'SUZ ve INTERNETE ACIK (dusuk).** Tarayici raporu
+  gonderirken kimlik tasiyamaz, o yuzden auth KONULAMAZ; koruma dedup +
+  500-key/64KB guard + her zaman 204. Sahte rapor SELI log'u kirletebilir —
+  bugun bir sinir/rate-limit YOK.
+- **Statik/dynamic ayrimi BUILD CIKTISINA BAGLI.** Next surumu ya da bir sayfanin
+  render stratejisi degistiginde STRONG alanindaki bir route sessizce `o`'ya
+  donebilir. `npm run build` route listesi bu yuzden bir CSP kontrolu haline geldi;
+  surum yukseltmelerinden sonra `o`/`f` sutununa BAK.
