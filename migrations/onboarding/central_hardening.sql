@@ -7,9 +7,17 @@
 --
 -- TURETILMISTIR — YENI KARAR ICERMEZ. Kaynak:
 --   migrations/central/011_db_hardening_revoke_anon_rls.sql
--- (Numarali sira DEGISMEZ; central en yuksek numara hala 011. Bu dosya bir
+--   migrations/central/012_hotel_purge_retention.sql (BOLUM 4 — hotel_purge_log)
+-- (Numarali sira DEGISMEZ; central en yuksek numara 012. Bu dosya bir
 --  migration DEGILDIR, runner tarafindan GORULMEZ -> schema_migrations'a kayit
 --  DUSMEZ.)
+--
+-- NEDEN 012 ICIN AYRI SATIR YOK: bu dosya KATALOG-GUDUMLUDUR (asagidaki sweep
+-- `ALL TABLES` + `pg_tables` uzerinden doner) -> 012'nin urettigi
+-- `hotel_purge_log` OTOMATIK kapsanir. Tablo adini buraya LITERAL yazmak
+-- "literal YOK" kuralini bozar ve iki bakim noktasi yaratirdi. 012 kendi
+-- icinde de ayni REVOKE/GRANT/RLS ucluyusunu tasir (tablo yaratildigi ANDA
+-- kilitli olsun diye); bu dosya onun sema-genisi AGIDIR, ikizi degil.
 --
 -- TENANT ESI: migrations/onboarding/tenant_hardening.sql BOLUM 4. Grant deseni
 -- BIREBIR AYNI. IKI FARK:
