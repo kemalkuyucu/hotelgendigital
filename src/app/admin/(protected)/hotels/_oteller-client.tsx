@@ -44,14 +44,20 @@ function statusBadge(status: string) {
 // Renk esikleri GORSEL, karar DEGIL: silme kararini cron `isPurgeDue` ile verir.
 // Gun sayisi burada HESAPLANMAZ, sunucudan gelir (retention.ts tek kaynak).
 
+const TONE_NEUTRAL = { bg: 'rgba(148,163,184,0.15)', fg: '#94a3b8' }
+
 function PurgeCountdown({ hotel }: { hotel: Hotel }) {
   const d = hotel.purge_days_left
   if (d === null) return <span style={{ color: '#475569' }}>—</span>
 
+  // Hold ACIKKEN renk NOTR kalir: gun sayisi ISLEMEYE devam eder (deleted_at
+  // degismedi) ama cron o oteli ATLAR -> kirmizi/amber "birazdan silinecek"
+  // uyarisi yanlis bilgi olurdu.
   const tone =
-    d <= 1 ? { bg: 'rgba(239,68,68,0.15)', fg: '#f87171' }
-      : d <= 7 ? { bg: 'rgba(245,158,11,0.15)', fg: '#fbbf24' }
-        : { bg: 'rgba(148,163,184,0.15)', fg: '#94a3b8' }
+    hotel.purge_hold === true ? TONE_NEUTRAL
+      : d <= 1 ? { bg: 'rgba(239,68,68,0.15)', fg: '#f87171' }
+        : d <= 7 ? { bg: 'rgba(245,158,11,0.15)', fg: '#fbbf24' }
+          : TONE_NEUTRAL
 
   const label = d === 0 ? 'bugün silinecek' : `${d} gün kaldı`
   const exact = hotel.purge_at ? new Date(hotel.purge_at).toLocaleString('tr-TR') : ''
@@ -306,6 +312,70 @@ function RestoreButton({ hotelId, onDone }: { hotelId: string; onDone: () => voi
     >
       {isPending ? '...' : '↩ Geri Yükle'}
     </button>
+  )
+}
+
+// ─── purge_hold toggle (otomatik silmeyi duraklat / devam ettir) ────────────
+// Geri sayimi DURDURMAZ (deleted_at'e dokunmaz) — yalniz CRON'un o oteli
+// atlamasini saglar. Manuel "Kalici Sil" bu kilidi ASAR (note'a yazilir).
+// Islem GERI ALINABILIR oldugu icin onay modali YOKTUR.
+
+function PurgeHoldToggle({ hotel, onDone }: { hotel: Hotel; onDone: () => void }) {
+  const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState('')
+  const held = hotel.purge_hold === true
+
+  function handleToggle() {
+    setError('')
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/admin/hotels/${hotel.id}/purge-hold`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hold: !held }),
+        })
+        const data = (await res.json()) as { error?: string }
+        if (!res.ok) {
+          setError(data.error ?? 'İşlem başarısız')
+          return
+        }
+        onDone()
+      } catch {
+        setError('Ağ hatası, lütfen tekrar deneyin.')
+      }
+    })
+  }
+
+  return (
+    <div style={{ marginTop: '5px' }}>
+      <button
+        id={`purge-hold-btn-${hotel.id}`}
+        type="button"
+        onClick={handleToggle}
+        disabled={isPending}
+        title={
+          held
+            ? 'Otomatik kalıcı silmeyi yeniden etkinleştirir'
+            : 'Otomatik kalıcı silmeyi duraklatır (geri sayım işlemeye devam eder)'
+        }
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          fontSize: '11px',
+          fontWeight: 600,
+          color: held ? '#34d399' : '#60a5fa',
+          cursor: isPending ? 'wait' : 'pointer',
+          opacity: isPending ? 0.5 : 1,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {isPending ? '...' : held ? '▶ Devam ettir' : '⏸ Otomatik silmeyi duraklat'}
+      </button>
+      {error && (
+        <div style={{ fontSize: '11px', color: '#f87171', marginTop: '2px' }}>{error}</div>
+      )}
+    </div>
   )
 }
 
@@ -644,6 +714,7 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
                       </td>
                       <td className="p-4">
                         <PurgeCountdown hotel={h} />
+                        <PurgeHoldToggle hotel={h} onDone={refresh} />
                       </td>
                     </>
                   )}
