@@ -6,8 +6,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya her oturumda okunur. Talimat disina cikma.
 - Teshis ve karar Claude'da (sohbet tarafinda). Sen talimati uygularsin.
 - Talimatta olmayan "iyilestirme" YAPMA. Gordugun bozuklugu RAPORLA, duzeltme.
-- Bu dosya **29. oturum sonrasi** durumu yansitir; sohbet tarafindaki
-  **DEVIR + MASTER (v43)** ile hizalidir.
+- Bu dosya **30. oturum sonrasi** durumu yansitir; sohbet tarafindaki
+  **DEVIR + MASTER (v44)** ile hizalidir.
+- **30. OTURUM — OTEL RETENTION PURGE (ozet).** Soft-delete'e **30 gunluk
+  retention + OTOMATIK KALICI SILME** eklendi. Iki commit:
+  **`d6e43a3`** (DB katmani + saf modul + cron) ve **`2845eb2`** (panel UI).
+  **PROD'a DOKUNULMADI — ama bu sefer BORC VAR:** `d6e43a3`in cron route'u ve
+  `2845eb2`nin TAMAMI **RUNTIME KODDUR**, DB-katmanin aksine **DEPLOY GEREKTIRIR**
+  (bilincli olarak yapilmadi). **`migrations/central/012` CANLIYA UYGULANMADI**
+  — Central kimlikleri yerelde YOK (bkz. hafiza: local .env.local Central bos),
+  Kemal SQL Editor'da kosacak. 012 kosmadan purge CALISMAZ (`purge_hold` ve
+  `hotel_purge_log` yok -> cron `db_error`).
+  **YAPI:** `retention.ts` (SAF, esik + geri sayim TEK KAYNAK) -> `purge-hotel.ts`
+  (silme SIRASI + mezar tasi TEK KAYNAK) -> `cron/purge-hotels` (FAIL-CLOSED) +
+  `api/admin/hotels/[id]/purge` (super_admin + slug kapisi) + panel.
+  Ayrinti: §2 *Otel RETENTION purge*.
+  **is8 2065 -> 2143** (+78, YENI dosya `is8-hotel-retention-test.ts`, 19 -> **20
+  dosya**); **NEGATIF KONTROL OLCULDU:** esik gecici 29 yapilinca **60/78 PASS +
+  exit 1** (18 vaka, oracle ikizi dahil) dondu, geri alinca 78/78.
+  **ACIK RISK — VERCEL CRON LIMITI:** `vercel.json` artik **3 cron** tasiyor;
+  Hobby plani **2** ile sinirlidir (bu dosyanin *Cron jobs* bolumu bunu zaten
+  kaydediyordu). Plan Pro degilse deploy DUSER -> ya plan, ya
+  `cron/health-check`e piggyback (SLA taramasindaki desen).
+- **YENI: repo kokunde `DURUM.md`** (30. otu) — oturumlar arasi **devir belgesi**
+  (yigin, kilitli model ID'leri, surum durumu, aktif isler, "sonraki oturum
+  buradan"). Kalici KURAL ve teknik ayrinti yine BU dosyadadir; **celiskide
+  CLAUDE.md kazanir.**
 - **29. OTURUM — COK-TENANT ONBOARDING HARDENING KITI + BULGU B (ozet).** Uc commit;
   **PROD'a DOKUNULMADI** (deploy YOK — ucu de deploy gerektirmez).
   **(1) `ab85c60` — `migrations/onboarding/` (4 YENI dosya).** `tenant_hardening.sql`
@@ -111,8 +135,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   kumede dup **0** -> SIFIR temizlik) + `insertSlaEvent` **tek-kaynak** (4 site) +
   **23505 -> `notifyDuplicateRequest`**. `room_service_orders`'a guvenli bir
   statik constraint YOK -> onun yerine **2 defekt duzeltildi**. Tam liste §7'de.
-- **HEAD = `a5724c9` (29. oturum) · PROD(deploy) = `b6ef712` (28. oturum) —
-  29. OTURUM PROD'A DOKUNMADI.** Ucu de deploy GEREKTIRMEZ: `ab85c60` bir
+- **HEAD = `2845eb2` (30. oturum) · PROD(deploy) = `b6ef712` (28. oturum).**
+  **30. OTURUM PROD'A DOKUNMADI ama DEPLOY BORCU BIRAKTI** — 29. oturumun
+  aksine burada runtime kod var (cron route + admin API route + panel UI +
+  `vercel.json`). Deploy edilene kadar: panelde "Kalici Sil" YOK, cron KOSMAZ,
+  purge CANLIDA MEVCUT DEGIL. Ayrica `migrations/central/012` **Central PROD'da
+  KOSULMADI** (Kemal'in isi) — kod once, sema sonra oldugu icin bu ARA DURUM
+  ZARARSIZDIR: purge'u tetikleyen bir yol henuz canlida yok.
+  29. oturumun uc commit'i deploy GEREKTIRMEZ: `ab85c60` bir
   DB-katman/onboarding **ASSET**'idir (runtime bundle'a girmez, runner gormez),
   `68373c8` **YEREL arac**tir (`scripts/doctor.mjs`, prod'a deploy EDILMEZ),
   `a5724c9` **doc-only**. PROD deploy `dpl_7waBxtk6bwUTtjcgkhLg7PHfE6ww`
@@ -302,7 +332,15 @@ npm run seed-departments      # node scripts/seed-department-users.mjs
   (`relaxedCsp` / `nonceCsp`) YALNIZ `script-src`'de ayristigi ve `CSP_SHARED_TAIL`
   12 yonergenin ORTAK kaldigi. **HARNESS-BITE olculdu.** Middleware'in IO'lu yani
   (header YAZMA, nonce uretimi, request-header enjeksiyonu) korpusta **DEGIL** —
-  o taraf canli curl ile olculdu (§7) +
+  o taraf canli curl ile olculdu (§7)
+  -> **2143 (30. otu, YENI DOSYA `is8-hotel-retention-test.ts`, 78 vaka):** otel
+  retention karari — `PURGE_RETENTION_DAYS` muhru · fail-safe (null/''/bozuk
+  tarih -> due=false) · TAM 30 gun siniri (due=true, daysLeft=0) · 1ms once/sonra ·
+  `ceil` davranisi · alt clamp (0) ve ust clamp YOKLUGU · UTC-ms/DST bagimsizligi ·
+  `purge_hold` kapisi · §9 elle yazilmis `legacyInlineDue` oracle'i ile CIFT-YONLU
+  karsilastirma. **HARNESS-BITE olculdu** (esik 29 -> **60/78 + exit 1**).
+  Purge'un IO'lu yani (silme sirasi, mezar tasi, cron secret) korpusta **DEGIL** —
+  o taraf canli UAT konusu +
   [C] tenant sema/migration butunlugu (canli information_schema; tenant.env yoksa WARN-skip;
   26. otu sonu **GEREKLI 46 / MEVCUT 47 — DEGISMEDI**: migration **031** yalnizca
   bir INDEX yaratir, `CREATE TABLE` icermez, bu yuzden [C]'nin "GEREKLI" sayisi
@@ -739,6 +777,60 @@ politika ikiye bolunmez. Matcher tum SAYFALARI kapsar; `/api` + `_next/static` +
   `src/app/login/layout.tsx` (**yalnizca `force-dynamic` tasiyicisi** — `page.tsx`
   `'use client'` oldugu icin config orada **SESSIZCE YOK SAYILIYORDU**, bkz. §4) ·
   `scripts/is8-csp-tier-test.ts` (34 vaka).
+
+### Otel RETENTION purge (soft-delete -> 30 gun -> KALICI SILME) · sevk `d6e43a3` + `2845eb2` (30. otu) — **DEPLOY BEKLIYOR**
+
+**KOK SORUN:** soft-delete VARDI (`hotels.deleted_at` + `deleted_by`, central/009)
+ama **hicbir sey onu KAPATMIYORDU**: silinen otel Central'da SONSUZA KADAR
+duruyor, `bridge_credentials` icinde **sifreli service_role anahtari** ile birlikte
+yasiyordu; ustelik *Veritabani Surumleri* sayfasi silinmis oteli **FILTRESIZ**
+listeleyip "guncelleme bekliyor" sayacini kirletiyordu.
+
+| Uretim | Yer | Not |
+|---|---|---|
+| `PURGE_RETENTION_DAYS` · `purgeInfo` · `isPurgeDue` | `src/lib/hotels/retention.ts` (**SAF**) | esik + geri sayim **TEK KAYNAK**; IO yok, `now` DISARIDAN |
+| `listPurgeQueue` · `purgeHotel` · `purgeDueHotels` · `PURGE_BATCH_CAP` | `src/lib/hotels/purge-hotel.ts` | silme **SIRASI** + mezar tasi + denetim kaydi TEK KAYNAK |
+| cron | `src/app/api/cron/purge-hotels/route.ts` | **FAIL-CLOSED**, `?dryRun=1` onizleme |
+| manuel | `src/app/api/admin/hotels/[id]/purge/route.ts` | super_admin + **confirmSlug == hotels.slug** kapisi |
+| sema | `migrations/central/012_hotel_purge_retention.sql` | `purge_hold` + `hotel_purge_log` (**CANLIDA YOK**, Kemal kosacak) |
+
+- **SILME SIRASI (BAGLAYICI):** `channel_routing` -> `bridge_credentials` ->
+  `group_hotel_links` -> **`audit_log.hotel_id = NULL`** -> `hotels`.
+  Central'da bu tablolarda **FK YOKTUR** (central/010:10-12 karari: "hotels
+  soft-delete edilebiliyor, CASCADE istemeyiz") -> temizlik UYGULAMA katmanindadir.
+  **`audit_log` SATIRLARI SILINMEZ** — yalniz bag koparilir; denetim izi kalir.
+- **TRANSACTION YOK -> MEZAR TASI ONCE.** supabase-js cok-deyimli transaction
+  ACAMAZ. `hotel_purge_log` satiri silmeden ONCE `note='planned — ...'` ile
+  yazilir, silmeler kosar, sonra `central_deleted` (tablo -> satir sayisi jsonb)
+  ile kapatilir. Yarim kalirsa `note='BASARISIZ adim=<step> — ELLE TEMIZLIK
+  GEREKIR'` kalir; istemciye **generic** mesaj, ayrinti `[hotel-purge]` server
+  log'unda (§3 SESSIZ YUTMA YASAGI'nin veri tarafi).
+- **TENANT SUPABASE PROJESI SILINMEZ.** Management API isi; bu kod onu yapmaz.
+  Proje referansi (`supabase_project_ref`) bridge SILINMEDEN ONCE okunur, log'a
+  ve panel uyarisina yazilir. **Cozulen URL LOGLANMAZ** — yalniz public ref.
+- **BATCH CAP 5.** Fazlasi WARN loglanir **ve** yanitta `deferred` olarak doner
+  (sessiz kirpma YASAK). `purge_hold` acik + vadesi gecmis oteller de ayrica
+  WARN'lanir.
+- **PANEL:** *Oteller > Silinmis* sekmesinde **"Kalici Silme"** kolonu — gun
+  sayisi **SUNUCUDA** hesaplanir (istemci saati degistirilebilir ve cron'un
+  esigiyle ayrisirsa panel yalan soyler). Esik-renk: `>7` notr · `<=7` amber ·
+  `<=1` kirmizi · `0` -> "bugun silinecek"; title'da tam tarih. `purge_hold`
+  acikken "otomatik silme kapali" etiketi duser (ciplak geri sayim YANLIS
+  bilgi olurdu). **"Kalici Sil"** modali **slug'i ELLE yazdirir** (soft-delete
+  modali otel ADI ister — slug tekil oldugu icin bilincli fark).
+  **"Geri Yukle" purge'u IPTAL EDER** (`deleted_at` NULL -> retention sifirlanir);
+  AYRI bir iptal yolu YOKTUR.
+- **VERITABANI SURUMLERI:** otel listesi artik **AKTIF filtreli** (sayfa +
+  `/api/admin/migrations/status`; tek-hotel sorgusu filtresiz KALIR — acik talep).
+  Silinmisler ayri **katlanmis "Silinmis (n)"** bolumunde, `deleted` badge + gun
+  sayisi, **Detay/Uygula PASIF**. Silinmis otelin tenant DB'sine **BAGLANILMAZ**
+  (`getMigrationStatus` cagrilmaz — kimlikleri purge ile gidebilir).
+- **is8 kilidi:** `is8-hotel-retention-test.ts` **78 vaka** — `now` SABIT
+  (Date.now() kullanan test saat gectikce kayar), beklentiler ELLE yazili,
+  §9'da elle yazilmis `legacyInlineDue` oracle'i ile cift-yonlu karsilastirma +
+  "oracle KOR DEGIL" sayaci. **HARNESS-BITE OLCULDU** (esik 29 -> 60/78 + exit 1).
+- **UAT YOK:** geri sayim rozeti, "Kalici Sil" akisi, cron `?dryRun=1` ve
+  gercek bir purge **CANLIDA OLCULMEDI** (deploy de edilmedi, 012 de kosmadi).
 
 ### Oda-no parse disqualifier (backlog #1) · sevk `6c30f6f` + `3d9e593` (15. otu)
 
@@ -1183,14 +1275,15 @@ Two-stage, both Anthropic but different models:
 
 ### Cron jobs (`vercel.json`, `src/app/api/cron/`)
 
-Two Vercel Cron jobs, both daily at 00:00 (`vercel.json`), authed by `Authorization: Bearer ${CRON_SECRET}`:
+**UC** Vercel Cron job (`vercel.json`), hepsi `Authorization: Bearer ${CRON_SECRET}` ile: ikisi 00:00, purge 03:15. **DIKKAT — HOBBY PLANI 2 CRON ILE SINIRLIDIR** (SLA taramasinin `health-check`e piggyback edilme sebebi tam buydu). 30. oturumda ucuncusu (`purge-hotels`) EKLENDI ama **DEPLOY EDILMEDI**; plan Pro degilse deploy DUSER -> ya plan yukseltilir ya purge `health-check` icine tasinir. Deploy oncesi KARAR VERILMELI.
 - `/api/cron/health-check` — bridge health check for all active hotels **and** runs `runSlaCheck` (SLA scan is piggybacked here to stay within the Vercel Hobby 2-cron limit; the comment says "her dakika" but the schedule is currently daily — adjust the schedule if you need minute-level SLA). 18. otu: ayni per-hotel donguye **`processed_telegram_updates` 24 saatlik TTL supurmesi** eklendi (kendi try/catch'inde — tablosu migrate edilmemis tenant SLA taramasini BOZAMAZ).
 - `/api/cron/archive-checked-out` — archives checked-out guests.
+- `/api/cron/purge-hotels` (30. otu, **03:15**) — retention'i dolan soft-deleted otelleri KALICI siler. **FAIL-CLOSED** (`CRON_SECRET` yoksa 500, silme YOK), secret karsilastirmasi **sabit-zamanli** (`timingSafeEqualStr` — digerleri hala duz `!==` kullanir), `?dryRun=1` ile SALT-OKUMA kuyruk raporu. Batch cap 5. Bkz. §2 *Otel RETENTION purge*.
 
 ### Migrations (`src/lib/migrations/`, `migrations/`)
 
 Versioned, idempotent SQL applied **per hotel DB at runtime** — not a CLI step.
-- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (27. otu): `032_db_hardening_revoke_anon_rls.sql`** — DB-KATMAN HARDENING: `public` semada anon/authenticated/PUBLIC'ten tablo+sequence+fonksiyon yetkilerini REVOKE eder, service_role'e GRANT geri verir, `ALTER DEFAULT PRIVILEGES REVOKE` ile gelecek grant'lari keser ve **her public tabloda RLS ENABLE** eder (policy yok -> deny-by-default; service_role bypass). **v5 + demo tenant'a UYGULANDI** (`exec_sql`/postgres-definer, preflight owner-assert=0), katalog ile teyit (`anon_*=false`, `rls_kapali=0`, `svc_*=true`). Central ikizi **`migrations/central/011_db_hardening_revoke_anon_rls.sql`** — hotelgen-central PROD SQL Editor'den CANLI (`anon_bridge=false`, `rls_off=0`, `svc_ok=true`). **DIKKAT — `schema_migrations`'a DUSMEDI** (dogrudan exec_sql / SQL Editor — 029/030/031 ile ayni yol). Tablo/kolon/veri DEGISTIRMEZ (yalniz grant/RLS). Onceki: **`031_sla_events_open_unique.sql`** (26. otu) — `sla_events` uzerinde **partial UNIQUE index** (`conversation_id, department_code, md5(request_text)` WHERE `responded_at IS NULL AND closed_at IS NULL`). Tablo/kolon YARATMAZ, veri DEGISTIRMEZ; **v5 tenant'a UYGULANDI** ve `pg_indexes` ile teyit edildi. **DIKKAT — `schema_migrations`'a DUSMEDI:** `exec_sql` RPC'si DOGRUDAN cagrildi (runMigrations akisi degil), o yuzden kayit satiri yazilmadi. Bu YENI bir tutarsizlik DEGIL: canli tabloda en yuksek kayit **"020"** (toplam 19 satir) — 021..031 arasi HICBIRI kayitli degil, 029/030 da ayni yoldan uygulanmisti. Pratik etki: panelden migration kosulursa 031 "uygulanmamis" gorunup TEKRAR kosar; `CREATE UNIQUE INDEX IF NOT EXISTS` sayesinde **no-op**, zararsiz. Onceki: **`030_rate_limit_counters.sql`** (25. otu) — yeni tablo + `rate_limit_hit()` fonksiyonu, ADDITIVE ve GUVENLI (mevcut kolon/veriye dokunmaz). Dollar-quote etiketi BILINCLI olarak `$rate_limit_hit$`: dosya runner tarafindan `exec_sql(sql text)` icine PARAMETRE olarak gecer ve `exec_sql`in kendi govdesi `$$` kullanir. Onceki: `029_processed_telegram_updates.sql` (18. otu). **IKISI DE YALNIZ v5 tenant'a uygulandi**; her YENI tenant'ta calistirilmasi gerekir. Kosulmazsa iki koruma da fail-safe/fail-open yonde SESSIZCE devre disi kalir: `claimTelegramUpdate` `true` doner (dedup yok), `claimRateLimit` `allowed=true, degraded=true` doner (limit yok). Davranis eskisiyle ayni, bozulma yok — ama koruma da yok. (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil. Onceki kayit "027" idi, 028 zaten mevcuttu — duzeltildi.) Central migrations in `migrations/central/`. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
+- Tenant migrations live in `migrations/tenant/NNN_*.sql` (3-digit, idempotent, each wrapped in BEGIN/COMMIT; never edit an applied file — add a new one). **En yuksek numarali dosya (27. otu): `032_db_hardening_revoke_anon_rls.sql`** — DB-KATMAN HARDENING: `public` semada anon/authenticated/PUBLIC'ten tablo+sequence+fonksiyon yetkilerini REVOKE eder, service_role'e GRANT geri verir, `ALTER DEFAULT PRIVILEGES REVOKE` ile gelecek grant'lari keser ve **her public tabloda RLS ENABLE** eder (policy yok -> deny-by-default; service_role bypass). **v5 + demo tenant'a UYGULANDI** (`exec_sql`/postgres-definer, preflight owner-assert=0), katalog ile teyit (`anon_*=false`, `rls_kapali=0`, `svc_*=true`). Central ikizi **`migrations/central/011_db_hardening_revoke_anon_rls.sql`** — hotelgen-central PROD SQL Editor'den CANLI (`anon_bridge=false`, `rls_off=0`, `svc_ok=true`). **DIKKAT — `schema_migrations`'a DUSMEDI** (dogrudan exec_sql / SQL Editor — 029/030/031 ile ayni yol). Tablo/kolon/veri DEGISTIRMEZ (yalniz grant/RLS). Onceki: **`031_sla_events_open_unique.sql`** (26. otu) — `sla_events` uzerinde **partial UNIQUE index** (`conversation_id, department_code, md5(request_text)` WHERE `responded_at IS NULL AND closed_at IS NULL`). Tablo/kolon YARATMAZ, veri DEGISTIRMEZ; **v5 tenant'a UYGULANDI** ve `pg_indexes` ile teyit edildi. **DIKKAT — `schema_migrations`'a DUSMEDI:** `exec_sql` RPC'si DOGRUDAN cagrildi (runMigrations akisi degil), o yuzden kayit satiri yazilmadi. Bu YENI bir tutarsizlik DEGIL: canli tabloda en yuksek kayit **"020"** (toplam 19 satir) — 021..031 arasi HICBIRI kayitli degil, 029/030 da ayni yoldan uygulanmisti. Pratik etki: panelden migration kosulursa 031 "uygulanmamis" gorunup TEKRAR kosar; `CREATE UNIQUE INDEX IF NOT EXISTS` sayesinde **no-op**, zararsiz. Onceki: **`030_rate_limit_counters.sql`** (25. otu) — yeni tablo + `rate_limit_hit()` fonksiyonu, ADDITIVE ve GUVENLI (mevcut kolon/veriye dokunmaz). Dollar-quote etiketi BILINCLI olarak `$rate_limit_hit$`: dosya runner tarafindan `exec_sql(sql text)` icine PARAMETRE olarak gecer ve `exec_sql`in kendi govdesi `$$` kullanir. Onceki: `029_processed_telegram_updates.sql` (18. otu). **IKISI DE YALNIZ v5 tenant'a uygulandi**; her YENI tenant'ta calistirilmasi gerekir. Kosulmazsa iki koruma da fail-safe/fail-open yonde SESSIZCE devre disi kalir: `claimTelegramUpdate` `true` doner (dedup yok), `claimRateLimit` `allowed=true, degraded=true` doner (limit yok). Davranis eskisiyle ayni, bozulma yok — ama koruma da yok. (Not: `021_*` yok — numaralandirma 020'den 022'ye atliyor; bu bilinen bir bosluk, sorun degil. Onceki kayit "027" idi, 028 zaten mevcuttu — duzeltildi.) Central migrations in `migrations/central/` — **en yuksek numara (30. otu): `012_hotel_purge_retention.sql`** (`hotels.purge_hold` + `hotel_purge_log` + tabloya ozel 011-hardening; ADDITIVE, veri DEGISTIRMEZ). **CANLIYA UYGULANMADI** — Central kimlikleri yerelde yok, Kemal SQL Editor'da kosacak; kosana kadar purge yolu canlida MEVCUT DEGIL. `loadMigrations` skips `000_*` (bootstrap, creates the `exec_sql` RPC — chicken-and-egg) and skips `007_drop_deprecated.sql` unless `includeDestructive`.
 - **`migrations/onboarding/` (29. otu, `ab85c60`) — TURETILMIS KIT, MIGRATION DEGIL.** Yeni tenant kurulumunu tekrarlanabilir kilar. `tenant_hardening.sql` = 029+030+031+032 konsolide (SIRA BAGLAYICI: once nesne uretimi, sonra hardening — aksi halde yeni tablolar revoke+RLS disinda kalir) · `central_hardening.sql` = central-011'in esi · `verify_hardening.sql` = SALT-OKUMA 8 kontrol (`PASS`/`FAIL`) · `ONBOARDING_HARDENING.md` = checklist. **RUNNER BU KLASORU GORMEZ** (`loadMigrations` yalniz `migrations/tenant`, `loadCentralMigrations` yalniz `migrations/central`) -> panelden KOSMAZ, `schema_migrations`a DUSMEZ, numarali sirayi (tenant 032 / central 011) BOZMAZ. Elle kosulur: `tsql` (dosyayi Node ile oku, ARGV olarak gecir) ya da Supabase SQL Editor. **Kite bir sey eklemek = once numarali migration'a eklemek, sonra turetmek** (bkz. §3-29a).
 - `runMigrations({ hotelSlug })` (`runMigrations.ts`) decrypts the hotel bridge, builds a tenant client, ensures `schema_migrations`, and runs unapplied files via the **`exec_sql` RPC** (SQL executed through a Postgres function, not the JS query builder).
 - Triggered from admin UI / API: `/api/admin/migrations` (tenant), `/api/admin/central-migrations`, `/api/admin/hotels/[id]/run-migrations`, with a `migrations` admin page. Also `seedBaseline` / `runBootstrap`.
@@ -1328,6 +1421,15 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     ile verilir (cagri aninda is YAPMAZ); `notifyDuplicateRequest` cagrisi cagri
     yerine KOPYALANMAZ. "Dup olunca ne yapilacagi" (misafire ne denecek, `continue`
     mi return mi) CAGIRANA aittir — helper onu genellestirmez.
+  - **otel retention esigi + geri sayimi** -> `src/lib/hotels/retention.ts`
+    `PURGE_RETENTION_DAYS` / `purgeInfo` / `isPurgeDue` (30. otu). Cron, panel
+    rozeti ve manuel purge guard'i AYNI fonksiyonu cagirir; cagri yerinde
+    `deleted_at + 30 gun` aritmetigi YAZILMAZ. Gun sayisi **SUNUCUDA** uretilir,
+    istemciye HESAPLANMIS gelir.
+  - **otel kalici silme (purge) SIRASI + mezar tasi** ->
+    `src/lib/hotels/purge-hotel.ts` `purgeHotel` (30. otu). Inline
+    `.from('hotels').delete()` YAZILMAZ; yeni bir silme yolu acilirsa AYNI
+    fonksiyon cagrilir (aksi halde biri bir tabloyu atlar ve yetim satir kalir).
   - **TR normalize** -> `normalize-tr.ts` `normalizeTr` (ikinci normalizer YASAK)
   - **CSP politikasi** -> `src/middleware.ts` (28. otu). `next.config.ts`'te ya da bir
     route handler'da IKINCI bir `Content-Security-Policy` header'i YAZILMAZ; iki kademe
@@ -1437,6 +1539,28 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     **0** oldugu icin partial unique (`031`) SIFIR temizlikle kuruldu; naive
     dogal-anahtar UNIQUE ise REDDEDILDI. Ayrinti ve gerekce: asagidaki
     *26. OTURUM VERI-BUTUNLUGU KARARLARI* (a-h).
+- **30. OTURUM KARARLARI — GERI ALINAMAZ SILME (IHLAL EDILEMEZ):**
+  - **(a) SILME YOLU FAIL-CLOSED'DIR.** Dedup/rate-limit kapilari fail-OPEN'dir
+    cunku orada en kotu ihtimal fazladan bir mesajdir. Purge'de en kotu ihtimal
+    **geri alinamaz veri kaybi**dir -> yon TERSTIR: `CRON_SECRET` yoksa cron
+    **500** doner ve hicbir sey silmez; `deleted_at` parse EDILEMIYORSA satir
+    "silinmemis" sayilir; kuyruk sorgusu patlarsa purge KOSMAZ.
+  - **(b) GERI SAYIM SUNUCUDA HESAPLANIR.** Istemciye ham `deleted_at` verip
+    tarayicida gun saydirmak YASAK: istemci saati degistirilebilir ve cron'un
+    esigiyle ayrisirsa panel yalan soyler. Panel HESAPLANMIS `days_left` alir.
+  - **(c) TRANSACTION YOKSA MEZAR TASI ONCE YAZILIR.** supabase-js cok-deyimli
+    transaction acamaz. Once `hotel_purge_log` (`note='planned'`) -> sonra
+    silmeler -> sonra log kapatilir. Yarim kalan surec **iz BIRAKMAK ZORUNDA**.
+  - **(d) DENETIM IZI SILINMEZ.** `audit_log` satirlari korunur; yalniz
+    `hotel_id` NULL'lanir. "Otel gitti, kim ne yapmisti" sorusu cevapsiz kalamaz.
+  - **(e) TENANT SUPABASE PROJESI BU KODDAN SILINMEZ.** Management API isi;
+    referansi log'a + panel uyarisina yazilir. "Sildim" demeden once NEYIN
+    silinmedigini SOYLE.
+  - **(f) BATCH CAP SESSIZ KIRPMAZ.** Atlanan slug'lar hem WARN loglanir hem
+    yanitta `deferred` olarak doner.
+  - **(g) URL'DEKI [id] TEK BASINA YETMEZ.** Manuel purge, govdedeki
+    `confirmSlug` ile URL'deki oteli KARSILASTIRIR (25.otu slug kuralinin geri
+    alinamaz-islem tarafi) ve yalniz `super_admin` yapar.
 - **29. OTURUM KARARLARI (IHLAL EDILEMEZ):**
   - **(a) TURETILMIS ASSET NUMARALI SIRAYI BOZMAZ.** `migrations/onboarding/*`
     mevcut numarali migration'larin **KONSOLIDASYONUDUR**; yeni karar/tablo/politika
@@ -1941,6 +2065,33 @@ yerel arac, ucuncusu doc-only):
   ve `central_hardening.sql`in TAMAMI **DOGRULANMAMIS** durumdadir.
 - **DOC SENKRONU:** bu commit dosyayi v42 -> **v43**'e tasir (sevkle AYNI oturum,
   AYRI commit — §0 *DOKUMAN GECIKMESI* dersi).
+
+**30. oturumda KAPANDI — OTEL RETENTION PURGE** (`d6e43a3` + `2845eb2`;
+**DEPLOY YOK, PUSH YOK, migration 012 CANLIDA KOSMADI**):
+- **ACIK BULUNDU:** soft-delete bir sonu OLMAYAN durumdu — silinen otel Central'da
+  sonsuza kadar duruyor, `bridge_credentials` icindeki **sifreli service_role
+  anahtariyla** birlikte yasiyordu; *Veritabani Surumleri* de onu FILTRESIZ
+  listeleyip "guncelleme bekliyor" sayacini kirletiyordu.
+- **KURULAN:** `retention.ts` (SAF esik/geri sayim) · `purge-hotel.ts` (silme
+  sirasi + mezar tasi + denetim) · `cron/purge-hotels` (FAIL-CLOSED, `?dryRun=1`) ·
+  `api/admin/hotels/[id]/purge` (super_admin + confirmSlug kapisi) · panel
+  (geri sayim rozeti + "Kalici Sil" + surum sayfasi aktif filtresi) ·
+  `migrations/central/012`. Ayrinti + kalici kararlar: §2 *Otel RETENTION purge*
+  ve §3 *30. OTURUM KARARLARI*.
+- **MUHUR:** `npm run doctor` YESIL (tsc 0 · **is8 2065 -> 2143**, 19 -> **20
+  dosya** · sema **46/47 DEGISMEDI** — [C] yalniz `migrations/tenant/*` okur,
+  central/012 sayimi ETKILEMEZ · marka 0 unexpected) + `npm run build` exit 0
+  (**`/admin/hotels` ve `/admin/migrations` `f` = dynamic** -> CSP STRONG kurali
+  korundu) + **negatif kontrol** (esik 29 -> 60/78 + exit 1, geri alindi).
+- **UAT/CANLI KANIT YOK — UC ACIK NOKTA:** (i) migration 012 canlida yok, (ii)
+  runtime deploy edilmedi (panelde buton, cron'da is YOK), (iii) `[hotel-purge]`
+  log satirlarinin hicbiri prod'da gorulmedi. **Ilk gercek kanit
+  `?dryRun=1`dir** (silme yok, yalniz kuyruk).
+- **ACILAN BORC — VERCEL CRON LIMITI:** `vercel.json` **3 cron** tasiyor, Hobby
+  **2** ile sinirli. Plan Pro degilse deploy DUSER; alternatif `cron/health-check`e
+  piggyback (SLA taramasindaki desen). **Deploy oncesi KARAR VERILMELI.**
+- **DOC SENKRONU:** bu commit dosyayi v43 -> **v44**'e tasir + repo kokune
+  **`DURUM.md`** (devir belgesi) eklenir (sevkle AYNI oturum, AYRI commit).
 
 **SIRADAKI ACIK IS:** verification-core kok nedeni (asagida). Isim-eslesme
 konsolidasyonu **TAMAMEN KAPANDI** (7/7 site), `front_office` konsolidasyonu
