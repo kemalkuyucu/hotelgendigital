@@ -9,9 +9,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bu dosya **31. oturum sonrasi** durumu yansitir; sohbet tarafindaki
   **DEVIR + MASTER (v45)** ile hizalidir.
 - **31. OTURUM — PURGE_HOLD TOGGLE + CRON SECRET TEK KAYNAK + HEALTH-CHECK KOKU
-  (ozet).** 30. oturumun purge isini kapatan uc commit — **`4040976`** (panel
-  toggle) · **`50b6f1d`** (cron secret) · **`f39b968`** (health-check);
-  **PROD'a DOKUNULMADI, PUSH YOK.** Ucu de **RUNTIME KODDUR -> DEPLOY GEREKTIRIR.**
+  (ozet).** 30. oturumun purge isini kapatan commit'ler — **`4040976`** (panel
+  toggle) · **`50b6f1d`** (cron secret) · **`f39b968`** (health-check) ·
+  **`6611198`** (otomatik purge KAPALI) · **`04db5c4`** (geri sayim sunumu TEK
+  KAYNAK). Hepsi **RUNTIME KODDUR.** **`04db5c4` DISINDAKILER 13.08.2026'da
+  PROD'A CIKTI** (`70c877e`); `04db5c4` **deploy BEKLIYOR**.
   **(1) `purge_hold` PANELDEN cevrilebilir oldu** — `PATCH
   /api/admin/hotels/[id]/purge-hold` (`{hold:boolean}`) + *Silinmis* sekmesinde
   "⏸ Otomatik silmeyi duraklat" / "▶ Devam ettir" dugmesi. Kilit bugune kadar
@@ -41,12 +43,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **30. OTURUM — OTEL RETENTION PURGE (ozet).** Soft-delete'e **30 gunluk
   retention + OTOMATIK KALICI SILME** eklendi. Iki commit:
   **`d6e43a3`** (DB katmani + saf modul + cron) ve **`2845eb2`** (panel UI).
-  **PROD'a DOKUNULMADI — ama bu sefer BORC VAR:** `d6e43a3`in cron route'u ve
-  `2845eb2`nin TAMAMI **RUNTIME KODDUR**, DB-katmanin aksine **DEPLOY GEREKTIRIR**
-  (bilincli olarak yapilmadi). **`migrations/central/012` CANLIYA UYGULANMADI**
-  — Central kimlikleri yerelde YOK (bkz. hafiza: local .env.local Central bos),
-  Kemal SQL Editor'da kosacak. 012 kosmadan purge CALISMAZ (`purge_hold` ve
-  `hotel_purge_log` yok -> cron `db_error`).
+  **O OTURUMDA PROD'a DOKUNULMADI ve BORC BIRAKILDI** (`d6e43a3`in cron route'u
+  ve `2845eb2`nin TAMAMI **RUNTIME KODDUR**) — **BU BORC 31. oturumda KAPANDI:
+  13.08.2026 `70c877e` prod'a cikti.** `migrations/central/012` de o gun
+  Kemal tarafindan Central'da kosuldu (**CIKARIM** — panel `purge_hold`
+  kolonunu SELECT ederek satirlari render etti; `information_schema` teyidi
+  YAPILMADI). Yerelde Central kimlikleri YOK (bkz. hafiza: local .env.local
+  Central bos), o yuzden ajan olcemez.
   **YAPI:** `retention.ts` (SAF, esik + geri sayim TEK KAYNAK) -> `purge-hotel.ts`
   (silme SIRASI + mezar tasi TEK KAYNAK) -> `cron/purge-hotels` (FAIL-CLOSED) +
   `api/admin/hotels/[id]/purge` (super_admin + slug kapisi) + panel.
@@ -167,19 +170,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   kumede dup **0** -> SIFIR temizlik) + `insertSlaEvent` **tek-kaynak** (4 site) +
   **23505 -> `notifyDuplicateRequest`**. `room_service_orders`'a guvenli bir
   statik constraint YOK -> onun yerine **2 defekt duzeltildi**. Tam liste §7'de.
-- **HEAD = `6611198` (31. oturum) · PROD(deploy) = `b6ef712` (28. oturum).**
-  **30. VE 31. OTURUM PROD'A DOKUNMADI ama DEPLOY BORCU BIRAKTI** — 29. oturumun
-  aksine burada runtime kod var (cron route'lari + admin API route'lari + panel
-  UI + `vercel.json` + health-check). Deploy edilene kadar: panelde "Kalici Sil"
-  ve `purge_hold` toggle'i YOK, cron KOSMAZ, purge CANLIDA MEVCUT DEGIL,
-  `/api/health-check` hala 503 doner. Ayrica `migrations/central/012`
-  **Central PROD'da KOSULMADI** (Kemal'in isi) — kod once, sema sonra oldugu
-  icin bu ARA DURUM ZARARSIZDIR: purge'u tetikleyen bir yol henuz canlida yok.
-  **DEPLOY SIRASI BAGLAYICI (31. otu):** (1) Central'da `012` kos — aksi halde
-  `/admin/hotels` `purge_hold`'u SELECT ettigi icin **BOS liste** gosterir ·
-  (2) Vercel env'de **`CRON_SECRET` DOLU** olmali — cron auth artik
-  FAIL-CLOSED, yoksa **cron route'lari 500** doner · (3) istege bagli
-  `HEALTHCHECK_TENANT_SLUG` · (4) ancak sonra `vercel --prod`.
+- **HEAD = `04db5c4` (31. oturum) · PROD(deploy) = `70c877e` (31. oturum,
+  13.08.2026, `vercel --prod`, Ready, alias `hotelgen-v2.vercel.app`).**
+  **~~30 + 31. OTURUM DEPLOY BORCU~~ KAPANDI** — 30 ve 31. oturumun runtime
+  kodu (cron route'lari + admin API route'lari + panel UI + `vercel.json` +
+  health-check + otomatik purge kilitleri) **CANLIDA**. `70c877e`, `6611198`in
+  torunudur -> **iki purge kilidi de canlida yururlukte.**
+  **KALAN DEPLOY BORCU = YALNIZ `04db5c4`** (Commit H — migrations panelinin
+  geri sayim metni; canli UAT'ta bulunan defektin duzeltmesi).
+  **CANLI UAT (13.08.2026, Kemal):** `/admin/hotels` **DOGRU** (otomatik silme
+  kapali gorunumu — "gun sonra kalici silinebilir", notr ton) ·
+  `/admin/migrations > Silinmis` **DEFEKTLI** (hala "30 gun kaldi" diyordu) ->
+  `04db5c4` bunu kapatir, **canlida DOGRULANMADI**.
+  **`migrations/central/012` CANLIDA KOSULMUS GORUNUYOR — CIKARIM, olcum
+  DEGIL:** iki panel de `purge_hold` kolonunu SELECT ediyor; kolon olmasaydi
+  sorgu hata verir ve iki liste de BOS gelirdi — oysa satirlar rozetleriyle
+  RENDER OLDU. Dogrudan `information_schema` teyidi YAPILMADI.
+  **YENI DEPLOY ONCESI (sadeleşti):** (1) `vercel --prod` · (2) `/admin/migrations`
+  Silinmis bolumunun metnini GOZLE dogrula. `PURGE_AUTO_ENABLED` **KASITLI
+  OLARAK BOS** kalir (canli gorunum bunu zaten teyit etti); `CRON_SECRET`
+  fail-closed oldugu icin canli cron'larin 500 donmedigi AYRICA olculmeli
+  (bu oturumda olculmedi).
   29. oturumun uc commit'i deploy GEREKTIRMEZ: `ab85c60` bir
   DB-katman/onboarding **ASSET**'idir (runtime bundle'a girmez, runner gormez),
   `68373c8` **YEREL arac**tir (`scripts/doctor.mjs`, prod'a deploy EDILMEZ),
@@ -1537,6 +1548,13 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     `src/lib/hotels/purge-hotel.ts` `purgeHotel` (30. otu). Inline
     `.from('hotels').delete()` YAZILMAZ; yeni bir silme yolu acilirsa AYNI
     fonksiyon cagrilir (aksi halde biri bir tabloyu atlar ve yetim satir kalir).
+  - **kalici silme geri sayiminin PANEL SUNUMU** (metin + ton + kilit rozeti) ->
+    `src/components/admin/PurgeCountdown.tsx` (31. otu, `04db5c4`). Sayfa
+    icine inline rozet/etiket YAZILMAZ; `/admin/hotels` ve `/admin/migrations`
+    **AYNI bileseni** import eder. **Bu kural CANLI BIR DEFEKTTEN dogdu:** iki
+    kopya vardi, otomatik silme kapatilinca yalniz biri duzeldi ve ikinci panel
+    kimse silmeyecekken "30 gun kaldi" demeye devam etti. Gun sayisi bilesende
+    HESAPLANMAZ — `purgeInfo`dan SUNUCUDAN gelir.
   - **CRON `Authorization` dogrulamasi** -> `src/lib/cron/verify-cron-secret.ts`
     `verifyCronRequest` (+ `cronAuthMessage`) (31. otu). Cron route'unda inline
     `auth !== \`Bearer ${secret}\`` YAZILMAZ; **3/3 cron bagli**. Dordunculer de
@@ -2209,7 +2227,9 @@ yerel arac, ucuncusu doc-only):
   AYRI commit — §0 *DOKUMAN GECIKMESI* dersi).
 
 **30. oturumda KAPANDI — OTEL RETENTION PURGE** (`d6e43a3` + `2845eb2`;
-**DEPLOY YOK, PUSH YOK, migration 012 CANLIDA KOSMADI**):
+o oturumda **DEPLOY YOK, PUSH YOK, migration 012 CANLIDA KOSMAMISTI** —
+**UCU DE 31. oturumda kapandi:** push edildi, `70c877e` ile PROD'a cikti,
+012 Central'da kosuldu):
 - **ACIK BULUNDU:** soft-delete bir sonu OLMAYAN durumdu — silinen otel Central'da
   sonsuza kadar duruyor, `bridge_credentials` icindeki **sifreli service_role
   anahtariyla** birlikte yasiyordu; *Veritabani Surumleri* de onu FILTRESIZ
@@ -2238,8 +2258,22 @@ yerel arac, ucuncusu doc-only):
   **`DURUM.md`** (devir belgesi) eklenir (sevkle AYNI oturum, AYRI commit).
 
 **31. oturumda KAPANDI — OTOMATIK PURGE KAPATILDI + PURGE_HOLD TOGGLE +
-CRON SECRET TEK KAYNAK + HEALTH-CHECK KOKU** (`4040976` · `50b6f1d` ·
-`f39b968` · **`6611198`** + doc-sync; **DEPLOY YOK, PUSH YOK** — hepsi runtime kod):
+CRON SECRET TEK KAYNAK + HEALTH-CHECK KOKU + GERI SAYIM SUNUMU TEK KAYNAK**
+(`4040976` · `50b6f1d` · `f39b968` · **`6611198`** · **`04db5c4`** + doc-sync;
+hepsi runtime kod. **`04db5c4` HARIC hepsi PROD'da** — deploy `70c877e`,
+13.08.2026):
+- **CANLI UAT (13.08.2026) — DEFEKT BULDU, KAPATILDI (`04db5c4`).**
+  `/admin/hotels` **DOGRU** goründü (otomatik silme kapali sunumu), ama
+  `/admin/migrations > Silinmis` hala **"30 gun kaldi"** diyordu: sunum karari
+  IKI panelde AYRI yazilmisti, biri duzeltilince digeri sessizce kaydi.
+  **KOK COZUM:** metin + ton + kilit rozeti karari ortak bilesene tasindi —
+  **`src/components/admin/PurgeCountdown.tsx`**, iki sayfa da onu import eder;
+  `migrations/page.tsx` `autoPurgeEnabled`i SUNUCUDA hesaplar. Tarama:
+  "gun kaldi" / "silinecek" / "kalici silinebilir" / "otomatik silme kapali"
+  ortak bilesen DISINDA **0 isabet** -> ucuncu kopya YOK.
+  **DERS:** bir sunum karari degistiginde onu KAC yerin tasidigini GREP'LE —
+  "panelde duzelttim" demeden once. Bu defekti tsc de build de yakalayamazdi;
+  yalniz **canli goz** yakaladi.
 - **OTOMATIK PURGE KAPALI DOGAR (`6611198`) — IKI BAGIMSIZ KILIT.**
   `vercel.json`den cron girdisi KALDIRILDI (2 cron) **ve** route
   `PURGE_AUTO_ENABLED === 'true'` kapisi tasir; kapaliyken `dryRun`a BAKILMAZ,
@@ -2267,16 +2301,20 @@ CRON SECRET TEK KAYNAK + HEALTH-CHECK KOKU** (`4040976` · `50b6f1d` ·
   NEEDLES listesi demo slug'i icermez, `[D]` bu degisiklikten ETKILENMEZ) +
   `npm run build` exit 0 (`/admin/hotels` ve `/admin/migrations` **`ƒ`**,
   STRONG alanda statik route YOK -> CSP kurali korundu).
-- **UAT/CANLI KANIT YOK:** toggle tiklanmadi, uc cron'un yeni auth yolu canlida
-  kosmadi, `/api/health-check` yeni haliyle cagrilmadi. **012 hala Central'da
-  KOSULMADI** -> `purge_hold` kolonu CANLIDA YOK; toggle deploy edilse bile
-  **500 doner** (ve `/admin/hotels` sayfasi purge_hold'u SELECT ettigi icin
-  **BOS liste** gosterir — 012 ONCE, deploy SONRA).
-- **⚠ DEPLOY SIRASI:** (1) Central'da `012` kos · (2) Vercel env'de
-  **`CRON_SECRET` DOLU oldugunu teyit et** (fail-closed: yoksa cron route'lari 500 doner) ·
-  (3) istege bagli `HEALTHCHECK_TENANT_SLUG` · (4) **`PURGE_AUTO_ENABLED`
-  KASITLI OLARAK BOS BIRAKILIR** — otomatik silme kapali dogsun ·
-  (5) ancak sonra `vercel --prod`.
+- **CANLI KANIT (13.08.2026, deploy `70c877e`) — KISMI:**
+  **OLCULDU:** `/admin/hotels` silinmis sekmesi otomatik-kapali sunumunu DOGRU
+  gosterdi (yani `PURGE_AUTO_ENABLED` canlida BOS ve panel bunu dogru okuyor) ·
+  `/admin/migrations` DEFEKTLI cikti (kapatildi: `04db5c4`, **canlida
+  DOGRULANMADI**) · 012'nin kosuldugu **CIKARIMLA** biliniyor (panel
+  `purge_hold` SELECT'i satir dondurdu).
+  **HALA OLCULMEDI:** `purge_hold` toggle'i tiklanmadi (zaten otomatik kapali
+  oldugu icin panelde GORUNMUYOR) · iki cron'un yeni fail-closed auth yolu
+  canlida kosmadi (`CRON_SECRET` doluluğu TEYIT EDILMEDI) ·
+  `/api/health-check` yeni haliyle cagrilmadi (503 -> 200 donusu KANITLANMADI) ·
+  `?dryRun=1` hic cagrilmadi.
+- **⚠ SONRAKI DEPLOY:** kalan tek runtime commit `04db5c4`. `vercel --prod`
+  sonrasi `/admin/migrations > Silinmis` metni GOZLE dogrulanmali.
+  `PURGE_AUTO_ENABLED` **KASITLI OLARAK BOS** kalir.
 - **ACILAN BORC — `demo-hotel` HARDCODE ENVANTERI (31. otu, kod degisikligi
   YOK):** `src/**` icinde **16 kod sitesi** olculdu (tarama:
   `demo-hotel|demo-resort-spa`; yorum satirlari haric). Uc kova:
