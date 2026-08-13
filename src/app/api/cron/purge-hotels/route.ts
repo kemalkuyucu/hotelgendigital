@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { timingSafeEqualStr } from '@/lib/telegram/verify';
+import { verifyCronRequest, cronAuthMessage } from '@/lib/cron/verify-cron-secret';
 import { listPurgeQueue, purgeDueHotels, PURGE_BATCH_CAP } from '@/lib/hotels/purge-hotel';
 import { PURGE_RETENTION_DAYS } from '@/lib/hotels/retention';
 
@@ -16,21 +16,14 @@ export const dynamic = 'force-dynamic';
  * FAIL-CLOSED: CRON_SECRET tanimli DEGILSE endpoint 500 doner ve HICBIR SEY
  * silmez. Rate-limit/dedup kapilarinin fail-OPEN olmasiyla karistirma: orada
  * en kotu ihtimal fazladan bir mesajdir, burada GERI ALINAMAZ veri kaybi.
+ * Karar ve sabit-zamanli karsilastirma TEK KAYNAKTA: lib/cron/verify-cron-secret.
  *
- * Karsilastirma sabit-zamanli (`timingSafeEqualStr` — webhook'larla AYNI kaynak).
  * Yanit govdesinde slug / isim / gun sayisi disinda veri YOKTUR; sir asla.
  */
 export async function GET(req: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    console.error('[hotel-purge] CRON_SECRET tanimsiz — purge REDDEDILDI (fail-closed).');
-    return NextResponse.json({ error: 'cron secret not configured' }, { status: 500 });
-  }
-
-  const authHeader = req.headers.get('authorization');
-  const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!timingSafeEqualStr(bearer, cronSecret)) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const auth = verifyCronRequest(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: cronAuthMessage(auth.status) }, { status: auth.status });
   }
 
   const now = new Date();

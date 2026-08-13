@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyCronRequest, cronAuthMessage } from '@/lib/cron/verify-cron-secret'
 import { getCentralSupabase } from '@/lib/supabase-client'
 import { testBridge } from '@/lib/tenant/test-bridge'
 import { getDemoHotelSupabase } from '@/lib/supabase-client'
@@ -11,12 +12,10 @@ import { runCevreKesfiScan } from '@/lib/perplexity/cevre-scan-runner'
 export const maxDuration = 60
 
 export async function GET(req: NextRequest) {
-  // Cron secret kontrolü
-  const auth = req.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-
-  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  // Cron secret kontrolü — tek kaynak: lib/cron/verify-cron-secret (FAIL-CLOSED)
+  const auth = verifyCronRequest(req)
+  if (!auth.ok) {
+    return NextResponse.json({ error: cronAuthMessage(auth.status) }, { status: auth.status })
   }
 
   const supabase = getCentralSupabase()

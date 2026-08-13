@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyCronRequest, cronAuthMessage } from '@/lib/cron/verify-cron-secret';
 import { getCentralSupabase } from '@/lib/supabase-client';
 import { getHotelClient } from '@/lib/tenant/get-hotel-client';
 import { getTurkeyToday } from '@/lib/date/turkeyTime';
@@ -16,15 +17,12 @@ export const dynamic = 'force-dynamic';
  *   - is_active=false yapar
  *
  * Çağrı: GET /api/cron/archive-checked-out
- * Auth:  Authorization: Bearer {CRON_SECRET}
+ * Auth:  Authorization: Bearer {CRON_SECRET}  (tek kaynak: lib/cron/verify-cron-secret)
  */
 export async function GET(req: NextRequest) {
-  // CRON_SECRET ile yetki kontrolü
-  const authHeader = req.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const auth = verifyCronRequest(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: cronAuthMessage(auth.status) }, { status: auth.status });
   }
 
   const central = getCentralSupabase();
