@@ -4,7 +4,7 @@ Bu dosya **oturumlar arası devir belgesidir**: "şu an neredeyiz, neye dokunuld
 sonraki oturum nereden devam eder". Teknik ayrıntı ve kalıcı kurallar `CLAUDE.md`
 içindedir — **çelişki halinde CLAUDE.md kazanır.**
 
-Son güncelleme: **2026-08-13 (30. oturum)**
+Son güncelleme: **2026-08-13 (31. oturum)**
 
 ---
 
@@ -48,29 +48,44 @@ iletir ve SLA takibi yapar. Personel/sahip yönetimi rol bazlı panellerden.
 
 | | Commit | Not |
 |---|---|---|
-| **HEAD** | `2845eb2` | 30. oturum (purge panel) |
+| **HEAD** | `f39b968` + doc | 31. oturum (`4040976` purge_hold toggle · `50b6f1d` cron secret · `f39b968` health-check) |
 | **PROD (deploy)** | `b6ef712` | 28. oturum (CSP enforce) — `dpl_7waBxtk6bwUTtjcgkhLg7PHfE6ww` |
-| **origin** | `6c6dcec` | 29. otu ölçümü; 29 + 30. oturum commit'leri **PUSH BEKLİYOR** |
+| **origin** | `6c6dcec` | 29. otu ölçümü; 29 + 30 + 31. oturum commit'leri **PUSH BEKLİYOR** |
 
 **HEAD > PROD kasıtlıdır.** 29. oturum (DB-katman/araç/doc) ve 30. oturumun DB
-katmanı deploy gerektirmez; 30. oturumun **API route + panel UI + vercel.json**
-kısmı ise **runtime'dır ve deploy BEKLİYOR** (bu oturumda bilinçli olarak
-yapılmadı).
+katmanı deploy gerektirmez; 30 + 31. oturumun **API route'ları + panel UI +
+vercel.json + cron auth + health-check** kısmı ise **runtime'dır ve deploy
+BEKLİYOR** (bilinçli olarak yapılmadı).
+
+### ⚠ Deploy sırası (31. otu — bağlayıcı)
+
+1. **Central'da `migrations/central/012` koş.** Aksi halde `/admin/hotels`
+   sayfası `purge_hold`'u SELECT ettiği için **boş liste** gösterir.
+2. **Vercel env'de `CRON_SECRET` dolu mu, teyit et.** Cron auth artık
+   **FAIL-CLOSED**: secret yoksa **üç cron da 500** döner.
+3. İsteğe bağlı: `HEALTHCHECK_TENANT_SLUG` (yoksa otel probe'u atlanır — bu
+   zaten 503'ü kapatan davranış).
+4. Ancak bundan sonra `vercel --prod`.
 
 Push, Kemal'in kendi terminalinde yapılır (bu ortamda credential helper asılıyor)
 ve sonucu **`git status` ile değil `git ls-remote` ile** doğrulanır.
 
 ## 5. Aktif görevler / bekleyen işler
 
-**Hemen sırada (30. oturumun kapanışı):**
+**Hemen sırada (30 + 31. oturumun kapanışı):**
 1. **`migrations/central/012` Central PROD SQL Editor'da koşulacak** — Kemal.
    Yerelde Central kimlikleri yok, ajan koşamadı. Koşulmadan purge çalışmaz
-   (`purge_hold` ve `hotel_purge_log` yok → cron 500/`db_error` verir).
-2. **Vercel cron limiti kararı** — `vercel.json` artık **3 cron** taşıyor;
-   Hobby planı **2** ile sınırlı. Plan Pro değilse ya plan yükseltilecek ya da
-   purge, `cron/health-check` içine piggyback edilecek (SLA taramasında olduğu gibi).
-3. **Deploy** — panel + cron + API route runtime'dır, `vercel --prod` gerekir.
-4. **Canlı UAT** — geri sayım rozeti, "Kalıcı Sil" akışı, cron `?dryRun=1`.
+   (`purge_hold` ve `hotel_purge_log` yok → cron 500/`db_error` verir) **ve
+   `/admin/hotels` boş liste gösterir**.
+2. ~~**Vercel cron limiti kararı**~~ — **31. otu'da KAPANDI.** Vercel Ocak
+   2026'da limiti **her planda proje başına 100**'e çıkardı; hesap **PRO**,
+   `15 3 * * *` günde bir. `vercel.json` **aynen kalıyor**, piggyback gerekmez.
+3. **`CRON_SECRET` Vercel env'inde dolu mu?** Cron auth artık FAIL-CLOSED —
+   secret yoksa üç cron da 500 döner. **Önce env, sonra deploy.**
+4. **Deploy** — panel + cron + API route'lar + health-check runtime'dır,
+   `vercel --prod` gerekir.
+5. **Canlı UAT** — geri sayım rozeti, `purge_hold` toggle'ı, "Kalıcı Sil"
+   akışı, cron `?dryRun=1`, `/api/health-check`in gerçekten 200 dönmesi.
 
 **Devam eden borçlar (CLAUDE.md §7 tam liste):**
 - verification parse kök nedeni: `ROOM_REGEX` prefix'i opsiyonel → serbest metindeki
@@ -100,15 +115,37 @@ ve sonucu **`git status` ile değil `git ls-remote` ile** doğrulanır.
 - **Onboarding kitine literal tablo adı EKLENMEDİ:** `central_hardening.sql`
   katalog güdümlüdür (sweep), `hotel_purge_log`'u zaten kapsar.
 
+## 6b. Bu oturumun (31) kararları
+
+- **Slug onayı GERİ ALINAMAZ işlemler içindir.** `purge` `confirmSlug` ister;
+  `purge_hold` toggle'ı **istemez** — yanlış basan admin aynı düğmeye tekrar
+  basar. Pahalı bir onay, acil-durum freninin hiç kullanılmamasına yol açar.
+- **Kilit panelden çevrilebilmeli.** Central kimlikleri yalnız prod'da; "SQL
+  ile çevirirsin" demek, geri alınamaz silmenin önündeki tek freni erişilemez
+  kılmaktı.
+- **Hold açıkken rozet NÖTR.** Gün sayısı işlemeye devam eder (`deleted_at`'e
+  dokunulmaz) ama cron atlar → kırmızı/amber "birazdan silinecek" yalan olurdu.
+- **Cron auth FAIL-CLOSED ve 401 değil 500.** Eksik olan çağıranın yetkisi
+  değil sunucunun yapılandırmasıdır. Bu yön rate-limit/dedup'ın fail-OPEN'ının
+  tersidir (orada en kötüsü fazladan mesaj).
+- **Sağlık probe'u tenant literali taşımaz.** Env'den gelir; env yoksa probe
+  **atlanır** (`skipped`), FAIL üretmez. Kalıcı sarı bayrak gerçek arızayı
+  maskeler.
+- **`demo-hotel` hardcode envanteri çıkarıldı, TEMİZLİK YAPILMADI** (16 kod
+  sitesi; A-kovası "sessiz yanlış tenant fallback'i" **boş**). Ayrıntı
+  CLAUDE.md §7.
+
 ## 7. Sonraki oturum buradan
 
-1. `npm run doctor` koş — yeşil olmalı (30. otu sonu: tsc 0 · is8 **2143/2143,
-   20 dosya** · şema 46/47 · marka 0 unexpected).
+1. `npm run doctor` koş — yeşil olmalı (31. otu sonu: tsc 0 · is8 **2190/2190,
+   21 dosya** · şema 46/47 · marka 13 allowlisted / 0 unexpected).
 2. Kemal 012'yi koştu mu? Koştuysa `?dryRun=1` ile cron'u **canlı** ölç
    (silme yok, yalnız kuyruk raporu) — bu, purge'ün ilk gerçek kanıtıdır.
-3. Cron limiti kararını uygula (plan mı, piggyback mı).
+3. **Önce `CRON_SECRET` env teyidi, sonra deploy** (fail-closed).
 4. Deploy + canlı UAT, sonra CLAUDE.md'ye "canlı doğrulandı" satırını işle.
-5. Ondan sonra sıradaki açık iş: **verification parse kök nedeni**.
+5. Sıradaki açık iş: **verification parse kök nedeni**. Onun yanında hazır
+   duran ikinci iş: `demo-hotel` B-kovası (ManyChat webhook'u demo dışı her
+   otelde 500 döner; `send-telegram` demo dışı token bulamaz).
 
 **Uyarı:** Bu dosya ile CLAUDE.md ayrı commit'lerde güncellenir; biri atlanırsa
 harita sessizce bayatlar (19. ve 22-23. oturumlarda yaşandı). Sevkle aynı oturumda
