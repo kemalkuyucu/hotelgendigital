@@ -8,10 +8,6 @@
     {
       "path": "/api/cron/archive-checked-out",
       "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/purge-hotels",
-      "schedule": "15 3 * * *"
     }
   ]
 }

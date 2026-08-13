@@ -46,26 +46,34 @@ function statusBadge(status: string) {
 
 const TONE_NEUTRAL = { bg: 'rgba(148,163,184,0.15)', fg: '#94a3b8' }
 
-function PurgeCountdown({ hotel }: { hotel: Hotel }) {
+function PurgeCountdown({ hotel, autoEnabled }: { hotel: Hotel; autoEnabled: boolean }) {
   const d = hotel.purge_days_left
   if (d === null) return <span style={{ color: '#475569' }}>—</span>
 
-  // Hold ACIKKEN renk NOTR kalir: gun sayisi ISLEMEYE devam eder (deleted_at
-  // degismedi) ama cron o oteli ATLAR -> kirmizi/amber "birazdan silinecek"
-  // uyarisi yanlis bilgi olurdu.
+  // Renk aciliyet BILDIRIR — aciliyet yoksa NOTR kalmak ZORUNDA:
+  //  - otomatik silme GLOBAL kapaliysa kimse silmeyecek,
+  //  - purge_hold ACIKSA cron o oteli atlar (gun sayisi yine isler).
+  // Karar `purgeInfo`da DEGIL; esik/gun tek kaynakta kalir, yalniz SUNUM dallanir.
   const tone =
-    hotel.purge_hold === true ? TONE_NEUTRAL
+    !autoEnabled || hotel.purge_hold === true ? TONE_NEUTRAL
       : d <= 1 ? { bg: 'rgba(239,68,68,0.15)', fg: '#f87171' }
         : d <= 7 ? { bg: 'rgba(245,158,11,0.15)', fg: '#fbbf24' }
           : TONE_NEUTRAL
 
-  const label = d === 0 ? 'bugün silinecek' : `${d} gün kaldı`
+  // "silinecek" bir VAATtir; otomatik silme kapaliyken YALAN olur -> "silinebilir".
+  const label = autoEnabled
+    ? (d === 0 ? 'bugün silinecek' : `${d} gün kaldı`)
+    : (d === 0 ? 'kalıcı silinebilir' : `${d} gün sonra kalıcı silinebilir`)
+
   const exact = hotel.purge_at ? new Date(hotel.purge_at).toLocaleString('tr-TR') : ''
+  const hint = autoEnabled
+    ? (exact ? `Kalıcı silme: ${exact}` : undefined)
+    : `Otomatik kalıcı silme KAPALI — silme yalnız "Kalıcı Sil" ile yapılır${exact ? ` (eşik: ${exact})` : ''}`
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
       <span
-        title={exact ? `Kalıcı silme: ${exact}` : undefined}
+        title={hint}
         style={{
           display: 'inline-block',
           background: tone.bg,
@@ -79,7 +87,10 @@ function PurgeCountdown({ hotel }: { hotel: Hotel }) {
       >
         {label}
       </span>
-      {hotel.purge_hold === true && (
+      {/* Per-otel kilit rozeti YALNIZ otomatik silme ACIKKEN anlamlidir; global
+          olarak kapaliyken "bu otel icin kapali" demek digerleri ACIK izlenimi
+          verirdi. Bayrak DB'de KALIR, otomatik yol acilinca yeniden gorunur. */}
+      {autoEnabled && hotel.purge_hold === true && (
         <span
           title="purge_hold açık: otomatik kalıcı silme bu otel için atlanır"
           style={{ fontSize: '11px', color: '#60a5fa', whiteSpace: 'nowrap' }}
@@ -567,9 +578,11 @@ function PurgeModal({
 
 interface OtellerClientProps {
   hotels: Hotel[]
+  /** SUNUCUDAN gelir (`PURGE_AUTO_ENABLED`). Panel metni buna gore dallanir. */
+  autoPurgeEnabled: boolean
 }
 
-export default function OtellerClient({ hotels }: OtellerClientProps) {
+export default function OtellerClient({ hotels, autoPurgeEnabled }: OtellerClientProps) {
   const router = useRouter()
   const [tab, setTab] = useState<'active' | 'deleted'>('active')
   const [deleteTarget, setDeleteTarget] = useState<Hotel | null>(null)
@@ -713,8 +726,10 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
                         ) : '—'}
                       </td>
                       <td className="p-4">
-                        <PurgeCountdown hotel={h} />
-                        <PurgeHoldToggle hotel={h} onDone={refresh} />
+                        <PurgeCountdown hotel={h} autoEnabled={autoPurgeEnabled} />
+                        {/* Otomatik silme kapaliyken hold ANLAMSIZ -> toggle
+                            RENDER EDILMEZ. API route ve kolon YERINDE DURUR. */}
+                        {autoPurgeEnabled && <PurgeHoldToggle hotel={h} onDone={refresh} />}
                       </td>
                     </>
                   )}
