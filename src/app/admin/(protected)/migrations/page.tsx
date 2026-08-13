@@ -27,6 +27,11 @@ export default async function MigrationsPage() {
   const all = hotels ?? [];
   const activeHotels = all.filter((h) => !h.deleted_at);
   const now = new Date();
+
+  // Otomatik purge KAPALI dogar (31. otu). Panel bunu BILMEK ZORUNDA: kimse
+  // silmeyecekken "30 gun kaldi" demek bir VAATtir. `/admin/hotels` ile AYNI
+  // kaynak, AYNI kural — sunum `@/components/admin/PurgeCountdown`da tek yerde.
+  const autoPurgeEnabled = process.env.PURGE_AUTO_ENABLED === 'true';
   const deletedHotels: DeletedHotelRow[] = all
     .filter((h) => !!h.deleted_at)
     .map((h) => {
@@ -75,6 +80,7 @@ export default async function MigrationsPage() {
     <MigrationsClient
       initialStatuses={statusesWithNames}
       deletedHotels={deletedHotels}
+      autoPurgeEnabled={autoPurgeEnabled}
       adminUsername={admin.username}
     />
   );

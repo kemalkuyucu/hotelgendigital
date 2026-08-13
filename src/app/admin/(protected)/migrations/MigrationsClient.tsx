@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { useState, useCallback, useEffect } from 'react';
+import PurgeCountdown from '@/components/admin/PurgeCountdown';
 import type { MigrationStatusReport } from '@/lib/migrations';
 import type { CentralMigrationStatusReport, CentralRunResult } from '@/lib/migrations/central';
 
@@ -31,6 +32,8 @@ export interface DeletedHotelRow {
 interface Props {
   initialStatuses: StatusWithName[];
   deletedHotels: DeletedHotelRow[];
+  /** SUNUCUDAN gelir (`PURGE_AUTO_ENABLED`). Geri sayim metni buna gore dallanir. */
+  autoPurgeEnabled: boolean;
   adminUsername: string;
 }
 
@@ -90,7 +93,13 @@ function StatusBadge({ applied, total }: { applied: number; total: number }) {
 // otel "guncelleme bekliyor" gorunup panelde kalici bir uyari lekesi biraktigi
 // icin ayrildi. Aksiyonlar PASIF — silinmis otele migration uygulanmaz.
 // ─────────────────────────────────────────────────────────────────────────────
-function DeletedHotelsSection({ rows }: { rows: DeletedHotelRow[] }) {
+function DeletedHotelsSection({
+  rows,
+  autoPurgeEnabled,
+}: {
+  rows: DeletedHotelRow[];
+  autoPurgeEnabled: boolean;
+}) {
   if (rows.length === 0) return null;
 
   const disabledBtn: React.CSSProperties = {
@@ -123,24 +132,16 @@ function DeletedHotelsSection({ rows }: { rows: DeletedHotelRow[] }) {
                 >
                   deleted
                 </span>
-                {r.days_left !== null && (
-                  <span
-                    title={r.purge_at ? `Kalıcı silme: ${new Date(r.purge_at).toLocaleString('tr-TR')}` : undefined}
-                    className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={
-                      r.days_left <= 1
-                        ? { background: 'rgba(239,68,68,0.15)', color: '#f87171' }
-                        : r.days_left <= 7
-                          ? { background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }
-                          : { background: 'rgba(148,163,184,0.15)', color: '#94a3b8' }
-                    }
-                  >
-                    {r.days_left === 0 ? 'bugün silinecek' : `${r.days_left} gün kaldı`}
-                  </span>
-                )}
-                {r.purge_hold && (
-                  <span className="text-xs" style={{ color: '#60a5fa' }}>⏸ otomatik silme kapalı</span>
-                )}
+                {/* Metin + ton + kilit rozeti karari BURADA YAZILMAZ: tek kaynak
+                    `@/components/admin/PurgeCountdown` (Oteller sayfasi da AYNI
+                    bileseni kullanir). Kopyalandigi surece iki panel ayni gercek
+                    icin farkli konusuyordu — bu defekt canli olculdu. */}
+                <PurgeCountdown
+                  daysLeft={r.days_left}
+                  purgeAt={r.purge_at}
+                  purgeHold={r.purge_hold}
+                  autoEnabled={autoPurgeEnabled}
+                />
               </div>
               <p className="text-xs mt-0.5" style={{ color: '#64748b' }}>
                 Silinme: {new Date(r.deleted_at).toLocaleString('tr-TR')}
@@ -967,7 +968,7 @@ function CentralMigrationsPanel() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Ana Component
 // ─────────────────────────────────────────────────────────────────────────────
-export default function MigrationsClient({ initialStatuses, deletedHotels, adminUsername }: Props) {
+export default function MigrationsClient({ initialStatuses, deletedHotels, autoPurgeEnabled, adminUsername }: Props) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('tenant');
   const [statuses, setStatuses] = useState<StatusWithName[]>(initialStatuses);
   const [detailModal, setDetailModal] = useState<StatusWithName | null>(null);
@@ -1254,7 +1255,7 @@ export default function MigrationsClient({ initialStatuses, deletedHotels, admin
             )}
 
             {/* Silinmis oteller — sayaclarin DISINDA, aksiyonlar pasif */}
-            <DeletedHotelsSection rows={deletedHotels} />
+            <DeletedHotelsSection rows={deletedHotels} autoPurgeEnabled={autoPurgeEnabled} />
           </>
         )}
 
