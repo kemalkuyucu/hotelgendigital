@@ -27,12 +27,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   yoksa **401** donuyordu -> artik **sabit-zamanli** karsilastirma +
   **FAIL-CLOSED 500**. is8 **2143 -> 2190** (+47, YENI dosya
   `is8-cron-secret-test.ts`, 20 -> **21 dosya**).
+  **(0) OTOMATIK PURGE KAPALI DOGDU (`6611198`)** — `vercel.json`den cron
+  girdisi KALDIRILDI **ve** route'a `PURGE_AUTO_ENABLED` kapisi kondu (iki
+  bagimsiz kilit). Geri sayim + **ELLE** "Kalici Sil" KALIR. Panel kapaliyken
+  "silinecek" DEMEZ, "silinebilir" der ve toggle'i gizler. Ayrinti: §2
+  *Otomatik purge KAPALI*.
   **(3) `/api/health-check` 503 KOKU KAPANDI** — `checkSeedData` icindeki
   hardcoded `'demo-resort-spa'` slug'i **`HEALTHCHECK_TENANT_SLUG`** env'ine
   cevrildi; env YOKSA otel probe'u **HIC KOSMAZ** ve sonuc `skipped:true` ile
   doner (endpoint 503'e DUSMEZ). Bes oturumdur duran sari bayrak buydu.
   **⚠ SIRA UYARISI:** (2) fail-closed'dir — **`CRON_SECRET` Vercel env'inde
-  YOKKEN deploy edilirse UC cron da 500 doner.** Once env, sonra deploy.
+  YOKKEN deploy edilirse UC cron ROUTE'u da 500 doner** (ikisi zamanlanmis, purge elle). Once env, sonra deploy.
 - **30. OTURUM — OTEL RETENTION PURGE (ozet).** Soft-delete'e **30 gunluk
   retention + OTOMATIK KALICI SILME** eklendi. Iki commit:
   **`d6e43a3`** (DB katmani + saf modul + cron) ve **`2845eb2`** (panel UI).
@@ -49,11 +54,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   **is8 2065 -> 2143** (+78, YENI dosya `is8-hotel-retention-test.ts`, 19 -> **20
   dosya**); **NEGATIF KONTROL OLCULDU:** esik gecici 29 yapilinca **60/78 PASS +
   exit 1** (18 vaka, oracle ikizi dahil) dondu, geri alinca 78/78.
-  **~~ACIK RISK — VERCEL CRON LIMITI~~ — 31. otu'da KAPANDI:** Vercel **Ocak
-  2026**'da cron limitini **HER PLANDA proje basina 100**'e cikardi ve hesap
-  zaten **PRO**; `15 3 * * *` gunde-bir kosuyor. Ucuncu cron SORUNSUZ ->
-  **`vercel.json` AYNEN KALIYOR** (piggyback GEREKMEZ). Bu dosyanin eski
-  "Hobby 2 cron" notlari o tarihten once dogruydu, ARTIK DEGIL.
+  **~~ACIK RISK — VERCEL CRON LIMITI~~ — 31. otu'da KAPANDI (iki asamada):**
+  once olculdu ki limit bir kisit DEGIL (Vercel **Ocak 2026**'da limiti **her
+  planda proje basina 100**'e cikardi, hesap **PRO**); sonra **`6611198`** ile
+  cron girdisi yine de **KALDIRILDI** — sebep limit degil, **geri alinamaz
+  silmeyi otomatiklestirmeme karari**. Bugun `vercel.json` **IKI** cron tasir.
+  Bu dosyanin eski "Hobby 2 cron" notlari o tarihten once dogruydu, ARTIK DEGIL.
 - **YENI: repo kokunde `DURUM.md`** (30. otu) — oturumlar arasi **devir belgesi**
   (yigin, kilitli model ID'leri, surum durumu, aktif isler, "sonraki oturum
   buradan"). Kalici KURAL ve teknik ayrinti yine BU dosyadadir; **celiskide
@@ -161,7 +167,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   kumede dup **0** -> SIFIR temizlik) + `insertSlaEvent` **tek-kaynak** (4 site) +
   **23505 -> `notifyDuplicateRequest`**. `room_service_orders`'a guvenli bir
   statik constraint YOK -> onun yerine **2 defekt duzeltildi**. Tam liste §7'de.
-- **HEAD = `f39b968` (31. oturum) · PROD(deploy) = `b6ef712` (28. oturum).**
+- **HEAD = `6611198` (31. oturum) · PROD(deploy) = `b6ef712` (28. oturum).**
   **30. VE 31. OTURUM PROD'A DOKUNMADI ama DEPLOY BORCU BIRAKTI** — 29. oturumun
   aksine burada runtime kod var (cron route'lari + admin API route'lari + panel
   UI + `vercel.json` + health-check). Deploy edilene kadar: panelde "Kalici Sil"
@@ -172,7 +178,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   **DEPLOY SIRASI BAGLAYICI (31. otu):** (1) Central'da `012` kos — aksi halde
   `/admin/hotels` `purge_hold`'u SELECT ettigi icin **BOS liste** gosterir ·
   (2) Vercel env'de **`CRON_SECRET` DOLU** olmali — cron auth artik
-  FAIL-CLOSED, yoksa **3 cron da 500** · (3) istege bagli
+  FAIL-CLOSED, yoksa **cron route'lari 500** doner · (3) istege bagli
   `HEALTHCHECK_TENANT_SLUG` · (4) ancak sonra `vercel --prod`.
   29. oturumun uc commit'i deploy GEREKTIRMEZ: `ab85c60` bir
   DB-katman/onboarding **ASSET**'idir (runtime bundle'a girmez, runner gormez),
@@ -831,7 +837,7 @@ listeleyip "guncelleme bekliyor" sayacini kirletiyordu.
 |---|---|---|
 | `PURGE_RETENTION_DAYS` · `purgeInfo` · `isPurgeDue` | `src/lib/hotels/retention.ts` (**SAF**) | esik + geri sayim **TEK KAYNAK**; IO yok, `now` DISARIDAN |
 | `listPurgeQueue` · `purgeHotel` · `purgeDueHotels` · `PURGE_BATCH_CAP` | `src/lib/hotels/purge-hotel.ts` | silme **SIRASI** + mezar tasi + denetim kaydi TEK KAYNAK |
-| cron | `src/app/api/cron/purge-hotels/route.ts` | **FAIL-CLOSED**, `?dryRun=1` onizleme |
+| cron | `src/app/api/cron/purge-hotels/route.ts` | **FAIL-CLOSED**, `?dryRun=1` onizleme. **31. otu: ZAMANLANMIS DEGIL + `PURGE_AUTO_ENABLED` kapisi** (bkz. *Otomatik purge KAPALI*) |
 | manuel | `src/app/api/admin/hotels/[id]/purge/route.ts` | super_admin + **confirmSlug == hotels.slug** kapisi |
 | kilit | `src/app/api/admin/hotels/[id]/purge-hold/route.ts` (31. otu) | **PATCH** `{hold:boolean}`; super_admin + **yalniz soft-deleted** otel; `confirmSlug` YOK |
 | sema | `migrations/central/012_hotel_purge_retention.sql` | `purge_hold` + `hotel_purge_log` (**CANLIDA YOK**, Kemal kosacak) |
@@ -1324,10 +1330,35 @@ Two-stage, both Anthropic but different models:
 
 ### Cron jobs (`vercel.json`, `src/app/api/cron/`)
 
-**UC** Vercel Cron job (`vercel.json`), hepsi `Authorization: Bearer ${CRON_SECRET}` ile: ikisi 00:00, purge 03:15. **CRON LIMITI ARTIK SORUN DEGIL (31. otu):** Vercel **Ocak 2026**'da limiti **HER PLANDA proje basina 100 cron**'a cikardi, hesap zaten **PRO** -> ucuncu cron (`purge-hotels`, 30. otu) SORUNSUZ, `vercel.json` AYNEN KALIR. Eski "Hobby 2 cron" kaydi **BAYAT** (SLA taramasinin `health-check`e piggyback edilmesi o donemin urunudur; **calisir durumda oldugu icin GERI ALINMADI** — ayirmak ayri bir istir). **UCUNUN DE secret dogrulamasi TEK KAYNAKTAN:** `src/lib/cron/verify-cron-secret.ts` (31. otu — asagidaki *CRON secret* bolumu).
+**IKI** Vercel Cron job (`vercel.json`), ikisi de 00:00 ve `Authorization: Bearer ${CRON_SECRET}` ile. **`purge-hotels` cron girdisi 31. otu'da KALDIRILDI** (route KALIR — bkz. *Otomatik purge KAPALI*). **CRON LIMITI ARTIK BIR KISIT DEGIL (31. otu):** Vercel **Ocak 2026**'da limiti **HER PLANDA proje basina 100 cron**'a cikardi ve hesap **PRO** — yani ucuncu cron teknik olarak SORUNSUZDU; kaldirilma sebebi limit DEGIL, **geri alinamaz silmeyi otomatiklestirmeme karari**. Eski "Hobby 2 cron" kaydi **BAYAT** (SLA taramasinin `health-check`e piggyback edilmesi o donemin urunudur; **calisir durumda oldugu icin GERI ALINMADI** — ayirmak ayri bir istir). **IKISININ DE (ve elle cagrilan purge route'unun da) secret dogrulamasi TEK KAYNAKTAN:** `src/lib/cron/verify-cron-secret.ts` (31. otu — asagidaki *CRON secret* bolumu).
 - `/api/cron/health-check` — bridge health check for all active hotels **and** runs `runSlaCheck` (SLA scan is piggybacked here — tarihsel sebep Hobby 2-cron limitiydi, bugun bir zorunluluk DEGIL; the comment says "her dakika" but the schedule is currently daily — adjust the schedule if you need minute-level SLA). 18. otu: ayni per-hotel donguye **`processed_telegram_updates` 24 saatlik TTL supurmesi** eklendi (kendi try/catch'inde — tablosu migrate edilmemis tenant SLA taramasini BOZAMAZ). **KOD YORUMU BAYAT:** `route.ts:45` hala "Hobby plan cron limitini (2) asmadan" diyor (31. otu kapsam disi birakti — doc-only senkron kod dosyasina dokunmaz).
 - `/api/cron/archive-checked-out` — archives checked-out guests.
-- `/api/cron/purge-hotels` (30. otu, **03:15**) — retention'i dolan soft-deleted otelleri KALICI siler. **FAIL-CLOSED** (`CRON_SECRET` yoksa 500, silme YOK), `?dryRun=1` ile SALT-OKUMA kuyruk raporu. Batch cap 5. Bkz. §2 *Otel RETENTION purge*. (31. otu: "digerleri hala duz `!==` kullanir" notu **GECERSIZ** — ucu de artik ayni helper'i cagirir.)
+- `/api/cron/purge-hotels` (30. otu) — **ARTIK ZAMANLANMIS DEGIL** (31. otu: `vercel.json` girdisi kaldirildi; route elle cagrilir). Retention'i dolan soft-deleted otelleri silecek kod BURADADIR ama **IKI KILIT** arkasindadir (bkz. *Otomatik purge KAPALI*). **FAIL-CLOSED** (`CRON_SECRET` yoksa 500, silme YOK), `?dryRun=1` ile SALT-OKUMA kuyruk raporu. Batch cap 5. Bkz. §2 *Otel RETENTION purge*. (31. otu: "digerleri hala duz `!==` kullanir" notu **GECERSIZ** — ucu de artik ayni helper'i cagirir.)
+
+#### Otomatik purge KAPALI — IKI BAGIMSIZ KILIT (31. otu, `6611198`)
+
+**KARAR:** geri sayim ve **ELLE** "Kalici Sil" KALIR; **OTOMATIK silme KAPALI
+DOGAR.** **GEREKCE:** purge tenant'in Supabase **PROJESINI silmiyor**
+(Management API isi) -> otomasyonun faydasi dusuk, hatasi **GERI ALINAMAZ**.
+
+| Kilit | Yer | Etki |
+|---|---|---|
+| 1 | `vercel.json` | `purge-hotels` cron girdisi **YOK** -> zamanlanmis cagri OLMAZ |
+| 2 | `cron/purge-hotels/route.ts` | `PURGE_AUTO_ENABLED === 'true'` DEGILSE `purgeDueHotels` **HIC CAGRILMAZ**; 200 + kuyruk raporu + `mode:'disabled'` |
+
+- **KAPALIYKEN `dryRun` DEGERINE BAKILMAZ** — her iki halde de yalniz kuyruk
+  raporlanir. `purgeDueHotels` YALNIZ `autoEnabled && !dryRun` halinde kosar.
+- **FAIL-SAFE:** env yok / bos / `'true'` disinda herhangi bir deger -> SILME YOK.
+- **ELLE silme (`POST /api/admin/hotels/[id]/purge`) BU KAPIDAN ETKILENMEZ.**
+- **PANEL YALAN SOYLEMEZ (§3 SAHTE VAAT YASAGI):** `page.tsx` `autoPurgeEnabled`i
+  **SUNUCUDA** hesaplar. Kapaliyken rozet **HER ZAMAN NOTR**, metin
+  "**{n} gun sonra kalici silinebilir**" / "**kalici silinebilir**"
+  ("silinecek" bir VAATtir), `PurgeHoldToggle` ve per-otel hold rozeti
+  **RENDER EDILMEZ** (global kapaliyken "bu otel icin kapali" demek digerleri
+  ACIK izlenimi verir). API route ve `purge_hold` kolonu YERINDE DURUR.
+  **Karar tek kaynakta:** `retention.ts`/`purgeInfo` DEGISMEDI — yalniz SUNUM dallanir.
+- **ACMAK ICIN (uc adim, hepsi gerekli):** `PURGE_AUTO_ENABLED=true` env +
+  `vercel.json`e cron girdisini geri ekle + deploy.
 
 #### CRON secret — TEK KAYNAK `verify-cron-secret.ts` (31. otu)
 
@@ -1350,7 +1381,7 @@ Two-stage, both Anthropic but different models:
   **HARNESS-BITE OLCULDU** (karsilastirma `true`ya sabitlenince **22/47 PASS**,
   `20/21 dosya`, `DUSEN: is8-cron-secret-test.ts`, exit 1).
 - **⚠ SIRA:** fail-closed'dir — `CRON_SECRET` Vercel env'inde YOKKEN deploy
-  edilirse **UC cron da 500** doner. Once env, sonra deploy.
+  edilirse **UC cron ROUTE'u da 500** doner (ikisi zamanlanmis, purge elle). Once env, sonra deploy.
 
 ### Migrations (`src/lib/migrations/`, `migrations/`)
 
@@ -1657,6 +1688,17 @@ Three independent auth systems, three cookies, enforced in `src/middleware.ts` (
     `src/**` icine HARDCODE edilmez; env'den gelir ve env yoksa probe **ATLANIR**
     (`skipped`), FAIL uretmez. Kalici sari bayrak gercek arizayi maskeler —
     `/api/health-check`in 5 oturumluk 503'u tam olarak buydu.
+  - **(e) GERI ALINAMAZ BIR ISI OTOMATIKLESTIRMENIN FAYDASI, RISKINI
+    ASMALIDIR.** Purge tenant'in Supabase PROJESINI silmiyor -> otomasyon
+    isin YARISINI yapiyor ama hatasi geri alinamaz. Bu yuzden otomatik yol
+    **KAPALI DOGAR** ve **IKI BAGIMSIZ KILIT** tasir (cron girdisi YOK +
+    `PURGE_AUTO_ENABLED` kapisi); biri yanlislikla acilirsa digeri tutar.
+    Elle silme YOLU ACIK KALIR — karar insanda.
+  - **(f) KAPALI BIR OTOMASYONUN ARAYUZU "OLACAK" DEMEZ.** Panel
+    `autoPurgeEnabled=false` iken "silinecek" degil "**silinebilir**" der,
+    aciliyet rengi KULLANMAZ ve etkisiz kontrolu (hold toggle) GIZLER. Bu §3
+    SAHTE VAAT YASAGI'nin panel tarafidir: kimsenin yapmayacagi bir isi
+    yapilacakmis gibi gostermek de bir yalan vaattir.
 - **29. OTURUM KARARLARI (IHLAL EDILEMEZ):**
   - **(a) TURETILMIS ASSET NUMARALI SIRAYI BOZMAZ.** `migrations/onboarding/*`
     mevcut numarali migration'larin **KONSOLIDASYONUDUR**; yeni karar/tablo/politika
@@ -2183,16 +2225,26 @@ yerel arac, ucuncusu doc-only):
   runtime deploy edilmedi (panelde buton, cron'da is YOK), (iii) `[hotel-purge]`
   log satirlarinin hicbiri prod'da gorulmedi. **Ilk gercek kanit
   `?dryRun=1`dir** (silme yok, yalniz kuyruk).
-- **~~ACILAN BORC — VERCEL CRON LIMITI~~ — 31. otu'da KAPANDI (kod degisikligi
-  GEREKMEDI):** Vercel **Ocak 2026**'da cron limitini **her planda proje basina
-  100**'e cikardi; hesap **PRO**, `15 3 * * *` gunde-bir. `vercel.json` AYNEN
-  KALIR, piggyback GEREKMEZ. Karar Kemal'den geldi, ajan olcmedi.
+- **~~ACILAN BORC — VERCEL CRON LIMITI~~ — 31. otu'da KAPANDI:** limit bir
+  kisit DEGIL (Vercel **Ocak 2026**: her planda proje basina **100 cron**;
+  hesap **PRO**) — bu bilgi Kemal'den geldi, ajan olcmedi. Ancak cron girdisi
+  yine de **KALDIRILDI** (`6611198`): sebep limit degil, **geri alinamaz
+  silmeyi otomatiklestirmeme karari**. Bugun `vercel.json` **IKI** cron tasir.
 - **DOC SENKRONU:** bu commit dosyayi v43 -> **v44**'e tasir + repo kokune
   **`DURUM.md`** (devir belgesi) eklenir (sevkle AYNI oturum, AYRI commit).
 
-**31. oturumda KAPANDI — PURGE_HOLD TOGGLE + CRON SECRET TEK KAYNAK +
-HEALTH-CHECK KOKU** (`4040976` · `50b6f1d` · `f39b968` + bu doc-sync;
-**DEPLOY YOK, PUSH YOK** — ucu de runtime kod):
+**31. oturumda KAPANDI — OTOMATIK PURGE KAPATILDI + PURGE_HOLD TOGGLE +
+CRON SECRET TEK KAYNAK + HEALTH-CHECK KOKU** (`4040976` · `50b6f1d` ·
+`f39b968` · **`6611198`** + doc-sync; **DEPLOY YOK, PUSH YOK** — hepsi runtime kod):
+- **OTOMATIK PURGE KAPALI DOGAR (`6611198`) — IKI BAGIMSIZ KILIT.**
+  `vercel.json`den cron girdisi KALDIRILDI (2 cron) **ve** route
+  `PURGE_AUTO_ENABLED === 'true'` kapisi tasir; kapaliyken `dryRun`a BAKILMAZ,
+  `purgeDueHotels` HIC CAGRILMAZ, 200 + kuyruk + `mode:'disabled'` doner.
+  **ELLE** silme ETKILENMEZ. Panel kapaliyken "silinecek" DEMEZ
+  ("**{n} gun sonra kalici silinebilir**"), aciliyet rengi kullanmaz ve hold
+  toggle'ini gizler. Ayrinti: §2 *Otomatik purge KAPALI*, karar: §3-31e/f.
+  **is8 2190 DEGISMEDI** — `retention.ts` ve `verify-cron-secret.ts`e
+  DOKUNULMADI; degisen yalniz cagri kapisi (IO) ve sunum.
 - **`purge_hold` PANELDEN cevrilebilir** (`PATCH .../purge-hold` + *Silinmis*
   sekmesinde toggle). Kilit bugune kadar yalniz SQL ile cevriliyordu ve Central
   kimlikleri **SADECE prod'da** — yani geri alinamaz silmenin onundeki tek fren
@@ -2217,8 +2269,10 @@ HEALTH-CHECK KOKU** (`4040976` · `50b6f1d` · `f39b968` + bu doc-sync;
   **500 doner** (ve `/admin/hotels` sayfasi purge_hold'u SELECT ettigi icin
   **BOS liste** gosterir — 012 ONCE, deploy SONRA).
 - **⚠ DEPLOY SIRASI:** (1) Central'da `012` kos · (2) Vercel env'de
-  **`CRON_SECRET` DOLU oldugunu teyit et** (fail-closed: yoksa 3 cron da 500) ·
-  (3) istege bagli `HEALTHCHECK_TENANT_SLUG` · (4) ancak sonra `vercel --prod`.
+  **`CRON_SECRET` DOLU oldugunu teyit et** (fail-closed: yoksa cron route'lari 500 doner) ·
+  (3) istege bagli `HEALTHCHECK_TENANT_SLUG` · (4) **`PURGE_AUTO_ENABLED`
+  KASITLI OLARAK BOS BIRAKILIR** — otomatik silme kapali dogsun ·
+  (5) ancak sonra `vercel --prod`.
 - **ACILAN BORC — `demo-hotel` HARDCODE ENVANTERI (31. otu, kod degisikligi
   YOK):** `src/**` icinde **16 kod sitesi** olculdu (tarama:
   `demo-hotel|demo-resort-spa`; yorum satirlari haric). Uc kova:

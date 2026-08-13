@@ -48,7 +48,7 @@ iletir ve SLA takibi yapar. Personel/sahip yönetimi rol bazlı panellerden.
 
 | | Commit | Not |
 |---|---|---|
-| **HEAD** | `f39b968` + doc | 31. oturum (`4040976` purge_hold toggle · `50b6f1d` cron secret · `f39b968` health-check) |
+| **HEAD** | `6611198` + doc | 31. oturum (`4040976` purge_hold toggle · `50b6f1d` cron secret · `f39b968` health-check · `6611198` otomatik purge KAPALI) |
 | **PROD (deploy)** | `b6ef712` | 28. oturum (CSP enforce) — `dpl_7waBxtk6bwUTtjcgkhLg7PHfE6ww` |
 | **origin** | `6c6dcec` | 29. otu ölçümü; 29 + 30 + 31. oturum commit'leri **PUSH BEKLİYOR** |
 
@@ -65,7 +65,12 @@ BEKLİYOR** (bilinçli olarak yapılmadı).
    **FAIL-CLOSED**: secret yoksa **üç cron da 500** döner.
 3. İsteğe bağlı: `HEALTHCHECK_TENANT_SLUG` (yoksa otel probe'u atlanır — bu
    zaten 503'ü kapatan davranış).
-4. Ancak bundan sonra `vercel --prod`.
+4. **`PURGE_AUTO_ENABLED` KASITLI OLARAK BOŞ BIRAKILIR** — otomatik silme
+   kapalı doğsun.
+5. Ancak bundan sonra `vercel --prod`.
+
+**Otomatik purge KAPALI** (`vercel.json` cron yok + `PURGE_AUTO_ENABLED` unset).
+Açmak için: env `true` + cron girdisini geri ekle + deploy.
 
 Push, Kemal'in kendi terminalinde yapılır (bu ortamda credential helper asılıyor)
 ve sonucu **`git status` ile değil `git ls-remote` ile** doğrulanır.
@@ -134,6 +139,10 @@ ve sonucu **`git status` ile değil `git ls-remote` ile** doğrulanır.
 - **`demo-hotel` hardcode envanteri çıkarıldı, TEMİZLİK YAPILMADI** (16 kod
   sitesi; A-kovası "sessiz yanlış tenant fallback'i" **boş**). Ayrıntı
   CLAUDE.md §7.
+- **Otomatik purge KAPALI doğar (iki bağımsız kilit).** Purge, tenant'ın
+  Supabase **projesini silmiyor** → otomasyonun faydası düşük, hatası geri
+  alınamaz. Geri sayım ve **elle** "Kalıcı Sil" kalır; panel kapalıyken
+  "silinecek" demez, "**silinebilir**" der ve hold toggle'ını gizler.
 
 ## 7. Sonraki oturum buradan
 
