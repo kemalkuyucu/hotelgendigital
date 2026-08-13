@@ -190,15 +190,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   `dpl_GDKd8CqbR6nUBVi5gAr6TjBnqXP2` (26. otu) idi; aradaki 27. oturum commit'leri
   (`3409a0e` tenant-032 kaydi + `b56985f` central-011 + doc) **RUNTIME
   DEGISTIRMIYORDU** — o deploy onlari da tasidi, davranis degismedi.
-  **`origin` = `6c6dcec` — `git ls-remote` ile OLCULDU (29. otu).** 28. oturumun
-  push borcu **KAPANMIS**: `11d4aa7` + `b6ef712` + `6c6dcec` origin'de ->
-  **PROD origin'de VAR, git uzerinden ROLLBACK ACIK.** (Bu dosyanin onceki
-  "origin GERIDE `1e8c356` -> rollback YOK" kaydi **BAYATTI**; §7-E ile birlikte
-  duzeltildi. Ders: push durumunu `git status`in tracking ref'inden OKUMA.)
-  **PUSH BEKLIYOR: 29. oturumun 3 commit'i + bu doc-sync** (`ab85c60` · `68373c8` ·
-  `a5724c9` · v43). Push Kemal'in terminalinde (GCM bu ortamda non-interaktif
-  ASILIR, bkz. §4); sonrasi **`git status` ile DEGIL `git ls-remote` ile**
-  dogrulanir — tracking ref bayat kalabilir (tam da bu oturumda yasandi).
+  **`origin` = `49053dc` — Kemal'in terminalinde OLCULDU, 13.08.2026 (iki push).**
+  29 + 30. oturumun TAMAMI ve 31. oturumun **ILK UC commit'i** (`4040976` ·
+  `50b6f1d` · `f39b968`) + doc-sync `49053dc` origin'de. 28. oturumun push
+  borcu da coktan **KAPANMIS** (`11d4aa7` + `b6ef712`) ->
+  **PROD origin'de VAR, git uzerinden ROLLBACK ACIK.**
+  **PUSH BEKLEYEN: YALNIZ `6611198` (Commit G) + `326eb85` (doc) + bu doc
+  commit'i.** (Bu dosyanin onceki `6c6dcec` / "29+30+31 push bekliyor" kaydi
+  **BAYATTI** — Kemal iki push yapmisti; §7-E ile birlikte duzeltildi.)
+  **KALICI NOT — `origin` degeri BU ORTAMDAN GORULEMEZ** (credential helper
+  ASILIR, bkz. §4): **`git ls-remote origin hotelgen-v4` ciktisi TEK GECERLI
+  KAYNAKTIR**; buradaki hash Kemal'in **son bildirdigi olcumdur** ve
+  **tarihiyle** yazilir. `git status`in tracking ref'ine BAKMA — bayat kalir
+  (29. oturumda tam olarak bu yuzden yanlis kayit dustu).
   Saglik: 29. oturumda prod'a dokunulmadigi icin **OLCULMEDI**; son olcum 28.otu
   (`/` 200 · webhook GET 405 · webhook POST secret'siz 401).
   Muhur (29.otu): `npm run doctor` YESIL (tsc 0 · test:is8 **2065/2065, 19 dosya —
@@ -2175,8 +2179,8 @@ runtime kod degil):
   verisi HENUZ okunmadi** — enforce'un kimseyi kirmadiginin asil kaniti birkac
   saatlik gercek trafik sonrasi o logdur.
 - **DOC SENKRONU:** bu commit dosyayi v41 -> **v42**'ye tasir (sevkle AYNI oturum,
-  AYRI commit — §0 *DOKUMAN GECIKMESI* dersi). **PUSH BEKLIYOR** (`origin` =
-  `1e8c356`; bkz. E).
+  AYRI commit — §0 *DOKUMAN GECIKMESI* dersi). (O AN push bekliyordu, `origin` =
+  `1e8c356`; **sonradan PUSH EDILDI** — bkz. E ve §0'daki guncel olcum.)
 
 **29. oturumda KAPANDI — COK-TENANT ONBOARDING KITI + doctor SELF-HEAL + BULGU B**
 (`ab85c60` · `68373c8` · `a5724c9`; **DEPLOY YOK** — kit DB-katman asset'i, doctor
@@ -2487,14 +2491,18 @@ site** ile KAPANDI (#3) — ucunu de yeniden acmayin.
   gerekir. Bu batch'in DISINDA birakildi.
 
 **E) 28. oturumda ACILAN borclar (CSP):**
-- ~~**PROD > ORIGIN — PUSH BEKLIYOR**~~ — **29. otu'da KAPALI oldugu OLCULDU.**
-  `git ls-remote` -> `origin/hotelgen-v4` = **`6c6dcec`**, yani `11d4aa7` +
-  `b6ef712` + 28.otu doc-sync **PUSH EDILMIS**. **PROD origin'de VAR -> git
-  uzerinden ROLLBACK ACIK.** (Bu madde uzun sure "origin = `1e8c356`, rollback YOK"
-  diyordu; kayit **BAYATTI** ve duzeltildi.) **DERS:** push durumunu `git status`in
-  tracking ref'inden OKUMA — o bayat kalir; `git ls-remote` ile OLC.
-  **BUGUNKU PUSH BORCU 29. oturumundur:** `ab85c60` · `68373c8` · `a5724c9` +
-  bu v43 doc-sync (Kemal'in terminalinde, tek batch).
+- ~~**PROD > ORIGIN — PUSH BEKLIYOR**~~ — **29. otu'da KAPALI oldugu OLCULDU**
+  (`11d4aa7` + `b6ef712` + 28.otu doc-sync origin'deydi) ->
+  **PROD origin'de VAR, git uzerinden ROLLBACK ACIK.**
+  **GUNCEL OLCUM (13.08.2026, Kemal'in terminali, iki push): `origin` =
+  `49053dc`** — 29 + 30. oturumun tamami ve 31. oturumun ilk uc commit'i de
+  ICERIDE. **BUGUNKU PUSH BORCU:** `6611198` (Commit G) + `326eb85` (doc) +
+  31. oturumun bu son doc commit'i. (Bu madde once "origin = `1e8c356`",
+  sonra "`6c6dcec` + 29/30/31 bekliyor" diyordu; IKISI DE BAYATTI.)
+  **DERS:** push durumunu `git status`in tracking ref'inden OKUMA — o bayat
+  kalir. **`git ls-remote origin hotelgen-v4` TEK GECERLI KAYNAK**; bu ortamdan
+  kosulamadigi icin (credential helper asilir) buraya yazilan hash Kemal'in son
+  bildirdigi olcumdur ve **tarihiyle** kaydedilir.
 - **CSP CANLI UAT'i ACIK (uc nokta).** Authed paneller + iki srcDoc araci +
   `[csp-report]` prod verisi (yukarida ayrintili). Enforce'un gercekten kimseyi
   kirmadigi HENUZ kanitlanmadi; kanit gelene kadar geri alma recetesi elde tutulur

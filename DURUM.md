@@ -50,7 +50,7 @@ iletir ve SLA takibi yapar. Personel/sahip yönetimi rol bazlı panellerden.
 |---|---|---|
 | **HEAD** | `6611198` + doc | 31. oturum (`4040976` purge_hold toggle · `50b6f1d` cron secret · `f39b968` health-check · `6611198` otomatik purge KAPALI) |
 | **PROD (deploy)** | `b6ef712` | 28. oturum (CSP enforce) — `dpl_7waBxtk6bwUTtjcgkhLg7PHfE6ww` |
-| **origin** | `6c6dcec` | 29. otu ölçümü; 29 + 30 + 31. oturum commit'leri **PUSH BEKLİYOR** |
+| **origin** | `49053dc` | **13.08.2026** Kemal ölçümü (iki push): 29 + 30 + 31. oturumun **ilk üç** commit'i İÇERİDE |
 
 **HEAD > PROD kasıtlıdır.** 29. oturum (DB-katman/araç/doc) ve 30. oturumun DB
 katmanı deploy gerektirmez; 30 + 31. oturumun **API route'ları + panel UI +
@@ -72,8 +72,14 @@ BEKLİYOR** (bilinçli olarak yapılmadı).
 **Otomatik purge KAPALI** (`vercel.json` cron yok + `PURGE_AUTO_ENABLED` unset).
 Açmak için: env `true` + cron girdisini geri ekle + deploy.
 
-Push, Kemal'in kendi terminalinde yapılır (bu ortamda credential helper asılıyor)
-ve sonucu **`git status` ile değil `git ls-remote` ile** doğrulanır.
+**PUSH BEKLEYEN — yalnız `6611198` (Commit G) + `326eb85` (doc) + bu doc commit'i.**
+
+> **Kalıcı not — origin değeri bu ortamdan GÖRÜLEMEZ** (credential helper asılır).
+> `git ls-remote origin hotelgen-v4` çıktısı **tek geçerli kaynaktır**; yukarıdaki
+> hash Kemal'in **son bildirdiği ölçümdür** ve tarihiyle yazılır. `git status`ın
+> tracking ref'i bayat kalabilir — ona bakma.
+
+Push, Kemal'in kendi terminalinde yapılır.
 
 ## 5. Aktif görevler / bekleyen işler
 
