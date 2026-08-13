@@ -16,6 +16,12 @@ interface Hotel {
   packages: unknown
   deleted_at: string | null
   deleted_by: string | null
+  /** true -> otomatik purge ATLANIR (geri sayim isler ama silme olmaz) */
+  purge_hold?: boolean | null
+  /** SUNUCUDA hesaplandi (retention.ts). Silinmemis otelde null. */
+  purge_days_left: number | null
+  purge_at: string | null
+  purge_due: boolean
 }
 
 function getPackageName(packages: unknown): string | null {
@@ -32,6 +38,51 @@ function statusBadge(status: string) {
     deleted: 'bg-red-200 text-red-800',
   }
   return map[status] ?? 'bg-gray-100 text-gray-500'
+}
+
+// ─── Kalici silme geri sayimi ───────────────────────────────────────────────
+// Renk esikleri GORSEL, karar DEGIL: silme kararini cron `isPurgeDue` ile verir.
+// Gun sayisi burada HESAPLANMAZ, sunucudan gelir (retention.ts tek kaynak).
+
+function PurgeCountdown({ hotel }: { hotel: Hotel }) {
+  const d = hotel.purge_days_left
+  if (d === null) return <span style={{ color: '#475569' }}>—</span>
+
+  const tone =
+    d <= 1 ? { bg: 'rgba(239,68,68,0.15)', fg: '#f87171' }
+      : d <= 7 ? { bg: 'rgba(245,158,11,0.15)', fg: '#fbbf24' }
+        : { bg: 'rgba(148,163,184,0.15)', fg: '#94a3b8' }
+
+  const label = d === 0 ? 'bugün silinecek' : `${d} gün kaldı`
+  const exact = hotel.purge_at ? new Date(hotel.purge_at).toLocaleString('tr-TR') : ''
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+      <span
+        title={exact ? `Kalıcı silme: ${exact}` : undefined}
+        style={{
+          display: 'inline-block',
+          background: tone.bg,
+          color: tone.fg,
+          borderRadius: '999px',
+          padding: '2px 9px',
+          fontSize: '12px',
+          fontWeight: 600,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {label}
+      </span>
+      {hotel.purge_hold === true && (
+        <span
+          title="purge_hold açık: otomatik kalıcı silme bu otel için atlanır"
+          style={{ fontSize: '11px', color: '#60a5fa', whiteSpace: 'nowrap' }}
+        >
+          ⏸ otomatik silme kapalı
+        </span>
+      )}
+    </div>
+  )
 }
 
 // ─── Delete Confirmation Modal ──────────────────────────────────────────────
@@ -248,10 +299,197 @@ function RestoreButton({ hotelId, onDone }: { hotelId: string; onDone: () => voi
       type="button"
       onClick={handleRestore}
       disabled={isPending}
+      // Geri yukleme deleted_at'i NULL'lar -> retention saati SIFIRLANIR ve
+      // planlanmis kalici silme kendiliginden IPTAL olur (ayri bir iptal yolu YOK).
+      title="Geri yükleme kalıcı silmeyi de iptal eder"
       className="text-green-600 hover:text-green-700 font-medium text-sm disabled:opacity-50"
     >
       {isPending ? '...' : '↩ Geri Yükle'}
     </button>
+  )
+}
+
+// ─── Kalici Silme (purge) Modal ─────────────────────────────────────────────
+// Onay metni SLUG'dir (soft-delete modalinda otel ADI istenir). Bilincli fark:
+// slug teknik ve tekildir; "ayni isimli iki otel" karisikligi burada olmaz.
+
+function PurgeModal({
+  hotel,
+  onClose,
+  onPurged,
+}: {
+  hotel: Hotel
+  onClose: () => void
+  onPurged: () => void
+}) {
+  const [confirmText, setConfirmText] = useState('')
+  const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState('')
+
+  const isMatch = confirmText === hotel.slug
+
+  function handlePurge() {
+    setError('')
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/admin/hotels/${hotel.id}/purge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmSlug: confirmText }),
+        })
+        const data = (await res.json()) as { error?: string }
+        if (!res.ok) {
+          setError(data.error ?? 'Kalıcı silme başarısız')
+          return
+        }
+        onPurged()
+      } catch {
+        setError('Ağ hatası, lütfen tekrar deneyin.')
+      }
+    })
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        background: 'rgba(0,0,0,0.6)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '24px',
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        background: '#fff',
+        borderRadius: '16px',
+        padding: '32px',
+        maxWidth: '460px',
+        width: '100%',
+        boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+        border: '1px solid #fecaca',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <div style={{
+            width: '44px', height: '44px',
+            borderRadius: '12px',
+            background: '#fee2e2',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '22px', flexShrink: 0,
+          }}>🔥</div>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#111827' }}>
+              Kalıcı Silme
+            </h2>
+            <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#dc2626', fontWeight: 600 }}>
+              Bu işlem GERİ ALINAMAZ
+            </p>
+          </div>
+        </div>
+
+        <div style={{
+          background: '#fef3f2',
+          border: '1px solid #fecaca',
+          borderRadius: '10px',
+          padding: '14px 16px',
+          marginBottom: '16px',
+          textAlign: 'center',
+        }}>
+          <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#9ca3af' }}>Kalıcı silinecek otel</p>
+          <p style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#dc2626', letterSpacing: '-0.5px' }}>
+            {hotel.name}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', fontFamily: 'monospace', color: '#6b7280' }}>
+            {hotel.slug}
+          </p>
+        </div>
+
+        <div style={{
+          background: '#fffbeb',
+          border: '1px solid #fde68a',
+          borderRadius: '8px',
+          padding: '10px 14px',
+          marginBottom: '20px',
+          fontSize: '13px',
+          color: '#92400e',
+          lineHeight: 1.6,
+        }}>
+          Merkezi kayıtlar silinir: bridge bilgileri, kanal yönlendirmeleri, grup bağları.
+          Denetim kaydı korunur.
+          <br />
+          <strong>⚠️ Otelin Supabase projesi elle silinecek</strong> — bu ekran onu silmez,
+          proje referansı silme kaydına yazılır.
+        </div>
+
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>
+            Onaylamak için slug&apos;ı AYNEN yazın:
+          </label>
+          <input
+            id="purge-confirm-input"
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={hotel.slug}
+            autoComplete="off"
+            style={{
+              width: '100%',
+              border: `2px solid ${isMatch ? '#22c55e' : confirmText.length > 0 ? '#f87171' : '#d1d5db'}`,
+              borderRadius: '8px',
+              padding: '10px 14px',
+              fontSize: '14px',
+              fontFamily: 'monospace',
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+          {confirmText.length > 0 && !isMatch && (
+            <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#ef4444' }}>✗ Slug ile eşleşmiyor</p>
+          )}
+          {isMatch && <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#22c55e' }}>✓ Eşleşti</p>}
+        </div>
+
+        {error && (
+          <div style={{
+            background: '#fef2f2', border: '1px solid #fecaca',
+            borderRadius: '8px', padding: '10px 14px',
+            fontSize: '13px', color: '#dc2626', marginBottom: '16px',
+          }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isPending}
+            style={{
+              flex: 1, padding: '11px', borderRadius: '8px',
+              border: '1px solid #d1d5db', background: '#fff', color: '#374151',
+              fontSize: '14px', fontWeight: 500, cursor: 'pointer',
+            }}
+          >
+            İptal
+          </button>
+          <button
+            id="confirm-purge-btn"
+            type="button"
+            onClick={handlePurge}
+            disabled={!isMatch || isPending}
+            style={{
+              flex: 1, padding: '11px', borderRadius: '8px', border: 'none',
+              background: isMatch && !isPending ? '#b91c1c' : '#d1d5db',
+              color: isMatch && !isPending ? '#fff' : '#9ca3af',
+              fontSize: '14px', fontWeight: 600,
+              cursor: isMatch && !isPending ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {isPending ? 'Siliniyor...' : '🔥 Kalıcı Sil'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -265,6 +503,7 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
   const router = useRouter()
   const [tab, setTab] = useState<'active' | 'deleted'>('active')
   const [deleteTarget, setDeleteTarget] = useState<Hotel | null>(null)
+  const [purgeTarget, setPurgeTarget] = useState<Hotel | null>(null)
 
   const activeHotels = hotels.filter((h) => !h.deleted_at)
   const deletedHotels = hotels.filter((h) => !!h.deleted_at)
@@ -273,6 +512,7 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
 
   function refresh() {
     setDeleteTarget(null)
+    setPurgeTarget(null)
     router.refresh()
   }
 
@@ -361,7 +601,10 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
               <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Paket</th>
               <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Durum</th>
               {tab === 'deleted' && (
-                <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Silinme</th>
+                <>
+                  <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Silinme</th>
+                  <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Kalıcı Silme</th>
+                </>
               )}
               <th className="text-left p-4 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>İşlemler</th>
             </tr>
@@ -390,14 +633,19 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
                     </span>
                   </td>
                   {tab === 'deleted' && (
-                    <td className="p-4 text-xs" style={{ color: '#64748b' }}>
-                      {h.deleted_at ? (
-                        <div>
-                          <div>{new Date(h.deleted_at).toLocaleDateString('tr-TR')}</div>
-                          {h.deleted_by && <div style={{ color: '#475569' }}>@{h.deleted_by}</div>}
-                        </div>
-                      ) : '—'}
-                    </td>
+                    <>
+                      <td className="p-4 text-xs" style={{ color: '#64748b' }}>
+                        {h.deleted_at ? (
+                          <div>
+                            <div>{new Date(h.deleted_at).toLocaleDateString('tr-TR')}</div>
+                            {h.deleted_by && <div style={{ color: '#475569' }}>@{h.deleted_by}</div>}
+                          </div>
+                        ) : '—'}
+                      </td>
+                      <td className="p-4">
+                        <PurgeCountdown hotel={h} />
+                      </td>
+                    </>
                   )}
                   <td className="p-4">
                     <div className="flex items-center gap-3 text-sm">
@@ -424,6 +672,15 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
                       ) : (
                         <>
                           <RestoreButton hotelId={h.id} onDone={refresh} />
+                          <button
+                            id={`purge-btn-${h.id}`}
+                            type="button"
+                            onClick={() => setPurgeTarget(h)}
+                            className="text-red-600 hover:text-red-800 font-semibold transition-colors"
+                            title="Merkezi kayıtları kalıcı olarak siler — geri alınamaz"
+                          >
+                            🔥 Kalıcı Sil
+                          </button>
                         </>
                       )}
                     </div>
@@ -432,7 +689,7 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
               ))
             ) : (
               <tr>
-                <td colSpan={tab === 'deleted' ? 6 : 5} className="p-8 text-center text-sm" style={{ color: '#64748b' }}>
+                <td colSpan={tab === 'deleted' ? 7 : 5} className="p-8 text-center text-sm" style={{ color: '#64748b' }}>
                   {tab === 'active' ? (
                     <>
                       Henüz otel eklenmemiş.{' '}
@@ -456,6 +713,15 @@ export default function OtellerClient({ hotels }: OtellerClientProps) {
             hotel={deleteTarget}
             onClose={() => setDeleteTarget(null)}
             onDeleted={refresh}
+          />
+        )}
+
+        {/* Purge (kalici silme) modal */}
+        {purgeTarget && (
+          <PurgeModal
+            hotel={purgeTarget}
+            onClose={() => setPurgeTarget(null)}
+            onPurged={refresh}
           />
         )}
     </div>

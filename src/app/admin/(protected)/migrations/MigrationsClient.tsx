@@ -14,8 +14,23 @@ import type { CentralMigrationStatusReport, CentralRunResult } from '@/lib/migra
 type StatusWithName = MigrationStatusReport & { hotel_name: string };
 type ActiveTab = 'tenant' | 'central';
 
+/**
+ * Soft-delete edilmis otel satiri. Migration DURUMU TASIMAZ: silinmis otelin
+ * tenant DB'sine baglanilmaz (sunucuda da sorgulanmaz). Geri sayim SUNUCUDA
+ * hesaplanir — tek kaynak src/lib/hotels/retention.ts.
+ */
+export interface DeletedHotelRow {
+  slug: string;
+  name: string;
+  deleted_at: string;
+  days_left: number | null;
+  purge_at: string | null;
+  purge_hold: boolean;
+}
+
 interface Props {
   initialStatuses: StatusWithName[];
+  deletedHotels: DeletedHotelRow[];
   adminUsername: string;
 }
 
@@ -65,6 +80,97 @@ function StatusBadge({ applied, total }: { applied: number; total: number }) {
     >
       ⚠️ {pending} güncelleme bekliyor ({applied}/{total})
     </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Silinmis oteller — AYRI, katlanmis bolum
+//
+// Ustteki sayaclar (Toplam/Guncel/Bekliyor) bu satirlari SAYMAZ: silinmis bir
+// otel "guncelleme bekliyor" gorunup panelde kalici bir uyari lekesi biraktigi
+// icin ayrildi. Aksiyonlar PASIF — silinmis otele migration uygulanmaz.
+// ─────────────────────────────────────────────────────────────────────────────
+function DeletedHotelsSection({ rows }: { rows: DeletedHotelRow[] }) {
+  if (rows.length === 0) return null;
+
+  const disabledBtn: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    color: '#475569',
+    cursor: 'not-allowed',
+  };
+
+  return (
+    <details className="mt-6 rounded-2xl overflow-hidden" style={glassCard}>
+      <summary
+        className="px-5 py-4 cursor-pointer text-sm font-semibold select-none"
+        style={{ color: '#94a3b8' }}
+      >
+        🗑 Silinmiş ({rows.length})
+      </summary>
+
+      <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        {rows.map((r) => (
+          <div key={r.slug} className="flex items-center gap-3 px-5 py-3" style={{ opacity: 0.7 }}>
+            <span className="text-base shrink-0">🏨</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium truncate" style={{ color: '#e2e8f0' }}>{r.name}</span>
+                <span className="font-mono text-xs" style={{ color: '#64748b' }}>({r.slug})</span>
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171' }}
+                >
+                  deleted
+                </span>
+                {r.days_left !== null && (
+                  <span
+                    title={r.purge_at ? `Kalıcı silme: ${new Date(r.purge_at).toLocaleString('tr-TR')}` : undefined}
+                    className="text-xs px-2 py-0.5 rounded-full font-medium"
+                    style={
+                      r.days_left <= 1
+                        ? { background: 'rgba(239,68,68,0.15)', color: '#f87171' }
+                        : r.days_left <= 7
+                          ? { background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }
+                          : { background: 'rgba(148,163,184,0.15)', color: '#94a3b8' }
+                    }
+                  >
+                    {r.days_left === 0 ? 'bugün silinecek' : `${r.days_left} gün kaldı`}
+                  </span>
+                )}
+                {r.purge_hold && (
+                  <span className="text-xs" style={{ color: '#60a5fa' }}>⏸ otomatik silme kapalı</span>
+                )}
+              </div>
+              <p className="text-xs mt-0.5" style={{ color: '#64748b' }}>
+                Silinme: {new Date(r.deleted_at).toLocaleString('tr-TR')}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                disabled
+                title="Silinmiş otelde migration işlemi yapılamaz"
+                className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                style={disabledBtn}
+              >
+                Detay
+              </button>
+              <button
+                type="button"
+                disabled
+                title="Silinmiş otelde migration işlemi yapılamaz"
+                className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                style={disabledBtn}
+              >
+                Uygula
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -861,7 +967,7 @@ function CentralMigrationsPanel() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Ana Component
 // ─────────────────────────────────────────────────────────────────────────────
-export default function MigrationsClient({ initialStatuses, adminUsername }: Props) {
+export default function MigrationsClient({ initialStatuses, deletedHotels, adminUsername }: Props) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('tenant');
   const [statuses, setStatuses] = useState<StatusWithName[]>(initialStatuses);
   const [detailModal, setDetailModal] = useState<StatusWithName | null>(null);
@@ -1146,6 +1252,9 @@ export default function MigrationsClient({ initialStatuses, adminUsername }: Pro
                 })}
               </div>
             )}
+
+            {/* Silinmis oteller — sayaclarin DISINDA, aksiyonlar pasif */}
+            <DeletedHotelsSection rows={deletedHotels} />
           </>
         )}
 

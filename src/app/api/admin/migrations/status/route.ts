@@ -25,11 +25,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const status = await getMigrationStatus(hotelSlug.trim());
       return NextResponse.json({ statuses: [status] });
     } else {
-      // Tüm oteller — Central DB'den hotel listesi çek
+      // Tüm AKTİF oteller — Central DB'den hotel listesi çek.
+      // Soft-delete edilmiş oteller DIŞARIDA: bridge kimlikleri purge ile
+      // gidebilir ve panelin "güncelleme bekliyor" sayacını kirletirler.
+      // (Tek-hotel sorgusu filtresiz kalır: açık talep, gizlenmez.)
       const supabase = getCentralSupabase();
       const { data: hotels, error } = await supabase
         .from('hotels')
         .select('id, slug, name, status')
+        .is('deleted_at', null)
         .order('name', { ascending: true });
 
       if (error) {
