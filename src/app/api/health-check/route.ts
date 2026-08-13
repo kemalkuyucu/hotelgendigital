@@ -21,6 +21,8 @@ export const dynamic = 'force-dynamic';
 interface CheckResult {
   ok: boolean;
   message: string;
+  /** true -> kontrol KOSMADI (yapilandirma yok). `ok` hesabini DUSURMEZ. */
+  skipped?: boolean;
 }
 
 interface HealthResponse {
@@ -134,24 +136,51 @@ async function checkPgVector(): Promise<CheckResult> {
   }
 }
 
+/**
+ * Seed kontrolu — paketler + adminler + (OPSIYONEL) bir referans otel.
+ *
+ * Otel probe'u YAPILANDIRMAYA baglidir: aranan slug artik `HEALTHCHECK_TENANT_SLUG`
+ * env'inden gelir. Env TANIMSIZSA sorgu HIC KOSMAZ ve sonuc `skipped` isaretlenir
+ * (endpoint 503'e DUSMEZ).
+ *
+ * KOK NEDEN: burada 'demo-resort-spa' HARDCODE'du ve o otel Central'da YOK ->
+ * `allOk=false` -> `/api/health-check` PROD'da bes oturumdur 503 donuyordu.
+ * Kalici bir sari bayrak, gercek bir arizayi maskeler; ayrica `src/**` icinde
+ * tenant literali tasimak sabit-marka yasagina takilan bir desendir.
+ */
 async function checkSeedData(): Promise<CheckResult> {
   try {
     const central = getCentralSupabase();
-    const [pkgs, admins, demoHotel] = await Promise.all([
+    const tenantSlug = process.env.HEALTHCHECK_TENANT_SLUG?.trim() || null;
+
+    const [pkgs, admins] = await Promise.all([
       central.from('packages').select('code'),
       central.from('master_admins').select('username'),
-      central.from('hotels').select('slug').eq('slug', 'demo-resort-spa').maybeSingle(),
     ]);
 
     const pkgCount = pkgs.data?.length ?? 0;
     const adminCount = admins.data?.length ?? 0;
-    const hasDemoHotel = !!demoHotel.data;
 
     if (pkgCount < 3) return { ok: false, message: `Expected 3 packages, got ${pkgCount}` };
     if (adminCount < 3) return { ok: false, message: `Expected 3 admins, got ${adminCount}` };
-    if (!hasDemoHotel) return { ok: false, message: 'Demo hotel not seeded' };
 
-    return { ok: true, message: '3 packages + 3 admins + demo hotel present' };
+    if (!tenantSlug) {
+      return {
+        ok: true,
+        skipped: true,
+        message: `${pkgCount} packages + ${adminCount} admins present; hotel probe SKIPPED (HEALTHCHECK_TENANT_SLUG not set)`,
+      };
+    }
+
+    const { data: hotel } = await central
+      .from('hotels')
+      .select('slug')
+      .eq('slug', tenantSlug)
+      .maybeSingle();
+
+    if (!hotel) return { ok: false, message: `Hotel '${tenantSlug}' not found in Central` };
+
+    return { ok: true, message: `${pkgCount} packages + ${adminCount} admins + hotel '${tenantSlug}' present` };
   } catch (err) {
     return { ok: false, message: (err as Error).message };
   }
